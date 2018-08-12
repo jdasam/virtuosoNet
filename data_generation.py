@@ -15,15 +15,14 @@ def save_features_as_vector(dataset, save_name):
             for feature in perform:
                 total_notes += 1
                 if not feature['IOI_ratio'] == None:
-                    print(feature['grace_order'])
                     train_x.append(
                         [feature['pitch'], feature['pitch_interval'], feature['duration'],
                          feature['duration_ratio'], feature['beat_position'], feature['voice'],
                         feature['xml_position'], feature['grace_order']] + feature['tempo'] + feature['dynamic'] + feature['notation'])
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
-                                    feature['xml_deviation'], feature['pedal_at_start'], feature['pedal_at_end'],
-                                    feature['soft_pedal'], feature['pedal_refresh_time'], feature['pedal_cut_time'],
+                                    feature['xml_deviation'], feature['pedal_refresh_time'], feature['pedal_cut_time'],
+                                    feature['pedal_at_start'], feature['pedal_at_end'],feature['soft_pedal'],
                                     feature['pedal_refresh'], feature['pedal_cut']])
                     num_total_datapoint += 1
             # windowed_train_x = make_windowed_data(train_x, input_length )
@@ -51,7 +50,7 @@ def save_features_as_vector(dataset, save_name):
     complete_xy_normalized = []
     means = [[], []]
     stds = [[], []]
-    num_normalize_feature = [6, 7]
+    num_normalize_feature = [6, 5]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
@@ -74,7 +73,6 @@ def save_features_as_vector(dataset, save_name):
                 complete_xy_normalized[-1][index1].append(new_sample)
 
     complete_xy_orig = complete_xy
-    print(len(complete_xy), len(complete_xy))
     complete_xy = complete_xy_normalized
     random.shuffle(complete_xy)
 
@@ -86,4 +84,4 @@ def save_features_as_vector(dataset, save_name):
 
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_grace')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_bool_pedal')

@@ -23,13 +23,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_grace", help="dat file name")
 args = parser.parse_args()
 
 # Training Parameters
 learning_rate = 0.001
 # training_steps = 10000
 training_epochs = 40
-batch_size = 2
+batch_size = 4
 display_step = 200
 training_ratio = 0.8
 
@@ -92,8 +93,13 @@ def RNN(input, use_peepholes=False):
     hypothesis = frame_wise_projection(expand, 2*num_hidden , num_output)
     print(hypothesis.shape)
     sigmoid_layer = tf.sigmoid(hypothesis)
+    print(sigmoid_layer.shape)
+
+    combined_hypothesis = tf.concat([hypothesis[:,:,0:7], sigmoid_layer[:,:,7:12]], axis=2)
+    print(combined_hypothesis.shape)
     # hypothesis =tf.matmul(outputs, weights['out']) + biases['out']
-    cost = tf.reduce_mean(tf.square(hypothesis - Y))
+    # cost = tf.reduce_mean(tf.square(hypothesis - Y))
+    cost = tf.reduce_mean(tf.square(combined_hypothesis - Y))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(cost)
     '''
@@ -101,7 +107,7 @@ def RNN(input, use_peepholes=False):
     capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
     train_op = optimizer.apply_gradients(capped_gvs)
     '''
-    return hypothesis, cost, train_op, tf.train.Saver(max_to_keep=1)
+    return combined_hypothesis, cost, train_op, tf.train.Saver(max_to_keep=1)
 
 hypothesis, cost, train_op, saver = RNN(X)
 init = tf.global_variables_initializer()
@@ -109,7 +115,7 @@ init = tf.global_variables_initializer()
 # Start training
 
 if args.sessMode == 'train':
-    with open("chopin_cleaned_grace.dat", "rb") as f:
+    with open(args.dataName+".dat", "rb") as f:
         complete_xy = pickle.load(f)
     perform_num = len(complete_xy)
 
@@ -174,12 +180,12 @@ if args.sessMode == 'train':
                 break
 
         print("Optimization Finished!")
-        saver.save(sess, 'save_temp/save')
+        saver.save(sess,  args.dataName+'_save_temp/save')
 
 #
 # elif args.sessMode == 'test':
 #     with tf.Session() as sess:
-        saver.restore(sess, 'save_temp/save')
+        saver.restore(sess,  args.dataName+'_save_temp/save')
         # test
         n_tuple=0
         for xy_tuple in test_xy:
@@ -214,11 +220,11 @@ if args.sessMode == 'train':
 
 # test session
 else:
-    with open("chopin_cleaned_grace_stat.dat", "rb") as f:
+    with open(args.dataName+"_stat.dat", "rb") as f:
         means, stds = pickle.load(f)
         # print(means, stds)
     with tf.Session() as sess:
-        saver.restore(sess, 'save_temp/save')
+        saver.restore(sess, args.dataName+'_save_temp/save')
         #load test piece
         path_name = args.testPath
         # xml_name = path_name + 'xml.xml'
@@ -287,8 +293,8 @@ else:
         output_features= []
         for pred in prediction:
             feat = {'IOI_ratio': pred[0], 'articulation':pred[1], 'loudness':pred[2], 'xml_deviation':pred[3],
-                    'pedal_at_start': pred[4], 'pedal_at_end': pred[5], 'soft_pedal': pred[6],
-                    'pedal_refresh_time': pred[7], 'pedal_cut_time': pred[8], 'pedal_refresh': int(round(pred[9])),
+                    'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
+                    'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': int(round(pred[9])),
                     'pedal_cut': int(round(pred[10])) }
             output_features.append(feat)
         # prediction = np.transpose(prediction)
