@@ -15,7 +15,7 @@ import argparse
 import xml_matching
 import midi_utils.midi_utils as midi_utils
 from mxp import MusicXMLDocument
-
+import os
 
 
 parser = argparse.ArgumentParser()
@@ -28,112 +28,17 @@ args = parser.parse_args()
 # Training Parameters
 learning_rate = 0.001
 # training_steps = 10000
-training_epochs = 20
-batch_size = 4
+training_epochs = 40
+batch_size = 2
 display_step = 200
 training_ratio = 0.8
 
 # Network Parameters
-num_input = 3
-timesteps = 100 # timesteps
+num_input = 8+40+7  #
+timesteps = 200 # timesteps
 num_hidden = 64 # hidden layer num of features
-num_output = 3 # loudness, articulation, ioi
-input_length = 11
+num_output = 4 + 7 # ioi, articulation, loudness, onset_deviation, pedals(7)
 
-
-with open("pairs_entire3.dat", "rb") as f:
-    dataset = pickle.load(f)
-
-def make_windowed_data(features,input_length):
-    feature_array = np.asarray(features)
-    windowed_feature = []
-    left_margin = (input_length-1)/2
-    right_margin = (input_length - 1) / 2 +1
-
-    # print(left_margin, right_margin)
-    for i in range(feature_array.shape[0]):
-        if i >= left_margin and i+right_margin<feature_array.shape[0]:
-            temp_windowed = feature_array[i-left_margin:i+right_margin,:]
-        elif i <left_margin:
-            padding = left_margin-i
-            temp_windowed = feature_array[:i+right_margin,:]
-            temp_windowed = np.pad(temp_windowed, ((padding,0), (0,0)) , 'constant')
-        else:
-            padding = (i+right_margin) - feature_array.shape[0]
-            temp_windowed = feature_array[i-left_margin:feature_array.shape[0],:]
-            temp_windowed = np.pad(temp_windowed, ((0, padding), (0,0)) , 'constant')
-        if not temp_windowed.shape[0] == input_length:
-            print(temp_windowed.shape)
-        windowed_feature.append(temp_windowed)
-    windowed_feature = np.asarray(windowed_feature)
-    # print(windowed_feature.shape)
-    return windowed_feature
-
-
-
-
-complete_xy = []
-for piece in dataset:
-    for perform in piece:
-        train_x = []
-        train_y = []
-        for feature in perform:
-            if not feature['IOI_ratio'] == None:
-                train_x.append( [ feature['pitch_interval'],feature['duration_ratio'],feature['beat_position']  ] )
-                # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
-                train_y.append([ feature['IOI_ratio'], feature['articulation'] ,feature['loudness'] ])
-        # windowed_train_x = make_windowed_data(train_x, input_length )
-        complete_xy.append([train_x, train_y])
-
-def get_mean_and_sd(performances, target_data, target_dimension):
-    sum = 0
-    squared_sum = 0
-    count = 0
-    for perf in performances:
-        samples = perf[target_data]
-        for sample in samples:
-            value = sample[target_dimension]
-            sum += value
-            squared_sum += value*value
-            count += 1
-    data_mean = sum / count
-    data_std = (squared_sum/count - data_mean **2) ** 0.5
-    return data_mean, data_std
-
-complete_xy_normalized = []
-means = [[],[]]
-stds = [[],[]]
-for i1 in (0, 1):
-    for i2 in range(3):
-        mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
-        means[i1].append(mean_value)
-        stds[i1].append(std_value)
-
-for performance in complete_xy:
-    complete_xy_normalized.append([])
-    for index1 in (0, 1):
-        complete_xy_normalized[-1].append([])
-        for sample in performance[index1]:
-            new_sample = []
-            for index2 in (0, 1, 2):
-                new_sample.append((sample[index2]-means[index1][index2])/stds[index1][index2])
-            complete_xy_normalized[-1][index1].append(new_sample)
-
-complete_xy_orig = complete_xy
-print(len(complete_xy), len(complete_xy))
-complete_xy = complete_xy_normalized
-
-random.shuffle(complete_xy)
-
-
-
-
-# complete_xy = np.asarray(complete_xy)
-# perform_num = complete_xy.shape[0]
-perform_num = len(complete_xy)
-train_perf_num = int(perform_num * training_ratio)
-train_xy = complete_xy[:train_perf_num]
-test_xy = complete_xy[train_perf_num:]
 
 
 
@@ -186,6 +91,7 @@ def RNN(input, use_peepholes=False):
     print(expand.shape)
     hypothesis = frame_wise_projection(expand, 2*num_hidden , num_output)
     print(hypothesis.shape)
+    sigmoid_layer = tf.sigmoid(hypothesis)
     # hypothesis =tf.matmul(outputs, weights['out']) + biases['out']
     cost = tf.reduce_mean(tf.square(hypothesis - Y))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -203,30 +109,69 @@ init = tf.global_variables_initializer()
 # Start training
 
 if args.sessMode == 'train':
+    with open("chopin_cleaned_grace.dat", "rb") as f:
+        complete_xy = pickle.load(f)
+    perform_num = len(complete_xy)
+
+    train_perf_num = int(perform_num * training_ratio)
+    train_xy = complete_xy[:train_perf_num]
+    test_xy = complete_xy[train_perf_num:]
     with tf.Session() as sess:
 
         # Run the initializer
         sess.run(init)
-
+        best_valid_loss = float("inf")
+        get_worse_count = 0
         for epoch in range(training_epochs):
             loss_total = []
             for xy_tuple in train_xy:
+
                 train_x = np.asarray(xy_tuple[0])
                 train_y = np.asarray(xy_tuple[1])
+
                 data_size = train_x.shape[0]
                 total_batch_num = int(math.ceil(data_size / (timesteps *batch_size )))
                 for step in range(total_batch_num-1):
                     batch_x = train_x[step*batch_size*timesteps:(step+1)*batch_size*timesteps]
                     batch_y = train_y[step*batch_size*timesteps:(step+1)*batch_size*timesteps]
-
                     batch_x = batch_x.reshape((batch_size, timesteps, num_input))
                     batch_y = batch_y.reshape((batch_size, timesteps, num_output ))
-
-                    loss , _ = sess.run([cost, train_op], feed_dict={X: batch_x, Y: batch_y})
+                    # print(batch_x.shape, batch_y.shape)
+                    loss , _, hypoth = sess.run([cost, train_op, hypothesis], feed_dict={X: batch_x, Y: batch_y})
                     loss_total.append(loss)
 
             print("Epoch " + str(epoch) + ", Epoch Loss= " + \
                 "{:.4f}".format(np.mean(loss_total)))
+
+            valid_loss_total = []
+            for xy_tuple in test_xy:
+                test_x = np.asarray(xy_tuple[0])
+                test_y = np.asarray(xy_tuple[1])
+                timestep_quantize_num = int(math.ceil(test_x.shape[0] / timesteps))
+                padding_size = timestep_quantize_num * timesteps - test_x.shape[0]
+                # print(test_x.shape, padding_size)
+                test_x_padded = np.pad(test_x, ((0, padding_size), (0, 0)), 'constant')
+                test_y_padded = np.pad(test_y, ((0, padding_size), (0, 0)), 'constant')
+                # print(test_x_padded.shape)
+                # print(data_size, batch_size, total_batch_num)
+
+                # print(batch_x.shape, batch_y.shape)
+                batch_x = test_x_padded.reshape((-1, timesteps, num_input))
+                batch_y = test_y_padded.reshape((-1, timesteps, num_output))
+
+                valid_loss = sess.run(cost, feed_dict={X: batch_x, Y: batch_y})
+                valid_loss_total.append(valid_loss)
+            print("Valid Loss= " + \
+                  "{:.4f}".format(np.mean(valid_loss_total)))
+
+            if np.mean(valid_loss_total) < best_valid_loss:
+                best_valid_loss = np.mean(valid_loss_total)
+                get_worse_count = 0
+            else:
+                get_worse_count += 1
+
+            if get_worse_count >5:
+                break
 
         print("Optimization Finished!")
         saver.save(sess, 'save_temp/save')
@@ -239,12 +184,10 @@ if args.sessMode == 'train':
         n_tuple=0
         for xy_tuple in test_xy:
             n_tuple +=1
-            print(n_tuple)
             train_x = np.asarray(xy_tuple[0])
             train_y = np.asarray(xy_tuple[1])
             data_size = train_x.shape[0]
             total_batch_num = int(math.ceil(data_size / (timesteps * batch_size)))
-            # print(data_size, batch_size, total_batch_num)
 
             for step in range(total_batch_num - 1):
                 batch_x = train_x[step * batch_size * timesteps:(step + 1) * batch_size * timesteps]
@@ -269,16 +212,31 @@ if args.sessMode == 'train':
         # print("Testing Accuracy:", \
         #     sess.run(accuracy, feed_dict={X: test_data, Y: test_label}))
 
+# test session
 else:
+    with open("chopin_cleaned_grace_stat.dat", "rb") as f:
+        means, stds = pickle.load(f)
+        # print(means, stds)
     with tf.Session() as sess:
         saver.restore(sess, 'save_temp/save')
         #load test piece
         path_name = args.testPath
-        xml_name = path_name + 'xml.xml'
-        midi_name = path_name + 'midi.mid'
+        # xml_name = path_name + 'xml.xml'
+        # midi_name = path_name + 'midi.mid'
+        xml_name = path_name + 'musicxml_cleaned.musicxml'
+        midi_name = path_name + 'midi_cleaned.mid'
+
+        if not os.path.isfile(xml_name):
+            xml_name = path_name + 'xml.xml'
+            midi_name = path_name + 'midi.mid'
+
+
         xml_object = MusicXMLDocument(xml_name)
-        xml_notes = xml_matching.extract_notes(xml_object, melody_only=True)
+        xml_notes = xml_matching.extract_notes(xml_object, melody_only=False, grace_note=True)
+        directions = xml_matching.extract_directions(xml_object)
+        xml_notes = xml_matching.apply_directions_to_notes(xml_notes, directions)
         midi_file = midi_utils.to_midi_zero(midi_name)
+        midi_file = midi_utils.add_pedal_inf_to_notes(midi_file)
         midi_notes = midi_file.instruments[0].notes
         match_list = xml_matching.matchXMLtoMIDI(xml_notes, midi_notes)
         score_pairs = xml_matching.make_xml_midi_pair(xml_notes, midi_notes, match_list)
@@ -287,19 +245,25 @@ else:
 
         test_x = []
         for feat in features:
-            if not feat['pitch_interval'] == None:
-                test_x.append([  feat['pitch_interval'],feat['duration_ratio'],feat['beat_position'] ] )
-            else:
-                test_x.append( [0, 0, feat['beat_position'] ])
+            # if not feat['pitch_interval'] == None:
+            test_x.append([ (feat['pitch']-means[0][0])/stds[0][0],  (feat['pitch_interval']-means[0][1])/stds[0][1] ,
+                            (feat['duration'] - means[0][2]) / stds[0][2],(feat['duration_ratio']-means[0][3])/stds[0][3],
+                            (feat['beat_position']-means[0][4])/stds[0][4], (feat['voice']-means[0][5])/stds[0][5],
+                            feat['xml_position'], feat['grace_order']]
+                          + feat['tempo'] + feat['dynamic'] + feat['notation'])
+            # else:
+            #     test_x.append( [(feat['pitch']-means[0][0])/stds[0][0], 0,  (feat['duration'] - means[0][2]) / stds[0][2], 0,
+            #                     (feat['beat_position']-means[0][4])/stds[0][4]]
+            #                    + feat['tempo'] + feat['dynamic'] + feat['notation'] )
 
         test_x = np.asarray(test_x)
-
+        print('test_x shape is', test_x.shape)
 
 
         # test
         timestep_quantize_num = int(math.ceil(test_x.shape[0] / timesteps))
         padding_size = timestep_quantize_num * timesteps - test_x.shape[0]
-        print(test_x.shape)
+        print(test_x.shape, padding_size)
         test_x_padded = np.pad(test_x, ((0,padding_size), (0,0)), 'constant')
         print(test_x_padded.shape)
         # print(data_size, batch_size, total_batch_num)
@@ -313,15 +277,32 @@ else:
         prediction = np.delete(prediction, range(prediction.shape[0]-padding_size,prediction.shape[0]), 0   )
         print(prediction.shape)
 
-        prediction[:,0] *= stds[1][0]
-        prediction[:,1] *= stds[1][1]
-        prediction[:,2] *= stds[1][2]
 
-        prediction[:,0] += means[1][0]
-        prediction[:,1] += means[1][1]
-        prediction[:,2] += means[1][2]
+        for i in range(7):
+            prediction[:,i] *= stds[1][i]
+            prediction[:,i] += means[1][i]
 
-        prediction = np.transpose(prediction)
-        new_midi = xml_matching.applyIOI(xml_notes, midi_notes, features, prediction)
 
-        xml_matching.save_midi_notes_as_piano_midi(new_midi, path_name + 'performed_by_nn.mid')
+        # pred_length = prediction.shape[0]
+        output_features= []
+        for pred in prediction:
+            feat = {'IOI_ratio': pred[0], 'articulation':pred[1], 'loudness':pred[2], 'xml_deviation':pred[3],
+                    'pedal_at_start': pred[4], 'pedal_at_end': pred[5], 'soft_pedal': pred[6],
+                    'pedal_refresh_time': pred[7], 'pedal_cut_time': pred[8], 'pedal_refresh': int(round(pred[9])),
+                    'pedal_cut': int(round(pred[10])) }
+            output_features.append(feat)
+        # prediction = np.transpose(prediction)
+        # feature['pedal_at_start'] = pairs[i]['midi'].pedal_at_start
+        # feature['pedal_at_end'] = pairs[i]['midi'].pedal_at_end
+        # feature['pedal_refresh'] = int(pairs[i]['midi'].pedal_refresh)
+        # feature['pedal_refresh_time'] = int(pairs[i]['midi'].pedal_refresh_time)
+        # feature['pedal_cut'] = int(pairs[i]['midi'].pedal_cut)
+        # feature['pedal_cut_time'] = int(pairs[i]['midi'].pedal_cut)
+        # feature['soft_pedal'] = pairs[i]['midi'].soft_pedal
+
+        output_xml = xml_matching.apply_perform_features(xml_notes, output_features)
+        output_midi = xml_matching.xml_notes_to_midi(output_xml)
+
+        # new_midi = xml_matching.applyIOI(xml_notes, midi_notes, features, prediction)
+
+        xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=True)
