@@ -30,13 +30,13 @@ args = parser.parse_args()
 learning_rate = 0.001
 # training_steps = 10000
 training_epochs = 40
-batch_size = 4
+batch_size = 2
 display_step = 200
 training_ratio = 0.8
 
 # Network Parameters
 num_input = 8+40+7  #
-timesteps = 200 # timesteps
+timesteps = 400 # timesteps
 num_hidden = 64 # hidden layer num of features
 num_output = 4 + 7 # ioi, articulation, loudness, onset_deviation, pedals(7)
 
@@ -99,7 +99,7 @@ def RNN(input, use_peepholes=False):
     print(combined_hypothesis.shape)
     # hypothesis =tf.matmul(outputs, weights['out']) + biases['out']
     # cost = tf.reduce_mean(tf.square(hypothesis - Y))
-    cost = tf.reduce_mean(tf.square(combined_hypothesis - Y))
+    cost = tf.reduce_mean(tf.square(hypothesis - Y))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(cost)
     '''

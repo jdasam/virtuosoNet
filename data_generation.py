@@ -32,6 +32,8 @@ def save_features_as_vector(dataset, save_name):
     num_input = len(train_x[0])
     num_output = len(train_y[0])
 
+    print(train_x[0])
+    print(train_y[0])
     def get_mean_and_sd(performances, target_data, target_dimension):
         sum = 0
         squared_sum = 0
@@ -50,13 +52,14 @@ def save_features_as_vector(dataset, save_name):
     complete_xy_normalized = []
     means = [[], []]
     stds = [[], []]
-    num_normalize_feature = [6, 5]
+    num_normalize_feature = [6, 11]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
             means[i1].append(mean_value)
             stds[i1].append(std_value)
-
+    print (means)
+    print( stds)
     for performance in complete_xy:
         complete_xy_normalized.append([])
         for index1 in (0, 1):
@@ -84,4 +87,4 @@ def save_features_as_vector(dataset, save_name):
 
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_bool_pedal')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_cont_pedal')
