@@ -23,20 +23,20 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_grace", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_small", help="dat file name")
 args = parser.parse_args()
 
 # Training Parameters
 learning_rate = 0.001
 # training_steps = 10000
 training_epochs = 40
-batch_size = 2
+batch_size = 4
 display_step = 200
 training_ratio = 0.8
 
 # Network Parameters
 num_input = 8+40+7  #
-timesteps = 400 # timesteps
+timesteps = 200 # timesteps
 num_hidden = 64 # hidden layer num of features
 num_output = 4 + 7 # ioi, articulation, loudness, onset_deviation, pedals(7)
 
@@ -76,7 +76,7 @@ def RNN(input, use_peepholes=False):
 
         fw = []
         bw = []
-        for n in xrange(layers):
+        for n in range(layers):
             with tf.variable_scope('layer_%d' % n):
                 fw_cell = tf.contrib.rnn.LSTMCell(n_units[n], forget_bias=1.0, use_peepholes=use_peepholes)
                 bw_cell = tf.contrib.rnn.LSTMCell(n_units[n], forget_bias=1.0, use_peepholes=use_peepholes)
@@ -107,7 +107,7 @@ def RNN(input, use_peepholes=False):
     capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
     train_op = optimizer.apply_gradients(capped_gvs)
     '''
-    return combined_hypothesis, cost, train_op, tf.train.Saver(max_to_keep=1)
+    return hypothesis, cost, train_op, tf.train.Saver(max_to_keep=1)
 
 hypothesis, cost, train_op, saver = RNN(X)
 init = tf.global_variables_initializer()
@@ -284,7 +284,7 @@ else:
         print(prediction.shape)
 
 
-        for i in range(7):
+        for i in range(11):
             prediction[:,i] *= stds[1][i]
             prediction[:,i] += means[1][i]
 
@@ -294,8 +294,8 @@ else:
         for pred in prediction:
             feat = {'IOI_ratio': pred[0], 'articulation':pred[1], 'loudness':pred[2], 'xml_deviation':pred[3],
                     'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
-                    'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': int(round(pred[9])),
-                    'pedal_cut': int(round(pred[10])) }
+                    'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
+                    'pedal_cut': pred[10] }
             output_features.append(feat)
         # prediction = np.transpose(prediction)
         # feature['pedal_at_start'] = pairs[i]['midi'].pedal_at_start
@@ -311,4 +311,4 @@ else:
 
         # new_midi = xml_matching.applyIOI(xml_notes, midi_notes, features, prediction)
 
-        xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=True)
+        xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=True, disklavier=True)

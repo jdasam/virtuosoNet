@@ -4,6 +4,7 @@ import random
 import xml_matching
 import math
 
+
 def save_features_as_vector(dataset, save_name):
     complete_xy = []
     num_total_datapoint = 0
@@ -67,7 +68,10 @@ def save_features_as_vector(dataset, save_name):
             for sample in performance[index1]:
                 new_sample = []
                 for index2 in range(num_normalize_feature[index1]):
-                    new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
+                    if not stds[index1][index2] ==0:
+                        new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
+                    else:
+                        new_sample.append(0)
                 if index1 == 0:
                     new_sample[num_normalize_feature[index1]:num_input] = sample[num_normalize_feature[index1]:num_input]
                 else:
@@ -79,6 +83,13 @@ def save_features_as_vector(dataset, save_name):
     complete_xy = complete_xy_normalized
     random.shuffle(complete_xy)
 
+    for index1 in (0,1):
+        for index2 in range(len(stds[index1])):
+            std = stds[index1][index2]
+            if std == 0:
+                print('STD of ' + str(index1) + ',' + str(index2) + ' is zero')
+
+
     with open(save_name + ".dat", "wb") as f:
         pickle.dump(complete_xy, f, protocol=2)
     with open(save_name + "_stat.dat", "wb") as f:
@@ -86,5 +97,5 @@ def save_features_as_vector(dataset, save_name):
 
 
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_cont_pedal')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/1')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_small')
