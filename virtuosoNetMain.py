@@ -23,14 +23,15 @@ args = parser.parse_args()
 train_x = Variable(torch.Tensor())
 input_size = 55
 hidden_size = 64
-num_layers = 2
+final_hidden = 16
+num_layers = 1
 num_output = 11
 training_ratio = 0.8
 learning_rate = 0.001
-num_epochs = 30
+num_epochs = 50
 
-time_steps = 200
-batch_size = 4
+time_steps = 30
+batch_size = 20
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -41,21 +42,37 @@ class BiRNN(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, num_output):
         super(BiRNN, self).__init__()
         self.hidden_size = hidden_size
+        self.final_hidden_size = final_hidden
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
-        self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for bidirection
+        self.output_lstm = nn.LSTM(hidden_size * 2 + num_output, final_hidden, num_layers=1, batch_first=True, bidirectional=False)
+        # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for bidirection
+        self.fc = nn.Linear(final_hidden, num_output)
 
-    def forward(self, x):
+    def forward(self, x, y, hidden, final_hidden):
         # Set initial states
-        h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)  # 2 for bidirection
-        c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)
-
+        # h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)  # 2 for bidirection
+        # c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)
+        #
+        # h1 = torch.zeros(1, x.size(0), self.final_hidden_size).to(device)
+        # c1 = torch.zeros(1, x.size(0), self.final_hidden_size).to(device)
         # Forward propagate LSTM
-        out, _ = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-
+        hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        out_combined = torch.cat((hidden_out,y), 2)
+        out, final_hidden = self.output_lstm(out_combined, final_hidden)
         # Decode the hidden state of the last time step
         out = self.fc(out)
-        return out
+        return out, hidden, final_hidden
+
+    def init_hidden(self, batch_size):
+        h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
+        return (h0, h0)
+
+    def init_final_layer(self, batch_size):
+        h0 = torch.zeros(1, batch_size, self.final_hidden_size).to(device)
+        return (h0, h0)
+
+
 model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
 
 criterion = nn.MSELoss()
@@ -65,6 +82,30 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
+
+
+
+def perform_xml(input, num_output, start_tempo='0'):
+    with torch.no_grad():  # no need to track history in sampling
+        input.view((1,-1,input_size))
+        hidden = model.init_hidden(1)
+        final_hidden = model.init_final_layer(1)
+
+        input_y = torch.zeros(1, num_output).view((1,1,num_output)).to(device)
+        print(input_y.shape)
+        piece_length = input.shape[1]
+        print(piece_length)
+        outputs = []
+        for i in range(piece_length):
+            note_feature = input[0,i,:].view(1,1,input_size).to(device)
+            output, hidden, final_hidden = model(note_feature, input_y, hidden, final_hidden)
+            output_for_save = output.cpu().detach().numpy()
+            input_y = output
+            outputs.append(output_for_save)
+
+        return outputs
+
+
 
 
 ### training
@@ -96,12 +137,19 @@ if args.sessMode == 'train':
             total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
 
             for step in range(total_batch_num - 1):
-                batch_x = Variable(torch.FloatTensor(train_x[step*batch_size*time_steps:(step+1)*batch_size*time_steps]))
-                batch_y = Variable(torch.FloatTensor(train_y[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
+
+
+                batch_x = Variable(torch.Tensor(train_x[step*batch_size*time_steps:(step+1)*batch_size*time_steps]))
+                batch_y = Variable(torch.Tensor(train_y[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
+                zero_tensor = torch.zeros(1,num_output)
+                input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
                 batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
                 batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
 
-                outputs = model(batch_x)
+                hidden = model.init_hidden(batch_x.size(0))
+                final_hidden = model.init_final_layer(batch_x.size(0))
+
+                outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
                 loss = criterion(outputs, batch_y)
                 optimizer.zero_grad()
                 loss.backward()
@@ -114,22 +162,27 @@ if args.sessMode == 'train':
         valid_loss_total = []
 
         for xy_tuple in test_xy:
-            test_x = np.asarray(xy_tuple[0])
-            test_y = np.asarray(xy_tuple[1])
-            timestep_quantize_num = int(math.ceil(test_x.shape[0] / time_steps))
-            padding_size = timestep_quantize_num * time_steps - test_x.shape[0]
-            # print(test_x.shape, padding_size)
-            test_x_padded = np.pad(test_x, ((0, padding_size), (0, 0)), 'constant')
-            test_y_padded = np.pad(test_y, ((0, padding_size), (0, 0)), 'constant')
+            test_x = xy_tuple[0]
+            test_y = xy_tuple[1]
+
+
+
+
             # print(test_x_padded.shape)
             # print(data_size, batch_size, total_batch_num)
 
             # print(batch_x.shape, batch_y.shape)
-            batch_x = test_x_padded.reshape((-1, time_steps, input_size))
-            batch_y = test_y_padded.reshape((-1, time_steps, num_output))
-            batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
-            batch_y = Variable(torch.from_numpy(batch_y)).float().to(device)
-            outputs = model(batch_x)
+            batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
+            batch_y = Variable(torch.Tensor(test_y))
+            zero_tensor = torch.zeros(1, num_output)
+            input_y = torch.cat((zero_tensor, batch_y[0:-1]), 0).view((1, -1, num_output)).to(device)
+            batch_y = batch_y.view((1, -1, num_output)).to(device)
+            # batch_y = test_y_padded.reshape((-1, time_steps, num_output))
+            # batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
+            # batch_y = Variable(torch.from_numpy(batch_y)).float().to(device)
+            hidden = model.init_hidden(1)
+            final_hidden = model.init_final_layer(1)
+            outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
             valid_loss = criterion(outputs, batch_y)
             valid_loss_total.append(valid_loss.item())
         mean_valid_loss = np.mean(valid_loss_total)
@@ -186,17 +239,21 @@ else:
     # batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
 
 
-    outputs = model(batch_x)
-    outputs = outputs.view(-1, num_output)
 
-    prediction = outputs.cpu().detach().numpy()
+    prediction = perform_xml(batch_x, num_output)
+    # outputs = outputs.view(-1, num_output)
+    prediction = np.squeeze(np.asarray(prediction))
+    print(prediction.shape)
+    print(prediction)
+    # prediction = outputs.cpu().detach().numpy()
     for i in range(11):
         prediction[:, i] *= stds[1][i]
         prediction[:, i] += means[1][i]
 
     output_features = []
     for pred in prediction:
-        feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
+        feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
+        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
                 'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
                 'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
                 'pedal_cut': pred[10]}
