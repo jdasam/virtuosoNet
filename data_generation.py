@@ -6,7 +6,7 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [6, 11]
+    num_normalize_feature = [6, 11, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -14,25 +14,32 @@ def save_features_as_vector(dataset, save_name):
         for perform in piece:
             train_x = []
             train_y = []
+            previous_y = []
+            prev_feat = [0] * num_normalize_feature[1]
             for feature in perform:
                 total_notes += 1
-                if not feature['qpm'] == None:
+                if not feature.qpm == None:
                     train_x.append(
-                        [feature['pitch'], feature['pitch_interval'], feature['duration'],
-                         feature['duration_ratio'], feature['beat_position'], feature['voice'],
-                        feature['xml_position'], feature['grace_order'], feature['time_sig_num'], feature['time_sig_den']] + feature['tempo'] + feature['dynamic'] + feature['notation'])
+                        [feature.pitch, feature.pitch_interval, feature.duration,
+                         feature.duration_ratio, feature.beat_position, feature.voice,
+                        feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
+                        + feature.tempo + feature.dynamic + feature.notation)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
-                    train_y.append([feature['qpm'], feature['articulation'], feature['loudness'],
-                                    feature['xml_deviation'], feature['pedal_refresh_time'], feature['pedal_cut_time'],
-                                    feature['pedal_at_start'], feature['pedal_at_end'],feature['soft_pedal'],
-                                    feature['pedal_refresh'], feature['pedal_cut']])
+                    temp_y = [feature.qpm, feature.articulation, feature.velocity,
+                                    feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
+                                    feature.pedal_at_start, feature.pedal_at_end,feature.soft_pedal ,
+                                    feature.pedal_refresh, feature.pedal_cut]
+                    train_y.append(temp_y)
+                    prev_feat[0] = feature.previous_tempo
+                    previous_y.append(prev_feat)
+                    prev_feat = temp_y
                     num_total_datapoint += 1
             # windowed_train_x = make_windowed_data(train_x, input_length )
-            complete_xy.append([train_x, train_y])
+            complete_xy.append([train_x, train_y, previous_y])
             for i in range(3):
                 train_x_aug = key_augmentation(train_x)
-                complete_xy.append([train_x_aug, train_y])
+                complete_xy.append([train_x_aug, train_y, previous_y])
     print('total data point is ', num_total_datapoint)
     print(total_notes)
     num_input = len(train_x[0])
@@ -56,18 +63,20 @@ def save_features_as_vector(dataset, save_name):
         return data_mean, data_std
 
     complete_xy_normalized = []
-    means = [[], []]
-    stds = [[], []]
+    means = [[], [], []]
+    stds = [[], [], []]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
             means[i1].append(mean_value)
             stds[i1].append(std_value)
     print (means)
-    print( stds)
+    print(stds)
+    means[2] = means[1]
+    stds[2] = stds[1]
     for performance in complete_xy:
         complete_xy_normalized.append([])
-        for index1 in (0, 1):
+        for index1 in (0, 1, 2):
             complete_xy_normalized[-1].append([])
             for sample in performance[index1]:
                 new_sample = []
@@ -109,4 +118,4 @@ def key_augmentation(data_x):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_qpm')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_prev_tempo')
