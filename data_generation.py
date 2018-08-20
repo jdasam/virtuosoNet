@@ -2,10 +2,11 @@ from __future__ import division
 import pickle
 import random
 import xml_matching
-import math
+import copy
 
 
 def save_features_as_vector(dataset, save_name):
+    num_normalize_feature = [6, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -15,19 +16,23 @@ def save_features_as_vector(dataset, save_name):
             train_y = []
             for feature in perform:
                 total_notes += 1
-                if not feature['IOI_ratio'] == None:
+                if not feature['qpm'] == None:
                     train_x.append(
                         [feature['pitch'], feature['pitch_interval'], feature['duration'],
                          feature['duration_ratio'], feature['beat_position'], feature['voice'],
-                        feature['xml_position'], feature['grace_order']] + feature['tempo'] + feature['dynamic'] + feature['notation'])
+                        feature['xml_position'], feature['grace_order'], feature['time_sig_num'], feature['time_sig_den']] + feature['tempo'] + feature['dynamic'] + feature['notation'])
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
-                    train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
+                    # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
+                    train_y.append([feature['qpm'], feature['articulation'], feature['loudness'],
                                     feature['xml_deviation'], feature['pedal_refresh_time'], feature['pedal_cut_time'],
                                     feature['pedal_at_start'], feature['pedal_at_end'],feature['soft_pedal'],
                                     feature['pedal_refresh'], feature['pedal_cut']])
                     num_total_datapoint += 1
             # windowed_train_x = make_windowed_data(train_x, input_length )
             complete_xy.append([train_x, train_y])
+            for i in range(3):
+                train_x_aug = key_augmentation(train_x)
+                complete_xy.append([train_x_aug, train_y])
     print('total data point is ', num_total_datapoint)
     print(total_notes)
     num_input = len(train_x[0])
@@ -53,7 +58,6 @@ def save_features_as_vector(dataset, save_name):
     complete_xy_normalized = []
     means = [[], []]
     stds = [[], []]
-    num_normalize_feature = [6, 11]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
@@ -95,7 +99,14 @@ def save_features_as_vector(dataset, save_name):
     with open(save_name + "_stat.dat", "wb") as f:
         pickle.dump([means, stds], f, protocol=2)
 
+def key_augmentation(data_x):
+    key_change = 0
+    data_x_aug = copy.deepcopy(data_x)
+    while key_change == 0:
+        key_change = random.randrange(-5, 7)
+    for data in data_x_aug:
+        data[0] = data[0]+key_change
+    return data_x_aug
 
-
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/1')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_small')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_qpm')

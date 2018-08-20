@@ -14,24 +14,24 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_cont_pedal", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_qpm", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 
 args = parser.parse_args()
 
 ### parameters
 train_x = Variable(torch.Tensor())
-input_size = 55
+input_size = 57
 hidden_size = 64
-final_hidden = 16
+final_hidden = 64
 num_layers = 1
 num_output = 11
 training_ratio = 0.8
 learning_rate = 0.001
-num_epochs = 50
+num_epochs = 150
 
-time_steps = 30
-batch_size = 20
+time_steps = 600
+batch_size = 1
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -129,6 +129,11 @@ if args.sessMode == 'train':
     # total_step = len(train_loader)
     for epoch in range(num_epochs):
         loss_total = []
+        main_loss_total = []
+        ioi_loss_total =[]
+        art_loss_total =[]
+        vel_loss_total =[]
+        dev_loss_total =[]
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
             train_y = xy_tuple[1]
@@ -151,15 +156,29 @@ if args.sessMode == 'train':
 
                 outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
                 loss = criterion(outputs, batch_y)
+                ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
+                art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
+                vel_loss = criterion(outputs[:,:,2], batch_y[:,:,2])
+                dev_loss = criterion(outputs[:,:,3], batch_y[:,:,3])
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 loss_total.append(loss.item())
+                ioi_loss_total.append(ioi_loss.item())
+                art_loss_total.append(art_loss.item())
+                vel_loss_total.append(vel_loss.item())
+                dev_loss_total.append(dev_loss.item())
 
-        print('Epoch [{}/{}], Loss: {:.4f}'
-              .format(epoch + 1, num_epochs, np.mean(loss_total) ))
+        print('Epoch [{}/{}], Loss: {:.4f}, IOI: {:.4f}, Art: {:.4f}, Vel: {:.4f}, Dev: {:.4f}'
+              .format(epoch + 1, num_epochs, np.mean(loss_total),
+                      np.mean(ioi_loss_total), np.mean(art_loss_total), np.mean(vel_loss_total), np.mean(dev_loss_total)) )
 
         valid_loss_total = []
+        ioi_loss_total =[]
+        art_loss_total =[]
+        vel_loss_total =[]
+        dev_loss_total =[]
 
         for xy_tuple in test_xy:
             test_x = xy_tuple[0]
@@ -184,10 +203,20 @@ if args.sessMode == 'train':
             final_hidden = model.init_final_layer(1)
             outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
             valid_loss = criterion(outputs, batch_y)
+            ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
+            art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
+            vel_loss = criterion(outputs[:,:,2], batch_y[:,:,2])
+            dev_loss = criterion(outputs[:,:,3], batch_y[:,:,3])
+
             valid_loss_total.append(valid_loss.item())
+            ioi_loss_total.append(ioi_loss.item())
+            art_loss_total.append(art_loss.item())
+            vel_loss_total.append(vel_loss.item())
+            dev_loss_total.append(dev_loss.item())
         mean_valid_loss = np.mean(valid_loss_total)
-        print("Valid Loss= " + \
-              "{:.4f}".format(mean_valid_loss))
+        print("Valid Loss= {:.4f} , IOI: {:.4f}, Art: {:.4f}, Vel: {:.4f}, Dev: {:.4f}"
+              .format(mean_valid_loss,  np.mean(ioi_loss_total), np.mean(art_loss_total),
+                      np.mean(vel_loss_total), np.mean(dev_loss_total)))
 
         is_best = mean_valid_loss < best_valid_loss
         # if np.mean(valid_loss_total) < best_valid_loss:
@@ -252,8 +281,8 @@ else:
 
     output_features = []
     for pred in prediction:
-        feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
-        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
+        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
+        feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
                 'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
                 'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
                 'pedal_cut': pred[10]}
