@@ -15,24 +15,25 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_qpm_small", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_measure_length", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
+parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 
 args = parser.parse_args()
 
 ### parameters
 train_x = Variable(torch.Tensor())
-input_size = 57
-hidden_size = 64
-final_hidden = 64
-num_layers = 1
+input_size = 58
+hidden_size = 128
+final_hidden = 128
+num_layers = 4
 num_output = 11
 training_ratio = 0.8
 learning_rate = 0.001
 num_epochs = 150
 
-time_steps = 600
-batch_size = 1
+time_steps = 30
+batch_size = 25
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -50,7 +51,7 @@ class BiRNN(nn.Module):
         # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for bidirection
         self.fc = nn.Linear(final_hidden, num_output)
 
-    def forward(self, x, y, hidden, final_hidden):
+    def forward(self, x, y, hidden, final_hidden, hidden_out = False):
         # Set initial states
         # h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)  # 2 for bidirection
         # c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)
@@ -58,7 +59,10 @@ class BiRNN(nn.Module):
         # h1 = torch.zeros(1, x.size(0), self.final_hidden_size).to(device)
         # c1 = torch.zeros(1, x.size(0), self.final_hidden_size).to(device)
         # Forward propagate LSTM
-        hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        if not isinstance(hidden_out, torch.Tensor):
+            hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        if not isinstance(y, torch.Tensor):
+            return hidden_out, hidden
         out_combined = torch.cat((hidden_out,y), 2)
         out, final_hidden = self.output_lstm(out_combined, final_hidden)
         # Decode the hidden state of the last time step
@@ -86,34 +90,59 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 
 
-def perform_xml(input, num_output, is_beat_list, start_tempo='0'):
+def perform_xml(input, input_y, is_beat_list, tempo_stats, start_tempo='0'):
     with torch.no_grad():  # no need to track history in sampling
         input.view((1,-1,input_size))
+        # num_notes = input.shape[1]
         hidden = model.init_hidden(1)
         final_hidden = model.init_final_layer(1)
 
-        input_y = torch.zeros(1, num_output).view((1,1,num_output)).to(device)
-        input_y[0] = start_tempo
-        print(input_y.shape)
+        hidden_output, hidden = model(input, False, hidden, final_hidden)
+
+        # print(input_y.shape)
         piece_length = input.shape[1]
-        print(piece_length)
         outputs = []
 
         previous_tempo = start_tempo
-        previous_position = input[0,0,6] #xml_position of first note
+        print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
+        save_tempo = 0
+        num_added_tempo = 0
+        previous_position = input[0,0,7] #xml_position of first note
         for i in range(piece_length):
+            is_beat = is_beat_list[i]
+            # print(is_beat)
+            if is_beat and input[0,i,7] > previous_position: # is_beat and
+                previous_position = input[0,i,7]
+                previous_tempo = save_tempo\
+                                 / num_added_tempo
+                save_tempo =0
+                num_added_tempo = 0
+                print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
+
+                tempo_changed= True
+            # else:
+            #     tempo_changed = False
+
+
+            input_y = input_y.cpu()
+            # print(previous_tempo)
+            input_y[0, 0, 0] = previous_tempo
+            input_y = input_y.to(device)
+
+
             note_feature = input[0,i,:].view(1,1,input_size).to(device)
-            output, hidden, final_hidden = model(note_feature, input_y, hidden, final_hidden)
+            # print(hidden_output.shape)
+            temp_hidden_output = hidden_output[0,i,:].view(1,1,-1)
+            output, hidden, final_hidden = model(note_feature, input_y, hidden, final_hidden, temp_hidden_output)
             output_for_save = output.cpu().detach().numpy()
             input_y = output
             ## change tempo of input_y
-            is_beat = is_beat_list[i]
-            if is_beat:
-                if input[0,i,6] > previous_position: # is_beat and
-                    previous_position = input[0,i,6]
-                    previous_tempo = save_tempo
-                save_tempo = output_for_save[0] #save qpm of this beat
-
+            # if is_beat:
+            #     if input[0, i, 6] > previous_position:
+            #         save_tempo = output_for_save[0][0][0] #save qpm of this beat
+            #
+            save_tempo += output_for_save[0][0][0]
+            num_added_tempo += 1
             outputs.append(output_for_save)
 
         return outputs
@@ -179,6 +208,7 @@ if args.sessMode == 'train':
 
                 optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm(model.parameters(), 0.25)
                 optimizer.step()
                 loss_total.append(loss.item())
                 ioi_loss_total.append(ioi_loss.item())
@@ -252,6 +282,47 @@ if args.sessMode == 'train':
             'optimizer': optimizer.state_dict(),
         }, is_best)
 
+    #end of epoch
+    if os.path.isfile(args.resume):
+        print("=> loading checkpoint '{}'".format(args.resume))
+        checkpoint = torch.load(args.resume)
+        # args.start_epoch = checkpoint['epoch']
+        best_valid_loss = checkpoint['best_valid_loss']
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(args.resume, checkpoint['epoch']))
+    else:
+        print("=> no checkpoint found at '{}'".format(args.resume))
+
+    n_tuple = 0
+    for xy_tuple in test_xy:
+        n_tuple += 1
+        train_x = np.asarray(xy_tuple[0])
+        train_y = np.asarray(xy_tuple[1])
+        data_size = train_x.shape[0]
+        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+
+        for step in range(total_batch_num - 1):
+            batch_x = train_x[step * batch_size * timesteps:(step + 1) * batch_size * timesteps]
+            batch_y = train_y[step * batch_size * timesteps:(step + 1) * batch_size * timesteps]
+
+            # print(batch_x.shape, batch_y.shape)
+            batch_x = batch_x.reshape((batch_size, timesteps, num_input))
+
+            prediction = sess.run(hypothesis, feed_dict={X: batch_x})
+            prediction = prediction.reshape((-1, num_output))
+
+
+
+            plt.figure(figsize=(10, 7))
+            plt.subplot(211)
+            plt.plot(batch_y)
+            plt.subplot(212)
+            plt.plot(prediction)
+            plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
+
+
 else:
 ### test session
     with open(args.dataName + "_stat.dat", "rb") as f:
@@ -283,11 +354,28 @@ else:
     # batch_x = test_x_padded.reshape((-1, time_steps, input_size))
     # batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
     # tempos = xml_doc.get_tempos()
-    start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
-    start_tempo = (start_tempo - means[1][0]) / stds[1][0]
 
+    if args.startTempo == 0:
+        start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
+        start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
+    else:
+        start_tempo = math.log(args.startTempo, 10)
+    start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
 
-    prediction = perform_xml(batch_x, num_output, is_beat_list, start_tempo=start_tempo)
+    input_y = torch.zeros(1, num_output).view((1, 1, num_output))
+    input_y[0,0,0] = start_tempo
+    input_y[0,0,1] = 1
+    input_y[0,0,2] = 64
+    for i in range(3,num_output):
+        input_y[0,0,i] = 0
+    for i in range(num_output):
+        input_y[0,0,i] -= means[1][i]
+        input_y[0,0,i] /= stds[1][i]
+
+    input_y = input_y.to(device)
+    tempo_stats = [means[1][0], stds[1][0]]
+
+    prediction = perform_xml(batch_x, input_y, is_beat_list,tempo_stats, start_tempo=start_tempo_norm)
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
     print(prediction.shape)
@@ -304,7 +392,8 @@ else:
         feat.qpm = pred[0]
         feat.articulation = pred[1]
         feat.velocity = pred[2]
-        feat.xml_deviation = pred[3]
+        # feat.xml_deviation = pred[3]
+        feat.xml_deviation = 0
         feat.pedal_refresh_time = pred[4]
         feat.pedal_cut_time = pred[5]
         feat.pedal_at_start = pred[6]

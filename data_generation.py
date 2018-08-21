@@ -6,7 +6,7 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [6, 11, 11]
+    num_normalize_feature = [7, 11, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -21,7 +21,7 @@ def save_features_as_vector(dataset, save_name):
                 if not feature.qpm == None:
                     train_x.append(
                         [feature.pitch, feature.pitch_interval, feature.duration,
-                         feature.duration_ratio, feature.beat_position, feature.voice,
+                         feature.duration_ratio, feature.beat_position, feature.measure_length, feature.voice,
                         feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
                         + feature.tempo + feature.dynamic + feature.notation)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
@@ -118,4 +118,4 @@ def key_augmentation(data_x):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_prev_tempo')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_measure_length')
