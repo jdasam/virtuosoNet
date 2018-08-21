@@ -11,7 +11,7 @@ import xml_matching
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test")
+parser.add_argument("-mode", "--sessMode", type=str, default='train ', help="train or test")
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
@@ -357,6 +357,7 @@ else:
 
     if args.startTempo == 0:
         start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
+        start_tempo = math.log(start_tempo, 10)
         start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
     else:
         start_tempo = math.log(args.startTempo, 10)
@@ -392,8 +393,8 @@ else:
         feat.qpm = pred[0]
         feat.articulation = pred[1]
         feat.velocity = pred[2]
-        # feat.xml_deviation = pred[3]
-        feat.xml_deviation = 0
+        feat.xml_deviation = pred[3]
+        # feat.xml_deviation = 0
         feat.pedal_refresh_time = pred[4]
         feat.pedal_cut_time = pred[5]
         feat.pedal_at_start = pred[6]

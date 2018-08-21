@@ -37,9 +37,14 @@ def save_features_as_vector(dataset, save_name):
                     num_total_datapoint += 1
             # windowed_train_x = make_windowed_data(train_x, input_length )
             complete_xy.append([train_x, train_y, previous_y])
+            key_changed_num = []
             for i in range(3):
-                train_x_aug = key_augmentation(train_x)
+                key_change = 0
+                while key_change == 0 or key_change in key_changed_num:
+                    key_change = random.randrange(-5, 7)
+                train_x_aug = key_augmentation(train_x, key_change)
                 complete_xy.append([train_x_aug, train_y, previous_y])
+                key_changed_num.append(key_change)
     print('total data point is ', num_total_datapoint)
     print(total_notes)
     num_input = len(train_x[0])
@@ -108,14 +113,14 @@ def save_features_as_vector(dataset, save_name):
     with open(save_name + "_stat.dat", "wb") as f:
         pickle.dump([means, stds], f, protocol=2)
 
-def key_augmentation(data_x):
-    key_change = 0
+def key_augmentation(data_x, key_change):
+    # key_change = 0
     data_x_aug = copy.deepcopy(data_x)
-    while key_change == 0:
-        key_change = random.randrange(-5, 7)
+    # while key_change == 0:
+    #     key_change = random.randrange(-5, 7)
     for data in data_x_aug:
         data[0] = data[0]+key_change
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_measure_length')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_direction_embed')
