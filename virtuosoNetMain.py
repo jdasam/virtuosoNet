@@ -8,6 +8,8 @@ import numpy as np
 import shutil
 import os
 import xml_matching
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -26,11 +28,11 @@ args = parser.parse_args()
 train_x = Variable(torch.Tensor())
 input_size = 25
 hidden_size = 128
-final_hidden = 128
-num_layers = 4
+final_hidden = 32
+num_layers = 3
 num_output = 11
 training_ratio = 0.95
-learning_rate = 0.001
+learning_rate = 0.0001
 num_epochs = 150
 
 time_steps = 40
@@ -54,7 +56,7 @@ class BiRNN(nn.Module):
         self.fc = nn.Linear(final_hidden, num_output)
 
     def forward(self, x, y, hidden, final_hidden, hidden_out = False):
-        # Set initial states
+        # Set initial state\s
         # h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)  # 2 for bidirection
         # c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)
         #
@@ -516,13 +518,16 @@ elif args.sessMode=='plot':
             # batch_y = batch_y.cpu().detach().numpy()
             batch_y = np.asarray(batch_y).reshape((1,-1,num_output))
             plt.figure(figsize=(10, 7))
-            plt.subplot(411)
-            plt.plot(batch_y[0, :, 0], outputs[0,:,0])
-            plt.subplot(412)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 1], outputs[0, :, 1])))
-            plt.subplot(413)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 2], outputs[0, :, 2])))
-            plt.subplot(414)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 3], outputs[0, :, 3])))
+            for i in range(4):
+                plt.subplot(411+i)
+                plt.plot(batch_y[0, :, i])
+                plt.plot(outputs[0, :, i])
+            # plt.subplot(412)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 1], outputs[0, :, 1])))
+            # plt.subplot(413)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 2], outputs[0, :, 2])))
+            # plt.subplot(414)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 3], outputs[0, :, 3])))
             # os.mkdir('images')
             plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
+            plt.close()
