@@ -8,6 +8,8 @@ import numpy as np
 import shutil
 import os
 import xml_matching
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -16,7 +18,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_initial_tempo", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_initial_tempo_small", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 
@@ -26,8 +28,8 @@ args = parser.parse_args()
 train_x = Variable(torch.Tensor())
 input_size = 25
 hidden_size = 128
-final_hidden = 128
-num_layers = 4
+final_hidden = 16
+num_layers = 2
 num_output = 11
 training_ratio = 0.95
 learning_rate = 0.001
@@ -54,7 +56,7 @@ class BiRNN(nn.Module):
         self.fc = nn.Linear(final_hidden, num_output)
 
     def forward(self, x, y, hidden, final_hidden, hidden_out = False):
-        # Set initial states
+        # Set initial state\s
         # h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)  # 2 for bidirection
         # c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(device)
         #
@@ -516,13 +518,16 @@ elif args.sessMode=='plot':
             # batch_y = batch_y.cpu().detach().numpy()
             batch_y = np.asarray(batch_y).reshape((1,-1,num_output))
             plt.figure(figsize=(10, 7))
-            plt.subplot(411)
-            plt.plot(batch_y[0, :, 0], outputs[0,:,0])
-            plt.subplot(412)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 1], outputs[0, :, 1])))
-            plt.subplot(413)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 2], outputs[0, :, 2])))
-            plt.subplot(414)
-            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 3], outputs[0, :, 3])))
+            for i in range(4):
+                plt.subplot(411+i)
+                plt.plot(batch_y[0, :, i])
+                plt.plot(outputs[0, :, i])
+            # plt.subplot(412)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 1], outputs[0, :, 1])))
+            # plt.subplot(413)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 2], outputs[0, :, 2])))
+            # plt.subplot(414)
+            # plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 3], outputs[0, :, 3])))
             # os.mkdir('images')
             plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
+            plt.close()
