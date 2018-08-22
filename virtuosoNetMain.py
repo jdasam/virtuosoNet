@@ -8,14 +8,15 @@ import numpy as np
 import shutil
 import os
 import xml_matching
+import matplotlib.pyplot as plt
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train ', help="train or test")
+parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test")
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_measure_length", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_initial_tempo", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 
@@ -23,17 +24,18 @@ args = parser.parse_args()
 
 ### parameters
 train_x = Variable(torch.Tensor())
-input_size = 58
+input_size = 25
 hidden_size = 128
 final_hidden = 128
 num_layers = 4
 num_output = 11
-training_ratio = 0.8
+training_ratio = 0.95
 learning_rate = 0.001
 num_epochs = 150
 
-time_steps = 30
-batch_size = 25
+time_steps = 40
+batch_size = 20
+valid_batch_size = 50
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -63,6 +65,7 @@ class BiRNN(nn.Module):
             hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         if not isinstance(y, torch.Tensor):
             return hidden_out, hidden
+
         out_combined = torch.cat((hidden_out,y), 2)
         out, final_hidden = self.output_lstm(out_combined, final_hidden)
         # Decode the hidden state of the last time step
@@ -104,7 +107,7 @@ def perform_xml(input, input_y, is_beat_list, tempo_stats, start_tempo='0'):
         outputs = []
 
         previous_tempo = start_tempo
-        print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
+        # print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
         save_tempo = 0
         num_added_tempo = 0
         previous_position = input[0,0,7] #xml_position of first note
@@ -117,23 +120,17 @@ def perform_xml(input, input_y, is_beat_list, tempo_stats, start_tempo='0'):
                                  / num_added_tempo
                 save_tempo =0
                 num_added_tempo = 0
-                print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
-
-                tempo_changed= True
-            # else:
-            #     tempo_changed = False
-
+                # print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
 
             input_y = input_y.cpu()
             # print(previous_tempo)
             input_y[0, 0, 0] = previous_tempo
             input_y = input_y.to(device)
 
-
             note_feature = input[0,i,:].view(1,1,input_size).to(device)
             # print(hidden_output.shape)
             temp_hidden_output = hidden_output[0,i,:].view(1,1,-1)
-            output, hidden, final_hidden = model(note_feature, input_y, hidden, final_hidden, temp_hidden_output)
+            output, _, final_hidden = model(note_feature, input_y, hidden, final_hidden, temp_hidden_output)
             output_for_save = output.cpu().detach().numpy()
             input_y = output
             ## change tempo of input_y
@@ -149,6 +146,45 @@ def perform_xml(input, input_y, is_beat_list, tempo_stats, start_tempo='0'):
 
 
 
+def batch_time_step_run(x,y,prev_feature, step, batch_size=batch_size, time_steps=time_steps, model=model):
+
+    if step < total_batch_num - 1:
+        batch_start = step * batch_size * time_steps
+        batch_end = (step + 1) * batch_size * time_steps
+        batch_x = Variable(torch.Tensor(x[batch_start:batch_end]))
+        batch_y = Variable(torch.Tensor(y[batch_start:batch_end]))
+        input_y = Variable(torch.Tensor(prev_feature[batch_start:batch_end]))
+        # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+        batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+        batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+        input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+        hidden = model.init_hidden(batch_x.size(0))
+        final_hidden = model.init_final_layer(batch_x.size(0))
+    else:
+        # num_left_data = data_size % batch_size*time_steps
+        batch_start = -(batch_size * time_steps)
+        batch_x = Variable(
+            torch.Tensor(x[batch_start:]))
+        batch_y = Variable(
+            torch.Tensor(y[batch_start:]))
+        input_y = Variable(
+            torch.Tensor(prev_feature[batch_start:]))
+        # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+        batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+        batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+        input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+        hidden = model.init_hidden(batch_x.size(0))
+        final_hidden = model.init_final_layer(batch_x.size(0))
+
+    outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+    loss = criterion(outputs, batch_y)
+    ioi_loss = criterion(outputs[:, :, 0], batch_y[:, :, 0])
+    art_loss = criterion(outputs[:, :, 1], batch_y[:, :, 1])
+    vel_loss = criterion(outputs[:, :, 2], batch_y[:, :, 2])
+    dev_loss = criterion(outputs[:, :, 3], batch_y[:, :, 3])
+
+    return outputs, loss, ioi_loss, art_loss, vel_loss, dev_loss
+
 
 ### training
 
@@ -160,11 +196,19 @@ if args.sessMode == 'train':
         # p = u.load()
         # complete_xy = pickle.load(f)
         complete_xy = u.load()
+
+    with open(args.dataName + "_stat.dat", "rb") as f:
+        u = pickle._Unpickler(f)
+        u.encoding = 'latin1'
+        means, stds = u.load()
+
     perform_num = len(complete_xy)
+    tempo_stats = [means[1][0], stds[1][0]]
 
     train_perf_num = int(perform_num * training_ratio)
     train_xy = complete_xy[:train_perf_num]
     test_xy = complete_xy[train_perf_num:]
+    print('number of performance: ', perform_num, 'number of test perf: ', len(test_xy))
 
     print(train_xy[0][0][0])
     best_valid_loss = float("inf")
@@ -184,31 +228,47 @@ if args.sessMode == 'train':
             data_size = len(train_x)
             total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
 
-            for step in range(total_batch_num - 1):
+            for step in range(total_batch_num):
+                outputs, loss, ioi_loss, art_loss, vel_loss, dev_loss = batch_time_step_run(train_x, train_y, prev_feature, step)
+                # if step < total_batch_num - 1:
+                #     batch_start = step * batch_size * time_steps
+                #     batch_end = (step+1)*batch_size*time_steps
+                #     batch_x = Variable(torch.Tensor(train_x[batch_start:batch_end]))
+                #     batch_y = Variable(torch.Tensor(train_y[batch_start:batch_end]))
+                #     input_y =  Variable(torch.Tensor(prev_feature[batch_start:batch_end]))
+                #     # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+                #     batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+                #     batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+                #     input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+                #     hidden = model.init_hidden(batch_x.size(0))
+                #     final_hidden = model.init_final_layer(batch_x.size(0))
+                # else:
+                #     # num_left_data = data_size % batch_size*time_steps
+                #     batch_start = -(batch_size * time_steps +1)
+                #     batch_x = Variable(
+                #         torch.Tensor(train_x[batch_start:]))
+                #     batch_y = Variable(
+                #         torch.Tensor(train_y[batch_start:]))
+                #     input_y = Variable(
+                #         torch.Tensor(prev_feature[batch_start:]))
+                #     # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+                #     batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+                #     batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+                #     input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+                #     hidden = model.init_hidden(batch_x.size(0))
+                #     final_hidden = model.init_final_layer(batch_x.size(0))
 
 
-                batch_x = Variable(torch.Tensor(train_x[step*batch_size*time_steps:(step+1)*batch_size*time_steps]))
-                batch_y = Variable(torch.Tensor(train_y[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
-                # zero_tensor = torch.zeros(1,num_output)
-                input_y =  Variable(torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
-                # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-                batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
-                batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
-                input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
-
-                hidden = model.init_hidden(batch_x.size(0))
-                final_hidden = model.init_final_layer(batch_x.size(0))
-
-                outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
-                loss = criterion(outputs, batch_y)
-                ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
-                art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
-                vel_loss = criterion(outputs[:,:,2], batch_y[:,:,2])
-                dev_loss = criterion(outputs[:,:,3], batch_y[:,:,3])
+                # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+                # loss = criterion(outputs, batch_y)
+                # ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
+                # art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
+                # vel_loss = criterion(outputs[:,:,2], batch_y[:,:,2])
+                # dev_loss = criterion(outputs[:,:,3], batch_y[:,:,3])
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm(model.parameters(), 0.25)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
                 optimizer.step()
                 loss_total.append(loss.item())
                 ioi_loss_total.append(ioi_loss.item())
@@ -220,6 +280,8 @@ if args.sessMode == 'train':
               .format(epoch + 1, num_epochs, np.mean(loss_total),
                       np.mean(ioi_loss_total), np.mean(art_loss_total), np.mean(vel_loss_total), np.mean(dev_loss_total)) )
 
+
+        ## Validation
         valid_loss_total = []
         ioi_loss_total =[]
         art_loss_total =[]
@@ -229,25 +291,24 @@ if args.sessMode == 'train':
         for xy_tuple in test_xy:
             test_x = xy_tuple[0]
             test_y = xy_tuple[1]
-
-
-
-
-            # print(test_x_padded.shape)
-            # print(data_size, batch_size, total_batch_num)
-
-            # print(batch_x.shape, batch_y.shape)
+            prev_feature = xy_tuple[2]
+            is_beat_list = xy_tuple[3]
             batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
-            batch_y = Variable(torch.Tensor(test_y))
-            zero_tensor = torch.zeros(1, num_output)
-            input_y = torch.cat((zero_tensor, batch_y[0:-1]), 0).view((1, -1, num_output)).to(device)
-            batch_y = batch_y.view((1, -1, num_output)).to(device)
-            # batch_y = test_y_padded.reshape((-1, time_steps, num_output))
-            # batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
-            # batch_y = Variable(torch.from_numpy(batch_y)).float().to(device)
-            hidden = model.init_hidden(1)
-            final_hidden = model.init_final_layer(1)
-            outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+            batch_y = Variable(torch.Tensor(test_y)).view((1, -1, num_output))
+            input_y = Variable(torch.Tensor(prev_feature)).view((1,-1,num_output)).to(device)
+            # hidden = model.init_hidden(1)
+            # final_hidden = model.init_final_layer(1)
+            # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+
+            batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
+            #
+            input_y = torch.zeros(num_output)
+
+            input_y[0] = test_y[0][0]
+            input_y[2] = -0.25
+            input_y = input_y.view((1,1, num_output)).to(device)
+            outputs = perform_xml(batch_x, input_y, is_beat_list, tempo_stats, start_tempo=test_y[0][0])
+            outputs = torch.Tensor(outputs).view((1,-1,num_output))
             valid_loss = criterion(outputs, batch_y)
             ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
             art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
@@ -259,6 +320,7 @@ if args.sessMode == 'train':
             art_loss_total.append(art_loss.item())
             vel_loss_total.append(vel_loss.item())
             dev_loss_total.append(dev_loss.item())
+
         mean_valid_loss = np.mean(valid_loss_total)
         print("Valid Loss= {:.4f} , IOI: {:.4f}, Art: {:.4f}, Vel: {:.4f}, Dev: {:.4f}"
               .format(mean_valid_loss,  np.mean(ioi_loss_total), np.mean(art_loss_total),
@@ -283,47 +345,10 @@ if args.sessMode == 'train':
         }, is_best)
 
     #end of epoch
-    if os.path.isfile(args.resume):
-        print("=> loading checkpoint '{}'".format(args.resume))
-        checkpoint = torch.load(args.resume)
-        # args.start_epoch = checkpoint['epoch']
-        best_valid_loss = checkpoint['best_valid_loss']
-        model.load_state_dict(checkpoint['state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        print("=> loaded checkpoint '{}' (epoch {})"
-              .format(args.resume, checkpoint['epoch']))
-    else:
-        print("=> no checkpoint found at '{}'".format(args.resume))
-
-    n_tuple = 0
-    for xy_tuple in test_xy:
-        n_tuple += 1
-        train_x = np.asarray(xy_tuple[0])
-        train_y = np.asarray(xy_tuple[1])
-        data_size = train_x.shape[0]
-        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
-
-        for step in range(total_batch_num - 1):
-            batch_x = train_x[step * batch_size * timesteps:(step + 1) * batch_size * timesteps]
-            batch_y = train_y[step * batch_size * timesteps:(step + 1) * batch_size * timesteps]
-
-            # print(batch_x.shape, batch_y.shape)
-            batch_x = batch_x.reshape((batch_size, timesteps, num_input))
-
-            prediction = sess.run(hypothesis, feed_dict={X: batch_x})
-            prediction = prediction.reshape((-1, num_output))
 
 
 
-            plt.figure(figsize=(10, 7))
-            plt.subplot(211)
-            plt.plot(batch_y)
-            plt.subplot(212)
-            plt.plot(prediction)
-            plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
-
-
-else:
+elif args.sessMode=='test':
 ### test session
     with open(args.dataName + "_stat.dat", "rb") as f:
         u = pickle._Unpickler(f)
@@ -376,9 +401,10 @@ else:
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    prediction = perform_xml(batch_x, input_y, is_beat_list,tempo_stats, start_tempo=start_tempo_norm)
+    prediction = perform_xml(batch_x, input_y, is_beat_list, tempo_stats, start_tempo=start_tempo_norm)
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
+
     print(prediction.shape)
     print(prediction)
     # prediction = outputs.cpu().detach().numpy()
@@ -391,6 +417,7 @@ else:
         # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
         feat = xml_matching.MusicFeature()
         feat.qpm = pred[0]
+        print(10 ** feat.qpm)
         feat.articulation = pred[1]
         feat.velocity = pred[2]
         feat.xml_deviation = pred[3]
@@ -414,3 +441,88 @@ else:
     output_midi = xml_matching.xml_notes_to_midi(output_xml)
 
     xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=False, disklavier=True)
+
+elif args.sessMode=='plot':
+    if os.path.isfile(args.resume):
+        print("=> loading checkpoint '{}'".format(args.resume))
+        checkpoint = torch.load(args.resume)
+        # args.start_epoch = checkpoint['epoch']
+        best_valid_loss = checkpoint['best_valid_loss']
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(args.resume, checkpoint['epoch']))
+    else:
+        print("=> no checkpoint found at '{}'".format(args.resume))
+
+
+    with open(args.dataName + ".dat", "rb") as f:
+        u = pickle._Unpickler(f)
+        u.encoding = 'latin1'
+        # p = u.load()
+        # complete_xy = pickle.load(f)
+        complete_xy = u.load()
+
+    with open(args.dataName + "_stat.dat", "rb") as f:
+        u = pickle._Unpickler(f)
+        u.encoding = 'latin1'
+        means, stds = u.load()
+
+    perform_num = len(complete_xy)
+    tempo_stats = [means[1][0], stds[1][0]]
+
+    train_perf_num = int(perform_num * training_ratio)
+    train_xy = complete_xy[:train_perf_num]
+    test_xy = complete_xy[train_perf_num:]
+
+    n_tuple = 0
+    for xy_tuple in test_xy:
+        n_tuple += 1
+        train_x = xy_tuple[0]
+        train_y = xy_tuple[1]
+        prev_feature = xy_tuple[2]
+        is_beat_list = xy_tuple[3]
+        data_size = len(train_x)
+        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+        batch_size=1
+        for step in range(total_batch_num - 1):
+            batch_start = step * batch_size * time_steps
+            batch_end = (step + 1) * batch_size * time_steps
+            batch_x = Variable(
+                torch.Tensor(train_x[batch_start:batch_end]))
+            batch_y = train_y[batch_start:batch_end]
+            # print(batch_x.shape, batch_y.shape)
+            # input_y = Variable(
+            #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
+            # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+            batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+            is_beat_batch = is_beat_list[batch_start:batch_end]
+            # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+            # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+
+            # hidden = model.init_hidden(1)
+            # final_hidden = model.init_final_layer(1)
+            # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+            #
+            input_y = torch.zeros(num_output)
+
+            input_y[0] = batch_y[0][0]
+            input_y[2] = -0.25
+            input_y = input_y.view((1, 1, num_output)).to(device)
+            outputs = perform_xml(batch_x, input_y, is_beat_list, tempo_stats, start_tempo=batch_y[0][0])
+            outputs = torch.Tensor(outputs).view((1, -1, num_output))
+
+            outputs = outputs.cpu().detach().numpy()
+            # batch_y = batch_y.cpu().detach().numpy()
+            batch_y = np.asarray(batch_y).reshape((1,-1,num_output))
+            plt.figure(figsize=(10, 7))
+            plt.subplot(411)
+            plt.plot(batch_y[0, :, 0], outputs[0,:,0])
+            plt.subplot(412)
+            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 1], outputs[0, :, 1])))
+            plt.subplot(413)
+            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 2], outputs[0, :, 2])))
+            plt.subplot(414)
+            plt.plot(np.arange(0, time_steps), np.vstack((batch_y[0, :, 3], outputs[0, :, 3])))
+            # os.mkdir('images')
+            plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))

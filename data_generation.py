@@ -15,6 +15,7 @@ def save_features_as_vector(dataset, save_name):
             train_x = []
             train_y = []
             previous_y = []
+            is_beat_list = []
             prev_feat = [0] * num_normalize_feature[1]
             for feature in perform:
                 total_notes += 1
@@ -33,17 +34,18 @@ def save_features_as_vector(dataset, save_name):
                     train_y.append(temp_y)
                     prev_feat[0] = feature.previous_tempo
                     previous_y.append(prev_feat)
-                    prev_feat = temp_y
+                    # prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
+                    is_beat_list.append(feature.is_beat)
             # windowed_train_x = make_windowed_data(train_x, input_length )
-            complete_xy.append([train_x, train_y, previous_y])
+            complete_xy.append([train_x, train_y, previous_y, is_beat_list])
             key_changed_num = []
             for i in range(3):
                 key_change = 0
                 while key_change == 0 or key_change in key_changed_num:
                     key_change = random.randrange(-5, 7)
                 train_x_aug = key_augmentation(train_x, key_change)
-                complete_xy.append([train_x_aug, train_y, previous_y])
+                complete_xy.append([train_x_aug, train_y, previous_y, is_beat_list])
                 key_changed_num.append(key_change)
     print('total data point is ', num_total_datapoint)
     print(total_notes)
@@ -68,8 +70,8 @@ def save_features_as_vector(dataset, save_name):
         return data_mean, data_std
 
     complete_xy_normalized = []
-    means = [[], [], []]
-    stds = [[], [], []]
+    means = [[], [], [], []]
+    stds = [[], [], [], []]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
@@ -79,6 +81,7 @@ def save_features_as_vector(dataset, save_name):
     print(stds)
     means[2] = means[1]
     stds[2] = stds[1]
+
     for performance in complete_xy:
         complete_xy_normalized.append([])
         for index1 in (0, 1, 2):
@@ -96,7 +99,7 @@ def save_features_as_vector(dataset, save_name):
                     new_sample[num_normalize_feature[index1]:num_output] = sample[
                                                                           num_normalize_feature[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
-
+        complete_xy_normalized[-1].append(performance[3])
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
     random.shuffle(complete_xy)
@@ -113,6 +116,9 @@ def save_features_as_vector(dataset, save_name):
     with open(save_name + "_stat.dat", "wb") as f:
         pickle.dump([means, stds], f, protocol=2)
 
+    print(num_input, num_output)
+
+
 def key_augmentation(data_x, key_change):
     # key_change = 0
     data_x_aug = copy.deepcopy(data_x)
@@ -123,4 +129,4 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_direction_embed')
+save_features_as_vector(chopin_pairs, 'chopin_cleaned_initial_tempo')
