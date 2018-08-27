@@ -21,11 +21,11 @@ def save_features_as_vector(dataset, save_name):
                 total_notes += 1
                 if not feature.qpm == None:
                     train_x.append(
-                        [feature.pitch, feature.pitch_interval, feature.duration,
+                        [feature.pitch, feature.duration,
                          feature.duration_ratio, feature.beat_position, feature.measure_length, feature.voice,
-                        feature.qpm_primo,
+                        feature.qpm_primo, feature.following_rest,
                         feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
-                        + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
+                        +  feature.pitch_interval + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
@@ -133,5 +133,5 @@ def key_augmentation(data_x, key_change):
         data[0] = data[0]+key_change
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'tempo_primo')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/1/')
+save_features_as_vector(chopin_pairs, 'vectorized_interval_small')
