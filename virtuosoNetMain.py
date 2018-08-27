@@ -18,7 +18,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_initial_tempo", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="tempo_primo", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 
@@ -26,16 +26,16 @@ args = parser.parse_args()
 
 ### parameters
 train_x = Variable(torch.Tensor())
-input_size = 25
+input_size = 28
 hidden_size = 128
-final_hidden = 32
-num_layers = 3
+final_hidden = 128
+num_layers = 4
 num_output = 11
 training_ratio = 0.95
-learning_rate = 0.0001
+learning_rate = 0.0005
 num_epochs = 150
 
-time_steps = 40
+time_steps = 35
 batch_size = 20
 valid_batch_size = 50
 
@@ -356,7 +356,6 @@ elif args.sessMode=='test':
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
         means, stds = u.load()
-    # print(means, stds)
     if os.path.isfile(args.resume):
         print("=> loading checkpoint '{}'".format(args.resume))
         checkpoint = torch.load(args.resume)
@@ -369,10 +368,14 @@ elif args.sessMode=='test':
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
     path_name = args.testPath
-    test_x, xml_notes, xml_doc, is_beat_list = xml_matching.read_xml_to_array(path_name, means, stds)
+    test_x, xml_notes, xml_doc, is_beat_list = xml_matching.read_xml_to_array(path_name, means, stds, args.startTempo)
     batch_x = Variable(torch.FloatTensor(test_x)).to(device)
     batch_x = batch_x.view(1, -1, input_size)
-    print(batch_x.shape)
+
+    for i in range(len(stds)):
+        for j in range(len(stds[i])):
+            if stds[i][j] == 0:
+                stds[i][j] = 1
     #
     # test_x = np.asarray(test_x)
     # timestep_quantize_num = int(math.ceil(test_x.shape[0] / time_steps))
@@ -400,6 +403,7 @@ elif args.sessMode=='test':
         input_y[0,0,i] -= means[1][i]
         input_y[0,0,i] /= stds[1][i]
 
+    input_y[0,0,0] = 0
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
@@ -407,10 +411,8 @@ elif args.sessMode=='test':
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
 
-    print(prediction.shape)
-    print(prediction)
     # prediction = outputs.cpu().detach().numpy()
-    for i in range(11):
+    for i in range(num_output):
         prediction[:, i] *= stds[1][i]
         prediction[:, i] += means[1][i]
 
@@ -419,7 +421,6 @@ elif args.sessMode=='test':
         # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
         feat = xml_matching.MusicFeature()
         feat.qpm = pred[0]
-        print(10 ** feat.qpm)
         feat.articulation = pred[1]
         feat.velocity = pred[2]
         feat.xml_deviation = pred[3]
@@ -431,6 +432,19 @@ elif args.sessMode=='test':
         feat.soft_pedal = pred[8]
         feat.pedal_refresh = pred[9]
         feat.pedal_cut = pred[10]
+        print(10 ** feat.qpm)
+        #
+        # feat.passed_second = pred[0]
+        # feat.duration_second = pred[1]
+        # feat.pedal_refresh_time = pred[3]
+        # feat.pedal_cut_time = pred[4]
+        # feat.pedal_at_start = pred[5]
+        # feat.pedal_at_end = pred[6]
+        # feat.soft_pedal = pred[7]
+        # feat.pedal_refresh = pred[8]
+        # feat.pedal_cut = pred[9]
+
+
         # feat = {'qpm': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
         #         'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
         #         'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
@@ -439,6 +453,7 @@ elif args.sessMode=='test':
 
     # output_xml = xml_matching.apply_perform_features(xml_notes, output_features)
     output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time= 1, predicted=True)
+    # output_xml = xml_matching.apply_time_position_features(xml_notes, output_features, start_time=1)
 
     output_midi = xml_matching.xml_notes_to_midi(output_xml)
 
