@@ -6,7 +6,7 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [7, 11, 11]
+    num_normalize_feature = [8, 11, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -23,18 +23,23 @@ def save_features_as_vector(dataset, save_name):
                     train_x.append(
                         [feature.pitch, feature.pitch_interval, feature.duration,
                          feature.duration_ratio, feature.beat_position, feature.measure_length, feature.voice,
+                        feature.qpm_primo,
                         feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
-                        + feature.tempo + feature.dynamic + feature.notation)
+                        + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
-                                    feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
-                                    feature.pedal_at_start, feature.pedal_at_end,feature.soft_pedal ,
-                                    feature.pedal_refresh, feature.pedal_cut]
+                              feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
+                              feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
+                              feature.pedal_refresh, feature.pedal_cut]
+                    # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
+                    #           feature.pedal_refresh_time, feature.pedal_cut_time,
+                    #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
+                    #           feature.pedal_refresh, feature.pedal_cut]
                     train_y.append(temp_y)
                     prev_feat[0] = feature.previous_tempo
                     previous_y.append(prev_feat)
-                    # prev_feat = copy.copy(temp_y)
+                    prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
                     is_beat_list.append(feature.is_beat)
             # windowed_train_x = make_windowed_data(train_x, input_length )
@@ -129,4 +134,4 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'chopin_cleaned_initial_tempo_small')
+save_features_as_vector(chopin_pairs, 'tempo_primo')
