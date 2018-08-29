@@ -342,6 +342,8 @@ class MusicFeature():
         self.following_rest = 0
         self.tempo_primo = None
         self.qpm_primo = None
+        self.beat_index = 0
+        self.measure_index = 0
 
         self.dynamic  = None
         self.tempo = None
@@ -420,7 +422,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.notation = note_notation_to_vector(note)
         feature.qpm_primo = math.log(qpm_primo,10)
         feature.tempo_primo = tempo_primo
-
+        feature.measure_index = note.measure_number-1
 
         # print(feature.dynamic + feature.tempo)
 
@@ -436,6 +438,13 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
                 feat.is_beat = True
                 num += 1
 
+    for i in range(xml_length):
+        note = xml_notes[i]
+        beat = binaryIndex(beats, note.note_duration.xml_position)
+        features[i].beat_index = beat
+
+    features = make_index_continuous(features)
+
     return features
 
 
@@ -449,9 +458,9 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     melody_onset_positions.sort()
     if not len(melody_notes) == len(melody_onset_positions):
         print('length of melody notes and onset positions are different')
-
+    beats = cal_beat_positions_of_piece(xml_doc)
     accidentals_in_words = extract_accidental(xml_doc)
-    score_features = extract_score_features(xml_notes, measure_positions)
+    score_features = extract_score_features(xml_notes, measure_positions, beats=beats)
     feat_len = len(score_features)
 
     tempos = cal_tempo(xml_doc, xml_notes, pairs, score_features)
@@ -1956,28 +1965,37 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
     features = extract_score_features(xml_notes, measure_positions, beats, start_tempo)
 
     for i in range(len(stds[0])):
-        if stds[0][i] == 0:
+        if stds[0][i] == 0 or isinstance(stds[0][i], complex):
             stds[0][i] = 1
 
     test_x = []
     is_beat_list = []
+    beat_numbers = []
+    measure_numbers = []
     for feat in features:
         # if not feat['pitch_interval'] == None:
-        temp_x = [ (feat.pitch-means[0][0])/stds[0][0],  (feat.pitch_interval-means[0][1])/stds[0][1] ,
-                        (feat.duration - means[0][2]) / stds[0][2],(feat.duration_ratio-means[0][3])/stds[0][3],
-                        (feat.beat_position-means[0][4])/stds[0][4], (feat.measure_length-means[0][5])/stds[0][5],
-                   (feat.voice - means[0][6]) / stds[0][6], (feat.qpm_primo - means[0][7]) / stds[0][7],
-                        feat.xml_position, feat.grace_order, feat.time_sig_num, feat.time_sig_den]\
-                 + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+        # temp_x = [ (feat.pitch-means[0][0])/stds[0][0],  (feat.pitch_interval-means[0][1])/stds[0][1] ,
+        #                 (feat.duration - means[0][2]) / stds[0][2],(feat.duration_ratio-means[0][3])/stds[0][3],
+        #                 (feat.beat_position-means[0][4])/stds[0][4], (feat.measure_length-means[0][5])/stds[0][5],
+        #            (feat.voice - means[0][6]) / stds[0][6], (feat.qpm_primo - means[0][7]) / stds[0][7],
+        #                 feat.xml_position, feat.grace_order, feat.time_sig_num, feat.time_sig_den]\
+        #          + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+        temp_x = [(feat.duration - means[0][0]) / stds[0][0],(feat.duration_ratio-means[0][1])/stds[0][1],
+                    (feat.beat_position-means[0][2])/stds[0][2], (feat.measure_length-means[0][3])/stds[0][3],
+                    (feat.voice - means[0][4]) / stds[0][4], (feat.qpm_primo - means[0][5]) / stds[0][5],
+                  (feat.following_rest - means[0][6]) / stds[0][6], feat.xml_position, feat.grace_order, feat.time_sig_num, feat.time_sig_den] \
+                    + feat.pitch + feat.pitch_interval + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
         is_beat_list.append(feat.is_beat)
+        beat_numbers.append(feat.beat_index)
+        measure_numbers.append(feat.measure_index)
         # else:
         #     test_x.append( [(feat['pitch']-means[0][0])/stds[0][0], 0,  (feat['duration'] - means[0][2]) / stds[0][2], 0,
         #                     (feat['beat_position']-means[0][4])/stds[0][4]]
         #                    + feat['tempo'] + feat['dynamic'] + feat['notation'] )
 
-    return test_x, xml_notes, xml_object, is_beat_list
+    return test_x, xml_notes, xml_object, beat_numbers, measure_numbers
 
 
 def cal_beat_positions_of_piece(xml_doc):
@@ -2379,7 +2397,7 @@ def omit_trill_notes(xml_notes):
             wavy_line.xml_position = note.note_duration.xml_position
             wavy_line.pitch = note.pitch
             wavy_lines.append(wavy_line)
-
+    print(wavy_lines)
     wavy_lines = combine_wavy_lines(wavy_lines)
 
     for index in reversed(omit_index):
@@ -2600,12 +2618,17 @@ def combine_wavy_lines(wavy_lines):
     for i in reversed(range(num_wavy)):
         wavy = wavy_lines[i]
         if wavy.type == 'stop':
+            deleted = False
             for j in range(1, i+1):
                 prev_wavy = wavy_lines[i - j]
                 if prev_wavy.type == 'start' and prev_wavy.number == wavy.number:
                     prev_wavy.end_xml_position = wavy.xml_position
                     wavy_lines.remove(wavy)
+                    deleted = True
                     break
+            if not deleted:
+                wavy_lines.remove(wavy)
+
     return wavy_lines
 
 
@@ -2655,3 +2678,24 @@ def get_measure_accidentals(xml_notes, index):
                     measure_accidentals.append(temp_pair)
 
     return measure_accidentals
+
+def make_index_continuous(features):
+    prev_beat = 0
+    prev_measure = 0
+
+    beat_compensate = 0
+    measure_compensate = 0
+
+    for feat in features:
+        if feat.beat_index - prev_beat > 1:
+            beat_compensate -= (feat.beat_index - prev_beat) -1
+        if feat.measure_index - prev_beat > 1:
+            measure_compensate -= (feat.measure_index - prev_measure) -1
+
+        prev_beat = feat.beat_index
+        prev_measure = feat.measure_index
+
+        feat.beat_index += beat_compensate
+        feat.measure_index += measure_compensate
+
+    return features

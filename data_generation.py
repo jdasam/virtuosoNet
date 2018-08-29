@@ -6,7 +6,7 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [8, 13, 13]
+    num_normalize_feature = [7, 11, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -19,8 +19,10 @@ def save_features_as_vector(dataset, save_name):
             train_x = []
             train_y = []
             previous_y = []
-            is_beat_list = []
-            prev_feat = [0] * (num_normalize_feature[1] + 3)
+            # is_beat_list = []
+            beat_numbers = []
+            measure_numbers = []
+            prev_feat = [0] * (num_normalize_feature[1] )
             for feature in perform:
                 total_notes += 1
                 if not feature.qpm == None:
@@ -35,7 +37,7 @@ def save_features_as_vector(dataset, save_name):
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
                               feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
                               feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
-                              feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
+                              feature.pedal_refresh, feature.pedal_cut] #+ feature.trill_param
                     # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
                     #           feature.pedal_refresh_time, feature.pedal_cut_time,
                     #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
@@ -45,16 +47,18 @@ def save_features_as_vector(dataset, save_name):
                     previous_y.append(prev_feat)
                     prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
-                    is_beat_list.append(feature.is_beat)
+                    # is_beat_list.append(feature.is_beat)
+                    beat_numbers.append(feature.beat_index)
+                    measure_numbers.append(feature.measure_index)
             # windowed_train_x = make_windowed_data(train_x, input_length )
-            complete_xy.append([train_x, train_y, previous_y, is_beat_list])
+            complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers])
             key_changed_num = []
             for i in range(3):
                 key_change = 0
                 while key_change == 0 or key_change in key_changed_num:
                     key_change = random.randrange(-5, 7)
                 train_x_aug = key_augmentation(train_x, key_change)
-                complete_xy.append([train_x_aug, train_y, previous_y, is_beat_list])
+                complete_xy.append([train_x_aug, train_y, previous_y, beat_numbers, measure_numbers])
                 key_changed_num.append(key_change)
 
     print('Total data point is ', num_total_datapoint)
@@ -81,8 +85,8 @@ def save_features_as_vector(dataset, save_name):
         return data_mean, data_std
 
     complete_xy_normalized = []
-    means = [[], [], [], []]
-    stds = [[], [], [], []]
+    means = [[], [], [], [], []]
+    stds = [[], [], [], [], []]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
@@ -100,7 +104,7 @@ def save_features_as_vector(dataset, save_name):
             for sample in performance[index1]:
                 new_sample = []
                 for index2 in range(num_normalize_feature[index1]):
-                    if not stds[index1][index2] ==0:
+                    if not (stds[index1][index2] ==0 or isinstance(stds[index1][index2], complex)):
                         new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
                     else:
                         new_sample.append(0)
@@ -111,6 +115,7 @@ def save_features_as_vector(dataset, save_name):
                                                                           num_normalize_feature[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
         complete_xy_normalized[-1].append(performance[3])
+        complete_xy_normalized[-1].append(performance[4])
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
     random.shuffle(complete_xy)
@@ -155,5 +160,5 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Ballade/')
-save_features_as_vector(chopin_pairs, 'vectorized_interval_small')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'attention_entire')
