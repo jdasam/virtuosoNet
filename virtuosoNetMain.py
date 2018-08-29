@@ -26,11 +26,11 @@ args = parser.parse_args()
 
 ### parameters
 train_x = Variable(torch.Tensor())
-input_size = 28
+input_size = 55
 hidden_size = 128
-final_hidden = 16
-num_layers = 2
-num_output = 11
+final_hidden = 128
+num_layers = 4
+num_output = 15
 training_ratio = 0.95
 learning_rate = 0.0005
 num_epochs = 150
@@ -432,6 +432,7 @@ elif args.sessMode=='test':
         feat.soft_pedal = pred[8]
         feat.pedal_refresh = pred[9]
         feat.pedal_cut = pred[10]
+        feat.trill_param = pred[11:16]
         print(10 ** feat.qpm)
         #
         # feat.passed_second = pred[0]

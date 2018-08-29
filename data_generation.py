@@ -6,32 +6,36 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [8, 11, 11]
+    num_normalize_feature = [8, 13, 13]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
+    num_piece = 0
+    num_perform = 0
     for piece in dataset:
+        num_piece += 1
         for perform in piece:
+            num_perform +=1
             train_x = []
             train_y = []
             previous_y = []
             is_beat_list = []
-            prev_feat = [0] * num_normalize_feature[1]
+            prev_feat = [0] * (num_normalize_feature[1] + 3)
             for feature in perform:
                 total_notes += 1
                 if not feature.qpm == None:
                     train_x.append(
-                        [feature.pitch, feature.duration,
+                        [feature.duration,
                          feature.duration_ratio, feature.beat_position, feature.measure_length, feature.voice,
                         feature.qpm_primo, feature.following_rest,
                         feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
-                        +  feature.pitch_interval + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
+                        + feature.pitch + feature.pitch_interval + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
                               feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
                               feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
-                              feature.pedal_refresh, feature.pedal_cut]
+                              feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
                     # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
                     #           feature.pedal_refresh_time, feature.pedal_cut_time,
                     #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
@@ -52,7 +56,9 @@ def save_features_as_vector(dataset, save_name):
                 train_x_aug = key_augmentation(train_x, key_change)
                 complete_xy.append([train_x_aug, train_y, previous_y, is_beat_list])
                 key_changed_num.append(key_change)
-    print('total data point is ', num_total_datapoint)
+
+    print('Total data point is ', num_total_datapoint)
+    print('Number of total piece is ', num_piece, ' and total performance is ', num_perform)
     print(total_notes)
     num_input = len(train_x[0])
     num_output = len(train_y[0])
@@ -127,11 +133,27 @@ def save_features_as_vector(dataset, save_name):
 def key_augmentation(data_x, key_change):
     # key_change = 0
     data_x_aug = copy.deepcopy(data_x)
+    pitch_start_index = 11
     # while key_change == 0:
     #     key_change = random.randrange(-5, 7)
     for data in data_x_aug:
-        data[0] = data[0]+key_change
+        octave = data[pitch_start_index]
+        pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
+        pitch_class = pitch_class_vec.index(1)
+        new_pitch = pitch_class + key_change
+        if new_pitch < 0:
+            octave -= 0.25
+        elif new_pitch > 12:
+            octave += 0.25
+        new_pitch = new_pitch % 12
+
+        new_pitch_vec = [0] * 13
+        new_pitch_vec[0] = octave
+        new_pitch_vec[new_pitch+1] = 1
+
+        data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
+
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/1/')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Ballade/')
 save_features_as_vector(chopin_pairs, 'vectorized_interval_small')
