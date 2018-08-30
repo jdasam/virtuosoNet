@@ -4,9 +4,10 @@ import random
 import xml_matching
 import copy
 
+NUM_TRILL_PARAM = 5
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [7, 15, 15]
+    num_normalize_feature = [7, 11, 11]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -22,7 +23,7 @@ def save_features_as_vector(dataset, save_name):
             # is_beat_list = []
             beat_numbers = []
             measure_numbers = []
-            prev_feat = [0] * (num_normalize_feature[1] + 1)
+            prev_feat = [0] * (num_normalize_feature[1] + NUM_TRILL_PARAM)
             for feature in perform:
                 total_notes += 1
                 if not feature.qpm == None:
@@ -160,6 +161,6 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'trill_entire')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Ballade/3/')
+save_features_as_vector(chopin_pairs, 'trill_test')
 
