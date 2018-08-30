@@ -1248,7 +1248,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
             note, _ = apply_feat_to_a_note(note, feat, prev_vel)
             trill_vec = feat.trill_param
             num_trills = trill_vec[0]
-            last_velocity = trill_vec[1]
+            last_velocity = trill_vec[1] * note.velocity
             first_note_ratio = trill_vec[2]
             last_note_ratio = trill_vec[3]
             up_trill = trill_vec[4]
@@ -1271,7 +1271,6 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
             measure_accidentals = get_measure_accidentals(xml_notes, i)
             trill_pitch = note.pitch
             up_pitch, up_pitch_string = cal_up_trill_pitch(note.pitch, key, final_key, measure_accidentals)
-            mean_second = total_second / num_trills
 
             if up_trill:
                 up = True
@@ -1279,6 +1278,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
                 up = False
 
             if num_trills > 2:
+                mean_second = total_second / num_trills
                 normal_second = (total_second - mean_second * (first_note_ratio + last_note_ratio)) / (num_trills -2)
                 prev_end = note.note_duration.time_position
                 for j in range(num_trills):
@@ -1307,6 +1307,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
                         prev_end += new_note.note_duration.seconds
                         ornaments.append(new_note)
             elif num_trills == 2:
+                mean_second = total_second / num_trills
                 prev_end = note.note_duration.time_position
                 for j in range(2):
                     if up:
@@ -1331,7 +1332,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
                         prev_end += mean_second * last_note_ratio
                         ornaments.append(new_note)
             else:
-                note.note_duration.seconds = mean_second
+                note.note_duration.seconds = total_second
 
 
         else:
@@ -1967,7 +1968,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
     features = make_index_continuous(features, score=True)
 
     for i in range(len(stds[0])):
-        if stds[0][i] == 0 or isinstance(stds[0][i], complex):
+        if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
             stds[0][i] = 1
 
     test_x = []
@@ -2550,7 +2551,7 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
     ioi_seconds.append( (next_note_start - trills[-1].start) *  num_trills / trill_length )
 
     trills_vec[0] = num_trills
-    trills_vec[1] = trills[-1].velocity
+    trills_vec[1] = trills[-1].velocity / trills[0].velocity
     trills_vec[2] = ioi_seconds[0]
     trills_vec[3] = ioi_seconds[-1]
     trills_vec[4] = int(up_trill)
