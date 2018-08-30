@@ -6,7 +6,7 @@ import copy
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [7, 11, 11]
+    num_normalize_feature = [7, 15, 15]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -22,7 +22,7 @@ def save_features_as_vector(dataset, save_name):
             # is_beat_list = []
             beat_numbers = []
             measure_numbers = []
-            prev_feat = [0] * (num_normalize_feature[1] )
+            prev_feat = [0] * (num_normalize_feature[1] + 1)
             for feature in perform:
                 total_notes += 1
                 if not feature.qpm == None:
@@ -37,7 +37,7 @@ def save_features_as_vector(dataset, save_name):
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
                               feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
                               feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
-                              feature.pedal_refresh, feature.pedal_cut] #+ feature.trill_param
+                              feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
                     # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
                     #           feature.pedal_refresh_time, feature.pedal_cut_time,
                     #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
@@ -161,4 +161,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'attention_entire')
+save_features_as_vector(chopin_pairs, 'trill_entire')
+

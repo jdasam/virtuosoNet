@@ -29,17 +29,17 @@ train_x = Variable(torch.Tensor())
 input_size = 55
 hidden_size = 128
 final_hidden = 64
-num_layers = 2
-num_output = 11
+num_layers = 4
+num_output = 16
 training_ratio = 0.95
-learning_rate = 0.0005
+learning_rate = 0.001
 num_epochs = 150
 num_trill_param = 5
 is_trill_index = -9
 
-beat_hidden_size = 64
+beat_hidden_size = 32
 beat_hidden_layer_num = 2
-measure_hidden_size = 64
+measure_hidden_size = 32
 measure_hidden_layer_num = 2
 
 
@@ -102,7 +102,7 @@ class HAN(nn.Module):
         self.beat_hidden = nn.LSTM(hidden_size*2, beat_hidden_size, beat_hidden_layer_num, batch_first=True, bidirectional=True)
         self.measure_attention = nn.Linear(beat_hidden_size*2, 1)
         self.measure_hidden = nn.LSTM(beat_hidden_size*2, measure_hidden_size, measure_hidden_layer_num, batch_first=True, bidirectional=True)
-        self.fc = nn.Linear(final_hidden, num_output)
+        self.fc = nn.Linear(final_hidden, num_output-num_trill_param)
         self.softmax = nn.Softmax(dim=1)
         self.trill_fc = nn.Linear(final_hidden, num_trill_param)
         self.sigmoid = nn.Sigmoid()
@@ -124,14 +124,15 @@ class HAN(nn.Module):
 
         out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, y), 2)
         out, final_hidden = self.output_lstm(out_combined, final_hidden)
-        # Decode the hidden state of the last time step
-        is_trill_mat = x[:,:,is_trill_index].repeat(1,1,5)
+
+        is_trill_mat = x[:,:,is_trill_index].repeat(1,num_trill_param).view(1,-1,num_trill_param)
         trill_out = self.trill_fc(out)
-        trill_out = torch.bmm(trill_out, is_trill_mat)
+        trill_out = trill_out * is_trill_mat
         up_trill = self.sigmoid(trill_out[:,:,-1])
         trill_out[:,:,-1] = up_trill
         out = self.fc(out)
-        return out, hidden, final_hidden, trill_out
+        out = torch.cat((out, trill_out), 2)
+        return out, hidden, final_hidden
 
     def make_beat_node(self, hidden_out, beat_number, start_index):
         beat_nodes = []
@@ -274,10 +275,9 @@ def perform_xml(input, input_y, beat_numbers, measure_numbers, tempo_stats, star
             # is_beat = is_beat_list[i]
             beat = beat_numbers[i]
             # print(is_beat)
-            if beat > prev_beat: # is_beat and
+            if beat > prev_beat and num_added_tempo > 0: # is_beat and
                 prev_beat = beat
-                previous_tempo = save_tempo\
-                                 / num_added_tempo
+                previous_tempo = save_tempo / num_added_tempo
                 save_tempo =0
                 num_added_tempo = 0
                 # print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
@@ -572,7 +572,7 @@ elif args.sessMode=='test':
     input_y[0,0,2] = 64
     for i in range(3,num_output):
         input_y[0,0,i] = 0
-    for i in range(num_output):
+    for i in range(num_output-1):
         input_y[0,0,i] -= means[1][i]
         input_y[0,0,i] /= stds[1][i]
 
@@ -585,7 +585,7 @@ elif args.sessMode=='test':
     prediction = np.squeeze(np.asarray(prediction))
 
     # prediction = outputs.cpu().detach().numpy()
-    for i in range(num_output):
+    for i in range(num_output-1):
         prediction[:, i] *= stds[1][i]
         prediction[:, i] += means[1][i]
 

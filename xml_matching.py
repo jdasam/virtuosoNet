@@ -443,8 +443,6 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         beat = binaryIndex(beats, note.note_duration.xml_position)
         features[i].beat_index = beat
 
-    features = make_index_continuous(features)
-
     return features
 
 
@@ -475,7 +473,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
         if xml_notes[i].note_notations.is_trill:
             feature.trill_param, trill_length = find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, accidentals_in_words, i)
         else:
-            feature.trill_param = [0] * 4
+            feature.trill_param = [0] * 5
             trill_length = None
         if not pairs[i] == []:
             tempo = find_corresp_tempo(pairs, i, tempos)
@@ -506,7 +504,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
             feature.previous_tempo = math.log(previous_qpm, 10)
 
-            if previous_second == None:
+            if previous_second is None:
                 feature.passed_second = 0
             else:
                 feature.passed_second = pairs[i]['midi'].start - previous_second
@@ -517,6 +515,8 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
 
 
         # feature['articulation']
+    score_features = make_index_continuous(score_features, score=False)
+
 
     return score_features
 
@@ -907,6 +907,7 @@ def load_pairs_from_folder(path):
     xml_notes = extract_notes(XMLDocument, melody_only=False, grace_note=True)
     score_midi = midi_utils.to_midi_zero(score_midi_name)
     score_midi_notes = score_midi.instruments[0].notes
+    score_midi_notes.sort(key=lambda x:x.start)
     match_list = matchXMLtoMIDI(xml_notes, score_midi_notes)
     score_pairs = make_xml_midi_pair(xml_notes, score_midi_notes, match_list)
     check_pairs(score_pairs)
@@ -1963,6 +1964,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
 
     measure_positions = extract_measure_position(xml_object)
     features = extract_score_features(xml_notes, measure_positions, beats, start_tempo)
+    features = make_index_continuous(features, score=True)
 
     for i in range(len(stds[0])):
         if stds[0][i] == 0 or isinstance(stds[0][i], complex):
@@ -2397,7 +2399,6 @@ def omit_trill_notes(xml_notes):
             wavy_line.xml_position = note.note_duration.xml_position
             wavy_line.pitch = note.pitch
             wavy_lines.append(wavy_line)
-    print(wavy_lines)
     wavy_lines = combine_wavy_lines(wavy_lines)
 
     for index in reversed(omit_index):
@@ -2679,7 +2680,7 @@ def get_measure_accidentals(xml_notes, index):
 
     return measure_accidentals
 
-def make_index_continuous(features):
+def make_index_continuous(features, score=False):
     prev_beat = 0
     prev_measure = 0
 
@@ -2687,15 +2688,32 @@ def make_index_continuous(features):
     measure_compensate = 0
 
     for feat in features:
+        if feat.qpm is not None or score:
+            if feat.beat_index - prev_beat > 1:
+                beat_compensate -= (feat.beat_index - prev_beat) -1
+            if feat.measure_index - prev_measure > 1:
+                measure_compensate -= (feat.measure_index - prev_measure) -1
+
+            prev_beat = feat.beat_index
+            prev_measure = feat.measure_index
+
+            feat.beat_index += beat_compensate
+            feat.measure_index += measure_compensate
+        else:
+            continue
+    return features
+
+
+def check_index_continuity(features):
+    prev_beat = 0
+    prev_measure = 0
+
+
+    for feat in features:
         if feat.beat_index - prev_beat > 1:
-            beat_compensate -= (feat.beat_index - prev_beat) -1
-        if feat.measure_index - prev_beat > 1:
-            measure_compensate -= (feat.measure_index - prev_measure) -1
+            print(feat.beat_index, prev_beat)
+        if feat.measure_index - prev_measure > 1:
+            print(feat.measure_index, prev_measure)
 
         prev_beat = feat.beat_index
         prev_measure = feat.measure_index
-
-        feat.beat_index += beat_compensate
-        feat.measure_index += measure_compensate
-
-    return features
