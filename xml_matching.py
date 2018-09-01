@@ -1543,7 +1543,7 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
     if bool_pedal:
         pedals = piano_midi.instruments[0].control_changes
         for pedal in pedals:
-            if pedal.value < 75:
+            if pedal.value < 30:
                 pedal.value = 0
 
     if disklavier:
@@ -1553,11 +1553,11 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
         for pedal in pedals:
             if pedal.time <0.3:
                 continue
-            if pedal.value < 75:
+            if pedal.value < 30:
                 previous_off_time = pedal.time
             else:
                 time_passed = pedal.time - previous_off_time
-                if time_passed < 0.3:
+                if time_passed < 0.15:
                     pedals.remove(pedal)
         piano_midi.instruments[0].control_changes = pedals
     piano_midi.write(output_name)

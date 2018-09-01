@@ -12,6 +12,7 @@ import xml_matching
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import performanceWorm
 
 
 
@@ -28,15 +29,20 @@ parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="tr
 args = parser.parse_args()
 
 ### parameters
-train_x = Variable(torch.Tensor())
-input_size = 55
 hidden_size = 64
-final_hidden = 16
-num_layers = 4
-num_output = 16
-training_ratio = 0.95
-learning_rate = 0.0003
+num_layers = 3
+final_hidden = 24
+beat_hidden_size = 32
+beat_hidden_layer_num = 1
+measure_hidden_size = 32
+measure_hidden_layer_num = 1
+learning_rate = 0.001
 num_epochs = 150
+
+input_size = 55
+output_size = 16
+training_ratio = 0.95
+
 num_trill_param = 5
 is_trill_index = -9
 
@@ -44,13 +50,7 @@ qpm_primo_index = 5
 tempo_primo_index = -2
 num_tempo_info = 3
 
-beat_hidden_size = 32
-beat_hidden_layer_num = 1
-measure_hidden_size = 32
-measure_hidden_layer_num = 1
-
-
-time_steps = 200
+time_steps = 100
 batch_size = 1
 valid_batch_size = 50
 
@@ -110,12 +110,12 @@ class HAN(nn.Module):
             self.output_lstm = nn.LSTM(
                 (hidden_size + beat_hidden_size + measure_hidden_size) * 2 + num_output - num_trill_param + num_tempo_info,
                 final_hidden, num_layers=1, batch_first=True, bidirectional=False)
-        self.beat_attention = nn.Linear(hidden_size*2, 1)
+        self.beat_attention = nn.Linear(hidden_size*2, hidden_size*2)
         self.beat_hidden = nn.LSTM(hidden_size*2, beat_hidden_size, beat_hidden_layer_num, batch_first=True, bidirectional=True)
-        self.measure_attention = nn.Linear(beat_hidden_size*2, 1)
+        self.measure_attention = nn.Linear(beat_hidden_size*2, beat_hidden_size*2)
         self.measure_hidden = nn.LSTM(beat_hidden_size*2, measure_hidden_size, measure_hidden_layer_num, batch_first=True, bidirectional=True)
         self.fc = nn.Linear(final_hidden, num_output-num_trill_param)
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = nn.Softmax(dim=0)
         self.trill_fc = nn.Linear(final_hidden, num_trill_param)
         self.sigmoid = nn.Sigmoid()
 
@@ -161,6 +161,15 @@ class HAN(nn.Module):
             out = torch.cat((out, trill_out), 2)
         return out, hidden, final_hidden
 
+    def sum_with_attention(self, hidden, attention_net):
+        attention = attention_net(hidden)
+        attention = self.softmax(attention)
+        upper_node = hidden * attention
+        upper_node = torch.sum(upper_node, dim=0)
+
+        return upper_node
+
+
     def make_beat_node(self, hidden_out, beat_number, start_index):
         beat_nodes = []
         prev_beat = beat_number[start_index]
@@ -173,20 +182,14 @@ class HAN(nn.Module):
                 #new beat start
                 beat_notes_end = note_index
                 corresp_hidden = hidden_out[0, beat_notes_start:beat_notes_end, :]
-                attention = self.beat_attention(corresp_hidden)
-                attention = self.softmax(attention)
-                attention = torch.t(attention)
-                beat = torch.mm(attention, corresp_hidden)
+                beat = self.sum_with_attention(corresp_hidden, self.beat_attention)
                 beat_nodes.append(beat)
 
                 beat_notes_start = note_index
                 prev_beat = beat_number[actual_index]
 
         last_hidden =  hidden_out[0, beat_notes_end:, :]
-        attention = self.beat_attention(last_hidden)
-        attention = self.softmax(attention)
-        attention = torch.t(attention)
-        beat = torch.mm(attention, last_hidden)
+        beat = self.sum_with_attention(last_hidden, self.beat_attention)
         beat_nodes.append(beat)
 
         beat_nodes = torch.stack(beat_nodes).view(1,-1,self.hidden_size*2)
@@ -209,20 +212,14 @@ class HAN(nn.Module):
                 # new beat start
                 measure_beats_end = beat_index
                 corresp_hidden = beat_out[0, measure_beats_start:measure_beats_end, :]
-                attention = self.measure_attention(corresp_hidden)
-                attention = self.softmax(attention)
-                attention = torch.t(attention)
-                measure = torch.mm(attention, corresp_hidden)
+                measure = self.sum_with_attention(corresp_hidden, self.measure_attention)
                 measure_nodes.append(measure)
 
                 measure_beats_start = beat_index
                 prev_measure = measure_number[beat_index]
 
         last_hidden = beat_out[0, measure_beats_end:, :]
-        attention = self.measure_attention(last_hidden)
-        attention = self.softmax(attention)
-        attention = torch.t(attention)
-        measure = torch.mm(attention, last_hidden)
+        measure = self.sum_with_attention(last_hidden, self.measure_attention)
         measure_nodes.append(measure)
 
         measure_nodes = torch.stack(measure_nodes).view(1,-1,self.beat_hidden_size*2)
@@ -261,7 +258,7 @@ class HAN(nn.Module):
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-model = HAN(input_size, hidden_size, num_layers, beat_hidden_size, beat_hidden_layer_num, measure_hidden_size, measure_hidden_layer_num, num_output).to(device)
+model = HAN(input_size, hidden_size, num_layers, beat_hidden_size, beat_hidden_layer_num, measure_hidden_size, measure_hidden_layer_num, output_size).to(device)
 
 
 criterion = nn.MSELoss()
@@ -313,7 +310,7 @@ def perform_xml(input, input_y, beat_numbers, measure_numbers, tempo_stats, star
             # print(previous_tempo)
             input_y[0, 0, 0] = previous_tempo
             input_y = input_y.to(device)
-            if isinstance(valid_y, torch.Tensor) and i < 50:
+            if isinstance(valid_y, torch.Tensor) and i < 100:
                 input_y = valid_y[0,i-1,:].to(device).view(1,1,-1)
 
             note_feature = input[0,i,:].view(1,1,input_size).to(device)
@@ -352,11 +349,11 @@ def batch_time_step_run(x,y,prev_feature, beat_numbers, measure_numbers, step, b
         input_y = Variable(torch.Tensor(prev_feature[batch_start:batch_end]))
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
         batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
-        batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+        batch_y = batch_y.view((batch_size, time_steps, output_size)).to(device)
         if args.trainTrill:
-            input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+            input_y = input_y.view((batch_size, time_steps, output_size)).to(device)
         else:
-            input_y = input_y[:, :-num_trill_param].view(batch_size,time_steps,num_output - num_trill_param).to(device)
+            input_y = input_y[:, :-num_trill_param].view(batch_size, time_steps, output_size - num_trill_param).to(device)
 
     else:
         # num_left_data = data_size % batch_size*time_steps
@@ -369,12 +366,12 @@ def batch_time_step_run(x,y,prev_feature, beat_numbers, measure_numbers, step, b
             torch.Tensor(prev_feature[batch_start:]))
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
         batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
-        batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+        batch_y = batch_y.view((batch_size, time_steps, output_size)).to(device)
 
         if args.trainTrill:
-            input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+            input_y = input_y.view((batch_size, time_steps, output_size)).to(device)
         else:
-            input_y = input_y[:, :-num_trill_param].view(batch_size,time_steps,num_output - num_trill_param).to(device)
+            input_y = input_y[:, :-num_trill_param].view(batch_size, time_steps, output_size - num_trill_param).to(device)
 
     hidden = model.init_hidden(batch_x.size(0))
     final_hidden = model.init_final_layer(batch_x.size(0))
@@ -397,6 +394,7 @@ def batch_time_step_run(x,y,prev_feature, beat_numbers, measure_numbers, step, b
 
 if args.sessMode == 'train':
     # load data
+    print('Loading the training data...')
     with open(args.dataName + ".dat", "rb") as f:
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
@@ -505,29 +503,29 @@ if args.sessMode == 'train':
             measure_numbers = xy_tuple[4]
 
             batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
-            batch_y = Variable(torch.Tensor(test_y)).view((1, -1, num_output))
+            batch_y = Variable(torch.Tensor(test_y)).view((1, -1, output_size))
             if args.trainTrill:
-                input_y = Variable(torch.Tensor(prev_feature)).view((1,-1,num_output)).to(device)
+                input_y = Variable(torch.Tensor(prev_feature)).view((1, -1, output_size)).to(device)
             else:
                 batch_y = batch_y[:,:,:-num_trill_param]
                 input_y = Variable(torch.Tensor(prev_feature))
-                input_y = input_y[:,:-num_trill_param].view((1, -1, num_output - num_trill_param)).to(device)
+                input_y = input_y[:,:-num_trill_param].view((1, -1, output_size - num_trill_param)).to(device)
             # hidden = model.init_hidden(1)
             # final_hidden = model.init_final_layer(1)
             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
 
             batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
             #
-            input_y = torch.zeros(num_output)
+            input_y = torch.zeros(output_size)
 
             input_y[0] = test_y[0][0]
             input_y[2] = -0.25
-            input_y = input_y.view((1,1, num_output)).to(device)
+            input_y = input_y.view((1, 1, output_size)).to(device)
             outputs = perform_xml(batch_x, input_y, beat_numbers, measure_numbers, tempo_stats, start_tempo=test_y[0][0], valid_y=batch_y)
             if args.trainTrill:
-                outputs = torch.Tensor(outputs).view((1,-1,num_output))
+                outputs = torch.Tensor(outputs).view((1, -1, output_size))
             else:
-                outputs = torch.Tensor(outputs).view((1, -1, num_output - num_trill_param))
+                outputs = torch.Tensor(outputs).view((1, -1, output_size - num_trill_param))
             valid_loss = criterion(outputs, batch_y)
             ioi_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
             art_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
@@ -611,17 +609,17 @@ elif args.sessMode=='test':
     start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
 
     if args.trainTrill:
-        input_y = torch.zeros(1, 1, num_output)
+        input_y = torch.zeros(1, 1, output_size)
     else:
-        input_y = torch.zeros(1, 1, num_output - num_trill_param)
-    input_y[0,0,0] = start_tempo
-    input_y[0,0,1] = 1
-    input_y[0,0,2] = 64
-    for i in range(num_output-num_trill_param):
-        input_y[0,0,i] -= means[1][i]
-        input_y[0,0,i] /= stds[1][i]
-
-    input_y[0,0,0] = 0
+        input_y = torch.zeros(1, 1, output_size - num_trill_param)
+    # input_y[0,0,0] = start_tempo
+    # # input_y[0,0,1] = 1
+    # # input_y[0,0,2] = 64
+    # for i in range(output_size - num_trill_param):
+    #     input_y[0,0,i] -= means[1][i]
+    #     input_y[0,0,i] /= stds[1][i]
+    #
+    input_y[0,0,0] = start_tempo_norm
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
@@ -630,7 +628,7 @@ elif args.sessMode=='test':
     prediction = np.squeeze(np.asarray(prediction))
 
     # prediction = outputs.cpu().detach().numpy()
-    for i in range(num_output-num_trill_param):
+    for i in range(output_size - num_trill_param):
         prediction[:, i] *= stds[1][i]
         prediction[:, i] += means[1][i]
 
@@ -638,8 +636,9 @@ elif args.sessMode=='test':
     # for i in range(100):
     #     pred = prediction[i]
     #     print(pred[0:4])
-
-    for pred in prediction:
+    num_notes = len(xml_notes)
+    for i in range(num_notes):
+        pred = prediction[i]
         # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
         feat = xml_matching.MusicFeature()
         feat.qpm = pred[0]
@@ -654,6 +653,9 @@ elif args.sessMode=='test':
         feat.soft_pedal = pred[8]
         feat.pedal_refresh = pred[9]
         feat.pedal_cut = pred[10]
+
+        feat.beat_index = beat_numbers[i]
+        feat.measure_index = measure_numbers[i]
 
         if args.trainTrill:
             feat.trill_param = pred[11:16]
@@ -684,6 +686,7 @@ elif args.sessMode=='test':
         #         'pedal_cut': pred[10]}
         output_features.append(feat)
     num_notes = len(xml_notes)
+    performanceWorm.plot_performance_worm(output_features, path_name + 'perfWorm.png')
 
     # output_xml = xml_matching.apply_perform_features(xml_notes, output_features)
     output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time= 1, predicted=True)
@@ -692,6 +695,8 @@ elif args.sessMode=='test':
     output_midi = xml_matching.xml_notes_to_midi(output_xml)
 
     xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=False, disklavier=True)
+
+
 
 elif args.sessMode=='plot':
     if os.path.isfile(args.resume):
@@ -749,7 +754,7 @@ elif args.sessMode=='plot':
             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
             batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
-            is_beat_batch = is_beat_list[batch_start:batch_end]
+            # is_beat_batch = is_beat_list[batch_start:batch_end]
             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
 
@@ -757,17 +762,19 @@ elif args.sessMode=='plot':
             # final_hidden = model.init_final_layer(1)
             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
             #
-            input_y = torch.zeros(num_output)
+            if args.trainTrill:
+                input_y = torch.zeros(1, 1, output_size)
+            else:
+                input_y = torch.zeros(1, 1, output_size - num_trill_param)
 
             input_y[0] = batch_y[0][0]
-            input_y[2] = -0.25
-            input_y = input_y.view((1, 1, num_output)).to(device)
-            outputs = perform_xml(batch_x, input_y, is_beat_list, tempo_stats, start_tempo=batch_y[0][0])
-            outputs = torch.Tensor(outputs).view((1, -1, num_output))
+            input_y = input_y.view((1, 1, output_size)).to(device)
+            outputs = perform_xml(batch_x, input_y, beat_numbers, measure_numbers, tempo_stats, start_tempo=batch_y[0][0])
+            outputs = torch.Tensor(outputs).view((1, -1, output_size))
 
             outputs = outputs.cpu().detach().numpy()
             # batch_y = batch_y.cpu().detach().numpy()
-            batch_y = np.asarray(batch_y).reshape((1,-1,num_output))
+            batch_y = np.asarray(batch_y).reshape((1, -1, output_size))
             plt.figure(figsize=(10, 7))
             for i in range(4):
                 plt.subplot(411+i)
