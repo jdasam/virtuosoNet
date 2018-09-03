@@ -16,7 +16,7 @@ import copy
 
 
 absolute_tempos_keywords = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
-                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'tempo i', 'Freely, with expression', 'agitato']
+                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'tempo i', 'Freely, with expression', 'agitato', 'Assez vif']
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto',
                             'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando', 'smorzando', 'appassionato']
@@ -468,6 +468,17 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     save_qpm = xml_notes[0].state_fixed.qpm
     previous_second = None
 
+    def cal_qpm_primo(tempos, view_range=20):
+        qpm_primo = 0
+        for i in range(view_range):
+            tempo = tempos[i]
+            qpm_primo += tempo.qpm
+
+        return qpm_primo / view_range
+
+    qpm_primo = cal_qpm_primo(tempos)
+    qpm_primo = math.log(qpm_primo, 10)
+
     for i in range(feat_len):
         feature= score_features[i]
         if xml_notes[i].note_notations.is_trill:
@@ -503,6 +514,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.soft_pedal = pairs[i]['midi'].soft_pedal
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
             feature.previous_tempo = math.log(previous_qpm, 10)
+            feature.qpm_primo = qpm_primo
 
             if previous_second is None:
                 feature.passed_second = 0
@@ -1627,15 +1639,21 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
     absolute_tempos_position = [tmp.xml_position for tmp in absolute_tempos]
     time_signatures_position = [time.xml_position for time in time_signatures]
 
+    num_dynamics = len(absolute_dynamics)
+    num_tempos = len(absolute_tempos)
 
     for note in xml_notes:
         note_position = note.note_duration.xml_position
-        index = binaryIndex(absolute_dynamics_position, note_position)
-        note.dynamic.absolute = absolute_dynamics[index].type['content']
-        tempo_index = binaryIndex(absolute_tempos_position, note_position)
-        time_index = binaryIndex(time_signatures_position, note_position)
+
+        if num_dynamics > 0:
+            index = binaryIndex(absolute_dynamics_position, note_position)
+            note.dynamic.absolute = absolute_dynamics[index].type['content']
+
+        if num_tempos > 0:
+            tempo_index = binaryIndex(absolute_tempos_position, note_position)
         # note.tempo.absolute = absolute_tempos[tempo_index].type[absolute_tempos[tempo_index].type.keys()[0]]
-        note.tempo.absolute = absolute_tempos[tempo_index].type['content']
+            note.tempo.absolute = absolute_tempos[tempo_index].type['content']
+        time_index = binaryIndex(time_signatures_position, note_position)
         note.tempo.time_numerator = time_signatures[time_index].numerator
         note.tempo.time_denominator = time_signatures[time_index].denominator
 
@@ -2348,7 +2366,9 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('allegro', 0, 0.5))
     embed_table.append(EmbeddingKey('vivace', 0, 0.6))
     embed_table.append(EmbeddingKey('presto', 0, 0.8))
-    embed_table.append(EmbeddingKey('prestissimo', 0, 9))
+    embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
+    embed_table.append(EmbeddingKey('Assez vif', 0, 0.6))
+
 
     embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
 

@@ -25,23 +25,25 @@ parser.add_argument("-data", "--dataName", type=str, default="trill_test", help=
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
+parser.add_argument("--beatTempo", type=bool, default=False, help="cal tempo from beat level")
+
 
 args = parser.parse_args()
 
 ### parameters
-hidden_size = 64
-num_layers = 3
+hidden_size = 128
+num_layers = 4
 final_hidden = 24
 beat_hidden_size = 32
-beat_hidden_layer_num = 1
+beat_hidden_layer_num = 2
 measure_hidden_size = 32
-measure_hidden_layer_num = 1
-learning_rate = 0.001
+measure_hidden_layer_num = 2
+learning_rate = 0.0003
 num_epochs = 150
 
 input_size = 55
 output_size = 16
-training_ratio = 0.95
+training_ratio = 0.9
 
 num_trill_param = 5
 is_trill_index = -9
@@ -118,6 +120,7 @@ class HAN(nn.Module):
         self.softmax = nn.Softmax(dim=0)
         self.trill_fc = nn.Linear(final_hidden, num_trill_param)
         self.sigmoid = nn.Sigmoid()
+        self.beat_tempo_forward = nn.LSTM(beat_hidden_size*2 + 1, beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
 
     def forward(self, x, y, hidden, final_hidden, beat_hidden, measure_hidden, beat_number, measure_number, start_index,
                 hidden_out = False, beat_hidden_spanned = False, measure_hidden_spanned = False):
@@ -159,6 +162,9 @@ class HAN(nn.Module):
         out = self.fc(out)
         if args.trainTrill:
             out = torch.cat((out, trill_out), 2)
+
+        if args.beatTempo:
+            beat_forward = self.beat_tempo_forward(beat_hidden)
         return out, hidden, final_hidden
 
     def sum_with_attention(self, hidden, attention_net):

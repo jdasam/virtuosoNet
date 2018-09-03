@@ -161,6 +161,6 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Ballade/3/')
-save_features_as_vector(chopin_pairs, 'trill_test')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'qpm_primo_perform')
 
