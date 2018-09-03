@@ -6,6 +6,8 @@ import copy
 
 NUM_TRILL_PARAM = 5
 
+
+
 def save_features_as_vector(dataset, save_name):
     num_normalize_feature = [7, 11, 11]
     complete_xy = []
@@ -21,18 +23,20 @@ def save_features_as_vector(dataset, save_name):
             train_y = []
             previous_y = []
             # is_beat_list = []
-            beat_numbers = []
-            measure_numbers = []
+            # beat_numbers = []
+            # measure_numbers = []
+            # voice_numbers = []
+            note_locations = []
             prev_feat = [0] * (num_normalize_feature[1] + NUM_TRILL_PARAM)
             for feature in perform:
                 total_notes += 1
                 if not feature.qpm == None:
                     train_x.append(
-                        [feature.duration,
-                         feature.duration_ratio, feature.beat_position, feature.measure_length, feature.voice,
-                        feature.qpm_primo, feature.following_rest,
-                        feature.xml_position, feature.grace_order, feature.time_sig_num, feature.time_sig_den]
-                        + feature.pitch + feature.pitch_interval + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
+                        [feature.pitch_interval, feature.duration,
+                         feature.duration_ratio, feature.beat_position, feature.measure_length,
+                        feature.qpm_primo, feature.following_rest,feature.xml_position,
+                         feature.grace_order, feature.time_sig_num, feature.time_sig_den, feature.no_following_note]
+                        + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
                     temp_y = [feature.qpm, feature.articulation, feature.velocity,
@@ -48,19 +52,25 @@ def save_features_as_vector(dataset, save_name):
                     previous_y.append(prev_feat)
                     prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
+                    note_loc = feature.note_location
+                    note_locations.append(note_loc)
                     # is_beat_list.append(feature.is_beat)
-                    beat_numbers.append(feature.beat_index)
-                    measure_numbers.append(feature.measure_index)
+
+                    # beat_numbers.append(feature.beat_index)
+                    # measure_numbers.append(feature.measure_index)
+                    # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
-            complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers])
-            key_changed_num = []
-            for i in range(3):
-                key_change = 0
-                while key_change == 0 or key_change in key_changed_num:
-                    key_change = random.randrange(-5, 7)
-                train_x_aug = key_augmentation(train_x, key_change)
-                complete_xy.append([train_x_aug, train_y, previous_y, beat_numbers, measure_numbers])
-                key_changed_num.append(key_change)
+            # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
+            complete_xy.append([train_x, train_y, previous_y, note_locations])
+
+            # key_changed_num = []
+            # for i in range(3):
+            #     key_change = 0
+            #     while key_change == 0 or key_change in key_changed_num:
+            #         key_change = random.randrange(-5, 7)
+            #     train_x_aug = key_augmentation(train_x, key_change)
+            #     complete_xy.append([train_x_aug, train_y, previous_y, beat_numbers, measure_numbers])
+            #     key_changed_num.append(key_change)
 
     print('Total data point is ', num_total_datapoint)
     print('Number of total piece is ', num_piece, ' and total performance is ', num_perform)
@@ -86,14 +96,14 @@ def save_features_as_vector(dataset, save_name):
         return data_mean, data_std
 
     complete_xy_normalized = []
-    means = [[], [], [], [], []]
-    stds = [[], [], [], [], []]
+    means = [[], [], [], []]
+    stds = [[], [], [], []]
     for i1 in (0, 1):
         for i2 in range(num_normalize_feature[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
             means[i1].append(mean_value)
             stds[i1].append(std_value)
-    print (means)
+    print(means)
     print(stds)
     means[2] = means[1]
     stds[2] = stds[1]
@@ -116,7 +126,8 @@ def save_features_as_vector(dataset, save_name):
                                                                           num_normalize_feature[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
         complete_xy_normalized[-1].append(performance[3])
-        complete_xy_normalized[-1].append(performance[4])
+        # complete_xy_normalized[-1].append(performance[4])
+        # complete_xy_normalized[-1].append(performance[5])
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
     random.shuffle(complete_xy)
@@ -139,7 +150,7 @@ def save_features_as_vector(dataset, save_name):
 def key_augmentation(data_x, key_change):
     # key_change = 0
     data_x_aug = copy.deepcopy(data_x)
-    pitch_start_index = 11
+    pitch_start_index = 13
     # while key_change == 0:
     #     key_change = random.randrange(-5, 7)
     for data in data_x_aug:
@@ -162,5 +173,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'qpm_primo_perform')
+save_features_as_vector(chopin_pairs, 'voice')
 
