@@ -52,19 +52,19 @@ class NetParams:
 NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 2
-NET_PARAM.note.size = 64
-NET_PARAM.beat.layer = 2
-NET_PARAM.beat.size = 32
+NET_PARAM.note.size = 32
+NET_PARAM.beat.layer = 1
+NET_PARAM.beat.size = 16
 NET_PARAM.measure.layer = 1
-NET_PARAM.measure.size= 16
+NET_PARAM.measure.size= 8
 NET_PARAM.final.layer = 1
 NET_PARAM.final.size = 24
-NET_PARAM.voice.layer = 2
-NET_PARAM.voice.size = 32
+NET_PARAM.voice.layer = 1
+NET_PARAM.voice.size = 16
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
-learning_rate = 0.0003
+learning_rate = 0.0001
 time_steps = 200
 num_epochs = 150
 num_key_augmentation = 4

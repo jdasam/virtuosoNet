@@ -52,15 +52,15 @@ class NetParams:
 NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 2
-NET_PARAM.note.size = 64
+NET_PARAM.note.size = 32
 NET_PARAM.beat.layer = 2
-NET_PARAM.beat.size = 32
+NET_PARAM.beat.size = 16
 NET_PARAM.measure.layer = 1
-NET_PARAM.measure.size= 16
+NET_PARAM.measure.size= 8
 NET_PARAM.final.layer = 1
-NET_PARAM.final.size = 24
+NET_PARAM.final.size = 16
 NET_PARAM.voice.layer = 2
-NET_PARAM.voice.size = 32
+NET_PARAM.voice.size = 16
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
@@ -167,7 +167,7 @@ class HAN(nn.Module):
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         self.voice_net = nn.LSTM(input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True)
-        self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
+        # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
 
     def forward(self, x, y, final_hidden, tempo_hidden, note_locations, start_index,
@@ -407,7 +407,9 @@ class HAN(nn.Module):
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
 model = HAN(input_size, NET_PARAM, output_size).to(device)
-
+model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print(params)
 
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
