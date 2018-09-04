@@ -534,7 +534,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.pedal_refresh = pairs[i]['midi'].pedal_refresh
             feature.pedal_refresh_time = pairs[i]['midi'].pedal_refresh_time
             feature.pedal_cut = pairs[i]['midi'].pedal_cut
-            feature.pedal_cut_time = pairs[i]['midi'].pedal_cut
+            feature.pedal_cut_time = pairs[i]['midi'].pedal_cut_time
             feature.soft_pedal = pairs[i]['midi'].soft_pedal
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
 
@@ -1545,9 +1545,9 @@ def apply_feat_to_a_note(note, feat, prev_vel):
         note.pedal.at_start = int(round(feat.pedal_at_start))
         note.pedal.at_end = int(round(feat.pedal_at_end))
         note.pedal.refresh = int(round(feat.pedal_refresh))
-        note.pedal.refresh_time = int(round(feat.pedal_refresh_time))
+        note.pedal.refresh_time = feat.pedal_refresh_time
         note.pedal.cut = int(round(feat.pedal_cut))
-        note.pedal.cut_time = int(round(feat.pedal_cut_time))
+        note.pedal.cut_time = feat.pedal_cut_time
         note.pedal.soft = int(round(feat.soft_pedal))
     return note, prev_vel
 
@@ -2048,8 +2048,9 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
                   (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
                     (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
                  (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
-                  feat.xml_position, feat.grace_order, feat.time_sig_num, feat.time_sig_den] \
-                    + feat.pitch + feat.pitch_interval + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+                  feat.xml_position, feat.grace_order,
+                  feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
+                    + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
         note_locations.append(feat.note_location)

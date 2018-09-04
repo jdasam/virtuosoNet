@@ -55,7 +55,6 @@ def save_features_as_vector(dataset, save_name):
                     note_loc = feature.note_location
                     note_locations.append(note_loc)
                     # is_beat_list.append(feature.is_beat)
-
                     # beat_numbers.append(feature.beat_index)
                     # measure_numbers.append(feature.measure_index)
                     # voice_numbers.append(feature.voice)

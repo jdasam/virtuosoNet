@@ -27,8 +27,8 @@ parser.add_argument("-data", "--dataName", type=str, default="voice_test", help=
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
-parser.add_argument("--beatTempo", type=bool, default=False, help="cal tempo from beat level")
-parser.add_argument("-voice", "--voiceNet", type=bool, default=False, help="network in voice level")
+parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
+parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 
 
 args = parser.parse_args()
@@ -41,17 +41,17 @@ class NetParams:
             self.layer = 0
 
     def __init__(self):
-        self.note = self.Param
-        self.beat = self.Param
-        self.measure = self.Param
-        self.final = self.Param
-        self.voice = self.Param
-        self.sum = self.Param
+        self.note = self.Param()
+        self.beat = self.Param()
+        self.measure = self.Param()
+        self.final = self.Param()
+        self.voice = self.Param()
+        self.sum = self.Param()
 
 ### parameters
 NET_PARAM = NetParams()
 
-NET_PARAM.note.layer = 3
+NET_PARAM.note.layer = 2
 NET_PARAM.note.size = 64
 NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 32
@@ -65,7 +65,8 @@ NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
 learning_rate = 0.0003
-num_epochs = 200
+time_steps = 200
+num_epochs = 150
 num_key_augmentation = 4
 
 input_size = 41
@@ -81,7 +82,6 @@ qpm_primo_index = 5
 tempo_primo_index = -2
 num_tempo_info = 3
 
-time_steps = 100
 batch_size = 1
 valid_batch_size = 50
 
@@ -193,7 +193,9 @@ class HAN(nn.Module):
             measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
             if args.voiceNet:
-                temp_voice_numbers = voice_numbers[start_index:start_index+x.size(0)]
+                temp_voice_numbers = voice_numbers[start_index:start_index+x.size(1)]
+                if temp_voice_numbers == []:
+                    temp_voice_numbers = voice_numbers[start_index:]
                 max_voice = max(temp_voice_numbers)
                 voice_hidden = self.init_voice_layer(1, max_voice)
                 voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
@@ -210,10 +212,11 @@ class HAN(nn.Module):
 
         if args.beatTempo:
             beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-            beat_qpm_primo = self.note_tempo_infos_to_beat(qpm_primo, beat_numbers, start_index)
-            beat_tempo_primo = self.note_tempo_infos_to_beat(tempo_primo, beat_numbers, start_index)
+            num_beats = beat_tempos.size(1)
+            beat_qpm_primo = qpm_primo[0,0,0].repeat((1,num_beats,1))
+            beat_tempo_primo = tempo_primo[0,0,:].repeat((1,num_beats,1))
             if 'beat_hidden_out' not in locals():
-                beat_hidden_out = self.note_tempo_infos_to_beat(beat_hidden_spanned, beat_numbers, start_index)
+                beat_hidden_out = beat_hidden_spanned
             beat_tempo_cat = torch.cat((beat_hidden_out.view(1,-1,self.beat_hidden_size*2), beat_tempos, beat_qpm_primo, beat_tempo_primo), 2)
             beat_forward, new_tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
             if beat_changed:
@@ -322,14 +325,14 @@ class HAN(nn.Module):
     def span_beat_to_note_num(self, beat_out, beat_number, num_notes, start_index):
         start_beat = beat_number[start_index]
         num_beat = beat_out.shape[1]
-        span_mat = torch.zeros(num_beat, num_notes)
+        span_mat = torch.zeros(1, num_notes, num_beat)
         node_size = beat_out.shape[2]
         for i in range(num_notes):
             beat_index = beat_number[start_index+i] - start_beat
-            span_mat[beat_index, i] = 1
+            span_mat[0,i,beat_index] = 1
         span_mat = span_mat.to(device)
 
-        spanned_beat = torch.mm(beat_out.view(node_size,-1), span_mat).view(1,num_notes,node_size)
+        spanned_beat = torch.bmm(span_mat, beat_out)
         return spanned_beat
 
     def note_tempo_infos_to_beat(self, y, beat_numbers, start_index, index=None):
@@ -351,20 +354,20 @@ class HAN(nn.Module):
     def run_voice_net(self, batch_x, voice_hidden, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
         output = torch.zeros(1, batch_x.size(1), self.voice_hidden_size * 2).to(device)
-        voice_numbers = torch.Tensor(voice_numbers).view(1,-1,1)
-        for i in range(max_voice):
+        voice_numbers = torch.Tensor(voice_numbers)
+        for i in range(1,max_voice+1):
             voice_x_bool = voice_numbers == i
             num_voice_notes = torch.sum(voice_x_bool)
             if num_voice_notes > 0:
                 span_mat = torch.zeros(num_notes, num_voice_notes)
+                note_index_in_voice = 0
                 for j in range(num_notes):
-                    note_index_in_voice = 0
-                    if voice_x_bool[0,i] ==1:
+                    if voice_x_bool[j] ==1:
                         span_mat[j, note_index_in_voice] = 1
                         note_index_in_voice += 1
                 span_mat = span_mat.view(1,num_notes,-1).to(device)
-                voice_x = batch_x[voice_x_bool].view(1,-1, self.input_size)
-                ith_hidden = voice_hidden[i]
+                voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.input_size)
+                ith_hidden = voice_hidden[i-1]
 
                 ith_voice_out, ith_hidden = self.voice_net(voice_x)
                 output += torch.bmm(span_mat, ith_voice_out)
@@ -728,7 +731,7 @@ elif args.sessMode=='test':
         print("=> no checkpoint found at '{}'".format(args.resume))
     path_name = args.testPath
     test_x, xml_notes, xml_doc, note_locations = xml_matching.read_xml_to_array(path_name, means, stds, args.startTempo)
-    batch_x = Variable(torch.FloatTensor(test_x)).to(device)
+    batch_x = torch.Tensor(test_x).to(device)
     batch_x = batch_x.view(1, -1, input_size)
 
     for i in range(len(stds)):
@@ -798,8 +801,8 @@ elif args.sessMode=='test':
         feat.pedal_refresh = pred[9]
         feat.pedal_cut = pred[10]
 
-        feat.beat_index = beat_numbers[i]
-        feat.measure_index = measure_numbers[i]
+        feat.beat_index = note_locations[i].beat
+        feat.measure_index = note_locations[i].measure
 
         if args.trainTrill:
             feat.trill_param = pred[11:16]
@@ -810,7 +813,6 @@ elif args.sessMode=='test':
             feat.trill_param[4] = round(feat.trill_param[4])
         else:
             feat.trill_param = [0] * 5
-        print(10 ** feat.qpm)
 
         #
         # feat.passed_second = pred[0]
