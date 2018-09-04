@@ -13,7 +13,7 @@ from mxp import MusicXMLDocument
 # sys.setdefaultencoding('UTF8')
 import midi_utils.midi_utils as midi_utils
 import copy
-
+import evaluation
 
 absolute_tempos_keywords = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
                             'presto', 'prestissimo', 'maestoso', 'lullaby', 'tempo i', 'Freely, with expression', 'agitato', 'Assez vif']
@@ -977,10 +977,11 @@ def load_pairs_from_folder(path):
     for file in filenames:
         if file[-18:] == '_infer_corresp.txt':
             perf_name = file.split('_infer')[0]
+            perf_score = evaluation.cal_score(perf_name)
+
+
             perf_midi_name = path + perf_name + '.mid'
             perf_midi = midi_utils.to_midi_zero(perf_midi_name)
-            #elongate offset
-            # perf_midi = midi_utils.elongate_offset_by_pedal(perf_midi)
             perf_midi = midi_utils.add_pedal_inf_to_notes(perf_midi)
             perf_midi_notes= perf_midi.instruments[0].notes
             corresp_name = path + file
@@ -990,9 +991,10 @@ def load_pairs_from_folder(path):
             perform_pairs = make_xml_midi_pair(xml_notes, perf_midi_notes, xml_perform_match)
             print("performance name is " + perf_name)
             check_pairs(perform_pairs)
-
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
-            perform_features_piece.append(perform_features)
+            perform_feat_score = {'features': perform_features, 'score': perf_score}
+
+            perform_features_piece.append(perform_feat_score)
 
     return perform_features_piece
 
@@ -1706,7 +1708,7 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
         for rel in relative_dynamics:
             if rel.xml_position > note_position:
                 continue
-            if note_position <= rel.end_xml_position:
+            if note_position < rel.end_xml_position:
                 note.dynamic.relative.append(rel)
         if len(note.dynamic.relative) >1:
             note = divide_cresc_staff(note)
@@ -1808,7 +1810,7 @@ def get_dynamics(directions):
         index = binaryIndex(absolute_dynamics_position, rel.xml_position)
         rel.previous_dynamic = absolute_dynamics[index].type['content']
         if rel.type['type'] == 'dynamic': # sf, fz, sfz
-            rel.end_xml_position = rel.xml_position
+            rel.end_xml_position = rel.xml_position + 0.1
         if index+1 < len(absolute_dynamics):
             rel.next_dynamic = absolute_dynamics[index+1].type['content']
             if not hasattr(rel, 'end_xml_position'):
@@ -2422,7 +2424,7 @@ def define_tempo_embedding_table():
 
     embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
 
-    embed_table.append(EmbeddingKey('a tempo', 1, 0.05))
+    embed_table.append(EmbeddingKey('a tempo', 1, 0))
     embed_table.append(EmbeddingKey('meno mosso', 1, -0.8))
     embed_table.append(EmbeddingKey('ritenuto', 1, -0.5))
     embed_table.append(EmbeddingKey('animato', 1, 0.5))
@@ -2788,3 +2790,5 @@ def check_index_continuity(features):
 
         prev_beat = feat.beat_index
         prev_measure = feat.measure_index
+
+

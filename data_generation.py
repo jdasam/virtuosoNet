@@ -7,7 +7,6 @@ import copy
 NUM_TRILL_PARAM = 5
 
 
-
 def save_features_as_vector(dataset, save_name):
     num_normalize_feature = [7, 11, 11]
     complete_xy = []
@@ -28,7 +27,9 @@ def save_features_as_vector(dataset, save_name):
             # voice_numbers = []
             note_locations = []
             prev_feat = [0] * (num_normalize_feature[1] + NUM_TRILL_PARAM)
-            for feature in perform:
+            features = perform['features']
+            score = perform['score']
+            for feature in features:
                 total_notes += 1
                 if not feature.qpm == None:
                     train_x.append(
@@ -60,7 +61,7 @@ def save_features_as_vector(dataset, save_name):
                     # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
-            complete_xy.append([train_x, train_y, previous_y, note_locations])
+            complete_xy.append([train_x, train_y, previous_y, note_locations, score])
 
             # key_changed_num = []
             # for i in range(3):
@@ -125,7 +126,8 @@ def save_features_as_vector(dataset, save_name):
                                                                           num_normalize_feature[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
         complete_xy_normalized[-1].append(performance[3])
-        # complete_xy_normalized[-1].append(performance[4])
+        complete_xy_normalized[-1].append(performance[4])
+
         # complete_xy_normalized[-1].append(performance[5])
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
@@ -172,5 +174,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'voice')
+save_features_as_vector(chopin_pairs, 'score')
 
