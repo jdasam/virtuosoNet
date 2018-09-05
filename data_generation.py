@@ -49,7 +49,8 @@ def save_features_as_vector(dataset, save_name):
                     #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
                     #           feature.pedal_refresh, feature.pedal_cut]
                     train_y.append(temp_y)
-                    prev_feat[0] = feature.previous_tempo
+                    # prev_feat[0] = feature.previous_tempo
+                    prev_feat[0] = feature.qpm # for beat tempo network.
                     previous_y.append(prev_feat)
                     prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
@@ -174,5 +175,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, 'score')
+save_features_as_vector(chopin_pairs, 'beat_tempo')
 
