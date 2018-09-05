@@ -53,25 +53,27 @@ NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 2
 NET_PARAM.note.size = 32
-NET_PARAM.beat.layer = 1
+NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 16
 NET_PARAM.measure.layer = 1
 NET_PARAM.measure.size= 8
 NET_PARAM.final.layer = 1
-NET_PARAM.final.size = 24
-NET_PARAM.voice.layer = 1
+NET_PARAM.final.size = 16
+NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 16
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
-learning_rate = 0.0001
-time_steps = 200
+learning_rate = 0.0003
+time_steps = 300
 num_epochs = 150
-num_key_augmentation = 4
+num_key_augmentation = 3
 
 input_size = 41
 output_size = 16
 training_ratio = 0.75
+DROP_OUT = 0.5
+
 
 num_trill_param = 5
 is_trill_index = -9
@@ -117,7 +119,7 @@ class HAN(nn.Module):
         self.output_size = num_output
 
 
-        self.lstm = nn.LSTM(input_size+num_output, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(input_size+num_output, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
@@ -127,7 +129,7 @@ class HAN(nn.Module):
         #         (self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) * 2 + num_output - num_trill_param + num_tempo_info,
         #         self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
-        self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True)
+        self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
         self.measure_hidden = nn.LSTM(self.beat_hidden_size*2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         self.fc = nn.Sequential(
@@ -140,7 +142,7 @@ class HAN(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
-        self.voice_net = nn.LSTM(input_size+num_output, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True)
+        self.voice_net = nn.LSTM(input_size+num_output, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x, years, final_hidden, note_locations, start_index,
@@ -438,7 +440,7 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', va
 
 
 
-def batch_time_step_run(x,y, score, note_locations, step, batch_size=batch_size, time_steps=time_steps, model=model):
+def batch_time_step_run(x,y, score, note_locations, step, batch_size=batch_size, time_steps=time_steps, model=model, validation=False):
 
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -463,7 +465,11 @@ def batch_time_step_run(x,y, score, note_locations, step, batch_size=batch_size,
     years = batch_y[1:]
 
     final_hidden = model.init_final_layer(batch_x.size(0))
-    outputs, final_hidden = model(batch_x, years, final_hidden, note_locations, batch_start)
+    if validation:
+        temp_model = model.eval()
+    else:
+        temp_model = model.train()
+    outputs, final_hidden = temp_model(batch_x, years, final_hidden, note_locations, batch_start)
     loss = criterion(outputs, score)
 
 
@@ -562,7 +568,7 @@ if args.sessMode == 'train':
 
                 for step in range(total_batch_num):
                     outputs, loss = \
-                        batch_time_step_run(temp_train_x, train_y, score, note_locations, step)
+                        batch_time_step_run(temp_train_x, train_y, score, note_locations, step, validation=True)
                     valid_loss_total.append(loss.item())
                     if round(outputs.item()) == score[0]:
                         correct_guess +=1
