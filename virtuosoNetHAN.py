@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="beat_tempo_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="score_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="model_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -47,9 +47,6 @@ class NetParams:
         self.final = self.Param()
         self.voice = self.Param()
         self.sum = self.Param()
-        self.fully = self.Param()
-        self.input_size = None
-        self.output_size = None
 
 ### parameters
 NET_PARAM = NetParams()
@@ -65,25 +62,15 @@ NET_PARAM.final.size = 16
 NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 16
 NET_PARAM.sum.layer = 2
-NET_PARAM.sum.size = 32
-NET_PARAM.input_size = 41
-NET_PARAM.output_size = 16
-
-D_PARAM = NetParams()
-D_PARAM.note.layer = 4
-D_PARAM.note.size = 64
-D_PARAM.final.layer = 1
-D_PARAM.final.size = 32
-D_PARAM.fully.size = 32
-D_PARAM.input_size = NET_PARAM.input_size + NET_PARAM.output_size
-
+NET_PARAM.sum.size = 64
 
 learning_rate = 0.0003
-time_steps = 400
+time_steps = 200
 num_epochs = 150
 num_key_augmentation = 2
 
-
+input_size = 41
+output_size = 16
 training_ratio = 0.8
 DROP_OUT = 0.5
 
@@ -100,13 +87,10 @@ num_tempo_info = 3
 batch_size = 1
 valid_batch_size = 50
 
-torch.cuda.set_device(1)
-cuda = True if torch.cuda.is_available() else False
-device = torch.device('cuda' if cuda else 'cpu')
-Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + NET_PARAM.measure.size * 2 + NET_PARAM.output_size + 3
+NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + NET_PARAM.measure.size * 2 + output_size + 3
 # if args.trainTrill is False:
 #     NET_PARAM.final.input -= num_trill_param
 if args.voiceNet:
@@ -115,30 +99,27 @@ if args.voiceNet:
 ### Model
 
 class BiRNN(nn.Module):
-    def __init__(self, network_parameters):
+    def __init__(self, input_size, hidden_size, num_layers, num_output):
         super(BiRNN, self).__init__()
-        self.hidden_size = network_parameters.note.size
-        self.final_hidden_size = network_parameters.final.size
-        self.num_layers = network_parameters.note.layer
-        self.input_size = network_parameters.input_size
-        self.output_size = 1
-        self.fc_size = network_parameters.fully.size
-
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.hidden_size * 2, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.hidden_size = hidden_size
+        self.final_hidden_size = final_hidden
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
+        self.output_lstm = nn.LSTM(hidden_size * 2 + num_output, final_hidden, num_layers=1, batch_first=True, bidirectional=False)
         # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for bidirection
-        self.fc = nn.Sequential(
-            nn.Linear(self.final_hidden_size,1),
-            nn.Sigmoid())
+        self.fc = nn.Linear(final_hidden, num_output)
 
-    def forward(self, x):
-        hidden = self.init_hidden(x.size(0))
-        final_hidden = self.init_final_layer(x.size(0))
-        hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-        out, final_hidden = self.output_lstm(hidden_out, final_hidden)
+    def forward(self, x, y, hidden, final_hidden, hidden_out = False):
+        if not isinstance(hidden_out, torch.Tensor):
+            hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        if not isinstance(y, torch.Tensor):
+            return hidden_out, hidden
+
+        out_combined = torch.cat((hidden_out,y), 2)
+        out, final_hidden = self.output_lstm(out_combined, final_hidden)
         # Decode the hidden state of the last time step
-        out = self.fc(out[:,-1,:])
-        return out
+        out = self.fc(out)
+        return out, hidden, final_hidden
 
     def init_hidden(self, batch_size):
         h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
@@ -150,10 +131,10 @@ class BiRNN(nn.Module):
 
 
 class HAN(nn.Module):
-    def __init__(self, network_parameters, num_trill_param=5):
+    def __init__(self, input_size, network_parameters, num_output, num_trill_param=5):
         super(HAN, self).__init__()
-        self.input_size = network_parameters.input_size
-        self.output_size = network_parameters.output_size
+        self.input_size = input_size
+        self.output_size = num_output
         self.num_layers = network_parameters.note.layer
         self.hidden_size = network_parameters.note.size
         self.num_beat_layers = network_parameters.beat.layer
@@ -168,7 +149,7 @@ class HAN(nn.Module):
         self.final_input = NET_PARAM.final.input
 
 
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.lstm = nn.LSTM(input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
@@ -181,13 +162,13 @@ class HAN(nn.Module):
         self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
         self.measure_hidden = nn.LSTM(self.beat_hidden_size*2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
-        self.fc = nn.Linear(self.final_hidden_size, self.output_size-num_trill_param)
+        self.fc = nn.Linear(self.final_hidden_size, num_output-num_trill_param)
         self.softmax = nn.Softmax(dim=0)
         self.trill_fc = nn.Linear(self.final_hidden_size, num_trill_param)
         self.sigmoid = nn.Sigmoid()
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
-        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.voice_net = nn.LSTM(input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
 
@@ -239,14 +220,15 @@ class HAN(nn.Module):
             tempo_primo = x[0, 0, tempo_primo_index:]
             tempo_hidden = self.init_beat_tempo_forward(1)
             final_hidden = self.init_final_layer(1)
-            is_valid = y.size(1) > 1
+
             if args.beatTempo:
                 prev_tempo = y[:,0,QPM_INDEX]
                 tempos = torch.zeros(1, num_beats, 1).to(device)
+                is_valid = y.size(1) > 1
                 if is_valid:
                     valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
                 for i in range(num_beats):
-                    if is_valid and i % 10 == 0:
+                    if is_valid and i < 10:
                         prev_tempo = valid_tempos[:,i,QPM_INDEX]
                     else:
                         beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
@@ -265,8 +247,6 @@ class HAN(nn.Module):
                 prev_out[0] = tempos_spanned[0, 0, 0]
 
             for i in range(num_notes):
-                if is_valid and i % 10 == 1:
-                    out = y[0,i-1,:]
                 if args.voiceNet:
                     out_combined = torch.cat(
                         (hidden_out[0,i,:], beat_hidden_spanned[0,i,:], measure_hidden_spanned[0,i,:], voice_out[0,i,:], prev_out, qpm_primo, tempo_primo)).view(1,1,-1)
@@ -487,92 +467,18 @@ class HAN(nn.Module):
         return layers
 
 
-class Discr(HAN):
-    def __init__(self, network_parameters):
-        super(Discr, self).__init__(network_parameters)
-        self.input_size = network_parameters.input_size + network_parameters.output_size
-        self.output_size = 1
-        self.num_layers = network_parameters.note.layer
-        self.hidden_size = network_parameters.note.size
-        self.num_beat_layers = network_parameters.beat.layer
-        self.beat_hidden_size = network_parameters.beat.size
-        self.num_measure_layers = network_parameters.measure.layer
-        self.measure_hidden_size = network_parameters.measure.size
-        self.final_hidden_size = network_parameters.final.size
-        self.num_voice_layers = network_parameters.voice.layer
-        self.voice_hidden_size = network_parameters.voice.size
-        self.summarize_layers = network_parameters.sum.layer
-        self.summarize_size = network_parameters.sum.size
-        self.final_input = NET_PARAM.final.input
-
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True,
-                            dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True,
-                                   bidirectional=False)
-        # if args.trainTrill:
-        #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
-        #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        # else:
-        #     self.output_lstm = nn.LSTM(
-        #         (self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) * 2 + num_output - num_trill_param + num_tempo_info,
-        #         self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.fc = nn.Sequential(
-            nn.Linear(self.final_hidden_size + 9, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1))
-        self.sigmoid = nn.Sigmoid()
-        # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
-
-    def forward(self, x,  note_locations, start_index):
-        beat_numbers = [x.beat for x in note_locations]
-        measure_numbers = [x.measure for x in note_locations]
-        voice_numbers = [x.voice for x in note_locations]
-
-        hidden = self.init_hidden(x.size(0))
-        beat_hidden = self.init_beat_layer(x.size(0))
-        measure_hidden = self.init_measure_layer(x.size(0))
-        final_hidden = self.init_final_layer(x.size(0))
-
-        hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-        beat_nodes = self.make_beat_node(hidden_out, beat_numbers, start_index)
-        beat_hidden_out, beat_hidden = self.beat_hidden(beat_nodes, beat_hidden)
-        measure_nodes = self.make_measure_node(beat_hidden_out, measure_numbers, beat_numbers, start_index)
-        measure_hidden_out, measure_hidden = self.measure_hidden(measure_nodes, measure_hidden)
-        num_notes = hidden_out.shape[1]
-        beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
-        measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-
-        if args.voiceNet:
-            temp_voice_numbers = voice_numbers[start_index:start_index + x.size(1)]
-            if temp_voice_numbers == []:
-                temp_voice_numbers = voice_numbers[start_index:]
-            max_voice = max(temp_voice_numbers)
-            voice_hidden = self.init_voice_layer(1, max_voice)
-            voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
-            out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out,), 2)
-        else:
-            out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned), 2)
-
-        out, final_hidden = self.output_lstm(out_combined, final_hidden)
-        out = self.fc(out)
-
-        return out
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-model = HAN(NET_PARAM).to(device)
-discriminator = BiRNN(D_PARAM).to(device)
-torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
-torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 0.25)
+model = HAN(input_size, NET_PARAM, output_size).to(device)
 
 criterion = nn.MSELoss()
-adversarial_loss = torch.nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-optimizerD = torch.optim.Adam(discriminator.parameters(), lr=learning_rate)
-def save_checkpoint(state, is_best, filename='gan_checkpoint.pth.tar'):
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'gan_best.pth.tar')
+        shutil.copyfile(filename, 'model_best.pth.tar')
 
 def key_augmentation(data_x, key_change):
     # key_change = 0
@@ -679,58 +585,46 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', va
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch_size, time_steps=time_steps, model=model, discriminator=discriminator):
-    valid_value = Variable(Tensor(1, 1).fill_(1.0), requires_grad=False)
-    fake_value =  Variable(Tensor(1, 1).fill_(0.0), requires_grad=False)
-
+def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch_size, time_steps=time_steps, model=model):
 
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
         batch_end = (step + 1) * batch_size * time_steps
-        batch_x = Tensor(x[batch_start:batch_end])
-        batch_y = Tensor(y[batch_start:batch_end])
-        input_y = Tensor(prev_feature[batch_start:batch_end])
+        batch_x = torch.Tensor(x[batch_start:batch_end])
+        batch_y = torch.Tensor(y[batch_start:batch_end])
+        input_y = torch.Tensor(prev_feature[batch_start:batch_end])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
     else:
         # num_left_data = data_size % batch_size*time_steps
         batch_start = -(batch_size * time_steps)
-        batch_x = Tensor(x[batch_start:])
-        batch_y = Tensor(y[batch_start:])
-        input_y = Tensor(prev_feature[batch_start:])
+        batch_x = torch.Tensor(x[batch_start:])
+        batch_y = torch.Tensor(y[batch_start:])
+        input_y = torch.Tensor(prev_feature[batch_start:])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-    batch_x = batch_x.view((batch_size, time_steps, model.input_size))
-    batch_y = batch_y.view((batch_size, time_steps, model.output_size))
-    input_y = input_y.view((batch_size, time_steps, model.output_size))
+    batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+    batch_y = batch_y.view((batch_size, time_steps, output_size)).to(device)
+    input_y = input_y.view((batch_size, time_steps, output_size)).to(device)
 
     # if args.trainTrill:
     #     input_y = input_y.view((batch_size, time_steps, output_size)).to(device)
     # else:
     #     input_y = input_y[:, :-num_trill_param].view(batch_size, time_steps, output_size - num_trill_param).to(device)
 
+    final_hidden = model.init_final_layer(batch_x.size(0))
+    tempo_hidden= model.init_beat_tempo_forward(batch_x.size(0))
     model_train = model.train()
-    optimizer.zero_grad()
+    outputs, final_hidden, tempo_hidden = model_train(batch_x, input_y, final_hidden, tempo_hidden, note_locations, batch_start)
+    if args.trainTrill:
+        loss = criterion(outputs, batch_y)
+    else:
+        loss = criterion(outputs[:,:,:-num_trill_param], batch_y[:,:,:-num_trill_param])
+    # loss = criterion(outputs, batch_y)
+    ioi_loss = criterion(outputs[:, :, 0], batch_y[:, :, 0])
+    art_loss = criterion(outputs[:, :, 1], batch_y[:, :, 1])
+    vel_loss = criterion(outputs[:, :, 2], batch_y[:, :, 2])
+    dev_loss = criterion(outputs[:, :, 3], batch_y[:, :, 3])
 
-    outputs, _, _ = model_train(batch_x, input_y, 0, 0, note_locations, batch_start, step_by_step=True)
-    generated = torch.cat((batch_x, outputs.view(1,time_steps,-1)), 2)
-    real_performance = torch.cat((batch_x,batch_y),2)
-
-    d_train = discriminator.train()
-    g_loss = adversarial_loss(d_train(generated), valid_value)
-    # print(g_loss)
-    g_loss.backward(retain_graph=True)
-    optimizer.step()
-    print(g_loss)
-
-    optimizerD.zero_grad()
-    real_loss = adversarial_loss(d_train(real_performance), valid_value)
-    fake_loss = adversarial_loss(d_train(generated), fake_value)
-    d_loss = (real_loss + fake_loss) / 2
-    # print(d_loss)
-    d_loss.backward()
-    optimizerD.step()
-    print(d_loss)
-
-    return outputs, g_loss, d_loss
+    return outputs, loss, ioi_loss, art_loss, vel_loss, dev_loss
 
 
 ### training
@@ -767,8 +661,12 @@ if args.sessMode == 'train':
     best_valid_loss = float("inf")
     # total_step = len(train_loader)
     for epoch in range(num_epochs):
-        g_loss_total = []
-        d_loss_total = []
+        loss_total = []
+        main_loss_total = []
+        ioi_loss_total =[]
+        art_loss_total =[]
+        vel_loss_total =[]
+        dev_loss_total =[]
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
             train_y = xy_tuple[1]
@@ -790,15 +688,21 @@ if args.sessMode == 'train':
                 temp_train_x = key_augmentation(train_x, key)
 
                 for step in range(total_batch_num):
-                    outputs, g_loss, d_loss = \
+                    outputs, loss, ioi_loss, art_loss, vel_loss, dev_loss = \
                         batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, step)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+                    optimizer.step()
+                    loss_total.append(loss.item())
+                    ioi_loss_total.append(ioi_loss.item())
+                    art_loss_total.append(art_loss.item())
+                    vel_loss_total.append(vel_loss.item())
+                    dev_loss_total.append(dev_loss.item())
 
-                    g_loss_total.append(g_loss.item())
-                    d_loss_total.append(d_loss.item())
-
-
-        print('Epoch [{}/{}], G_loss: {:.4f}, D_loss: {:.4f}'
-              .format(epoch + 1, num_epochs, np.mean(g_loss_total), np.mean(d_loss_total)) )
+        print('Epoch [{}/{}], Loss: {:.4f}, IOI: {:.4f}, Art: {:.4f}, Vel: {:.4f}, Dev: {:.4f}'
+              .format(epoch + 1, num_epochs, np.mean(loss_total),
+                      np.mean(ioi_loss_total), np.mean(art_loss_total), np.mean(vel_loss_total), np.mean(dev_loss_total)) )
 
 
         ## Validation
@@ -814,9 +718,9 @@ if args.sessMode == 'train':
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
 
-            batch_x = torch.Tensor(test_x).view((1, -1, NET_PARAM.input_size)).to(device)
-            batch_y = torch.Tensor(test_y).view((1, -1, NET_PARAM.output_size)).to(device)
-            input_y = torch.Tensor(prev_feature).view((1, -1, NET_PARAM.output_size)).to(device)
+            batch_x = torch.Tensor(test_x).view((1, -1, input_size)).to(device)
+            batch_y = torch.Tensor(test_y).view((1, -1, output_size)).to(device)
+            input_y = torch.Tensor(prev_feature).view((1, -1, output_size)).to(device)
             # if args.trainTrill:
             #     input_y = torch.Tensor(prev_feature).view((1, -1, output_size)).to(device)
             # else:
@@ -826,10 +730,10 @@ if args.sessMode == 'train':
             # final_hidden = model.init_final_layer(1)
             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
 
-            batch_x = Variable(torch.Tensor(test_x)).view((1, -1, NET_PARAM.input_size)).to(device)
+            batch_x = Variable(torch.Tensor(test_x)).view((1, -1, input_size)).to(device)
             #
             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=test_y[0][0], valid_y=batch_y)
-            outputs = outputs.view(1,-1,NET_PARAM.output_size)
+            outputs = outputs.view(1,-1,output_size)
             # outputs = torch.Tensor(outputs).view((1, -1, output_size)).to(device)
             # if args.trainTrill:
             #     outputs = torch.Tensor(outputs).view((1, -1, output_size))
@@ -897,7 +801,7 @@ elif args.sessMode=='test':
     path_name = args.testPath
     test_x, xml_notes, xml_doc, note_locations = xml_matching.read_xml_to_array(path_name, means, stds, args.startTempo)
     batch_x = torch.Tensor(test_x).to(device)
-    batch_x = batch_x.view(1, -1, model.input_size)
+    batch_x = batch_x.view(1, -1, input_size)
 
     for i in range(len(stds)):
         for j in range(len(stds[i])):
@@ -921,9 +825,9 @@ elif args.sessMode=='test':
     start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
 
     if args.trainTrill:
-        input_y = torch.zeros(1, 1, NET_PARAM.output_size)
+        input_y = torch.zeros(1, 1, output_size)
     else:
-        input_y = torch.zeros(1, 1, NET_PARAM.output_size - num_trill_param)
+        input_y = torch.zeros(1, 1, output_size - num_trill_param)
     # input_y[0,0,0] = start_tempo
     # # input_y[0,0,1] = 1
     # # input_y[0,0,2] = 64
@@ -940,7 +844,7 @@ elif args.sessMode=='test':
     prediction = np.squeeze(np.asarray(prediction))
 
     # prediction = outputs.cpu().detach().numpy()
-    for i in range(NET_PARAM.output_size - num_trill_param):
+    for i in range(output_size - num_trill_param):
         prediction[:, i] *= stds[1][i]
         prediction[:, i] += means[1][i]
 
