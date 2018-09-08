@@ -1,8 +1,6 @@
 from __future__ import print_function
 from __future__ import division
 import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
-import tensorflow.contrib.keras as keras
 import numpy as np
 import math
 import matplotlib
@@ -10,7 +8,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import pickle
-import random
 import argparse
 import xml_matching
 import midi_utils.midi_utils as midi_utils
@@ -23,13 +20,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./mxp/testdata/chopin10-3/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
+parser.add_argument("-data", "--dataName", type=str, default="chopin_cleaned_small", help="dat file name")
 args = parser.parse_args()
 
 # Training Parameters
 learning_rate = 0.001
 # training_steps = 10000
 training_epochs = 40
-batch_size = 2
+batch_size = 4
 display_step = 200
 training_ratio = 0.8
 
@@ -75,7 +73,7 @@ def RNN(input, use_peepholes=False):
 
         fw = []
         bw = []
-        for n in xrange(layers):
+        for n in range(layers):
             with tf.variable_scope('layer_%d' % n):
                 fw_cell = tf.contrib.rnn.LSTMCell(n_units[n], forget_bias=1.0, use_peepholes=use_peepholes)
                 bw_cell = tf.contrib.rnn.LSTMCell(n_units[n], forget_bias=1.0, use_peepholes=use_peepholes)
@@ -92,7 +90,12 @@ def RNN(input, use_peepholes=False):
     hypothesis = frame_wise_projection(expand, 2*num_hidden , num_output)
     print(hypothesis.shape)
     sigmoid_layer = tf.sigmoid(hypothesis)
+    print(sigmoid_layer.shape)
+
+    combined_hypothesis = tf.concat([hypothesis[:,:,0:7], sigmoid_layer[:,:,7:12]], axis=2)
+    print(combined_hypothesis.shape)
     # hypothesis =tf.matmul(outputs, weights['out']) + biases['out']
+    # cost = tf.reduce_mean(tf.square(hypothesis - Y))
     cost = tf.reduce_mean(tf.square(hypothesis - Y))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(cost)
@@ -109,7 +112,7 @@ init = tf.global_variables_initializer()
 # Start training
 
 if args.sessMode == 'train':
-    with open("chopin_cleaned_grace.dat", "rb") as f:
+    with open(args.dataName+".dat", "rb") as f:
         complete_xy = pickle.load(f)
     perform_num = len(complete_xy)
 
@@ -174,12 +177,12 @@ if args.sessMode == 'train':
                 break
 
         print("Optimization Finished!")
-        saver.save(sess, 'save_temp/save')
+        saver.save(sess,  args.dataName+'_save_temp/save')
 
 #
 # elif args.sessMode == 'test':
 #     with tf.Session() as sess:
-        saver.restore(sess, 'save_temp/save')
+        saver.restore(sess,  args.dataName+'_save_temp/save')
         # test
         n_tuple=0
         for xy_tuple in test_xy:
@@ -214,11 +217,11 @@ if args.sessMode == 'train':
 
 # test session
 else:
-    with open("chopin_cleaned_grace_stat.dat", "rb") as f:
+    with open(args.dataName+"_stat.dat", "rb") as f:
         means, stds = pickle.load(f)
         # print(means, stds)
     with tf.Session() as sess:
-        saver.restore(sess, 'save_temp/save')
+        saver.restore(sess, args.dataName+'_save_temp/save')
         #load test piece
         path_name = args.testPath
         # xml_name = path_name + 'xml.xml'
@@ -278,7 +281,7 @@ else:
         print(prediction.shape)
 
 
-        for i in range(7):
+        for i in range(11):
             prediction[:,i] *= stds[1][i]
             prediction[:,i] += means[1][i]
 
@@ -287,9 +290,9 @@ else:
         output_features= []
         for pred in prediction:
             feat = {'IOI_ratio': pred[0], 'articulation':pred[1], 'loudness':pred[2], 'xml_deviation':pred[3],
-                    'pedal_at_start': pred[4], 'pedal_at_end': pred[5], 'soft_pedal': pred[6],
-                    'pedal_refresh_time': pred[7], 'pedal_cut_time': pred[8], 'pedal_refresh': int(round(pred[9])),
-                    'pedal_cut': int(round(pred[10])) }
+                    'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
+                    'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
+                    'pedal_cut': pred[10] }
             output_features.append(feat)
         # prediction = np.transpose(prediction)
         # feature['pedal_at_start'] = pairs[i]['midi'].pedal_at_start
@@ -305,4 +308,4 @@ else:
 
         # new_midi = xml_matching.applyIOI(xml_notes, midi_notes, features, prediction)
 
-        xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=True)
+        xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=True, disklavier=True)

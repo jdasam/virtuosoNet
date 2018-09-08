@@ -1,2 +1,5 @@
-musicXML-parser/
+musicXML_parser/
 .idea/
+chopin_cleaned/
+midi_utils/
+test_pieces/
