@@ -8,15 +8,13 @@ import numpy as np
 import shutil
 import os
 import time
-import xml_matching
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import performanceWorm
 import copy
 import random
-
-
+import xml_matching
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test")

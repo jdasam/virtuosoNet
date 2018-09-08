@@ -6,7 +6,7 @@ import csv
 import math
 import os
 import pretty_midi
-from musicXML_parser.mxp import MusicXMLDocument
+from musicxml_parser.mxp import MusicXMLDocument
 # import sys
 # # sys.setdefaultencoding() does not exist, here!
 # reload(sys)  # Reload does the trick!
@@ -227,12 +227,13 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
                     note.note_duration.after_grace_note = True
                     grc.note_duration.grace_order = grace_order
                     grc.following_note = note
-                    grace_order += -1
+                    if grc.chord_index == 0:
+                        grace_order -= 1
                     added_grc.append(grc)
                     # notes.append(grc)
                 else:
                     rest_grc.append(grc)
-            num_added = len(added_grc)
+            num_added = abs(grace_order) -1
             for grc in added_grc:
                 # grc.note_duration.grace_order /= num_added
                 grc.note_duration.num_grace = num_added
@@ -500,6 +501,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     prev_soft_pedal = 0
     prev_start = 0
 
+
     for i in range(feat_len):
         feature= score_features[i]
         # tempo = find_corresp_tempo(pairs, i, tempos)
@@ -569,9 +571,13 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
         feature.previous_tempo = math.log(previous_qpm, 10)
         feature.qpm_primo = qpm_primo
 
+    piano_vel, piano_vec, forte_vel, forte_vec = cal_mean_velocity_by_dynamics_marking(score_features)
+    for feature in score_features:
+        feature.mean_piano_vel = piano_vel
+        feature.mean_piano_vec = piano_vec
+        feature.mean_forte_vel = forte_vel
+        feature.mean_forte_vec = forte_vec
 
-
-        # feature['articulation']
     score_features = make_index_continuous(score_features, score=False)
 
 
@@ -978,7 +984,6 @@ def load_pairs_from_folder(path):
         if file[-18:] == '_infer_corresp.txt':
             perf_name = file.split('_infer')[0]
             perf_score = evaluation.cal_score(perf_name)
-
 
             perf_midi_name = path + perf_name + '.mid'
             perf_midi = midi_utils.to_midi_zero(perf_midi_name)
@@ -1403,7 +1408,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         note = xml_notes[i]
         feat = features[i]
 
-        if note.note_duration.is_grace_note:
+        if note.note_duration.is_grace_note and note.note_duration.duration == 0:
             following_note = note.following_note
             next_second = following_note.note_duration.time_position
             note.note_duration.seconds = (next_second - note.note_duration.time_position) / note.note_duration.num_grace
@@ -2792,3 +2797,44 @@ def check_index_continuity(features):
         prev_measure = feat.measure_index
 
 
+def cal_mean_velocity_by_dynamics_marking(features):
+    piano_velocities = []
+    forte_velocities = []
+    forte_markings = []
+    piano_markings = []
+    entire_velocities = []
+    entire_markings = []
+
+
+    for feat in features:
+        absolute_dynamic = feat.dynamic[0]
+        rel_dynamic = feat.dynamic[1]
+        velocity = feat.velocity
+
+        if absolute_dynamic > 0 and rel_dynamic == 0:
+            forte_velocities.append(velocity)
+            forte_markings.append(absolute_dynamic)
+        elif absolute_dynamic < 0 and rel_dynamic == 0 :
+            piano_velocities.append(velocity)
+            piano_markings.append(absolute_dynamic)
+
+        entire_velocities.append(velocity)
+        entire_markings.append(absolute_dynamic)
+    mean_vel = sum(entire_velocities) / len(entire_velocities)
+    mean_dynamic = sum(entire_markings) / len(entire_markings)
+
+    if len(piano_velocities) >0:
+        mean_piano_vel = sum(piano_velocities) / len(piano_velocities)
+        mean_piano_marking = sum(piano_markings) / len(piano_markings)
+    else:
+        mean_piano_vel = mean_vel
+        mean_piano_marking = 0
+    if len(forte_velocities) > 0:
+        mean_forte_vel = sum(forte_velocities) / len(forte_velocities)
+        mean_forte_marking = sum(forte_markings) / len(forte_markings)
+    else:
+        mean_forte_vel = mean_vel
+        mean_forte_marking = 0
+
+
+    return mean_piano_vel, mean_piano_marking, mean_forte_vel, mean_forte_marking
