@@ -7,7 +7,6 @@ import math
 import numpy as np
 import shutil
 import os
-import time
 import xml_matching
 import matplotlib
 matplotlib.use('Agg')

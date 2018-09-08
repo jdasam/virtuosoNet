@@ -1,8 +1,6 @@
 from __future__ import print_function
 from __future__ import division
 import tensorflow as tf
-import tensorflow.contrib.rnn as rnn
-import tensorflow.contrib.keras as keras
 import numpy as np
 import math
 import matplotlib
@@ -10,7 +8,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import pickle
-import random
 import argparse
 import xml_matching
 import midi_utils.midi_utils as midi_utils

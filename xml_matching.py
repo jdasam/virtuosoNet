@@ -6,7 +6,7 @@ import csv
 import math
 import os
 import pretty_midi
-from mxp import MusicXMLDocument
+from musicXML_parser.mxp import MusicXMLDocument
 # import sys
 # # sys.setdefaultencoding() does not exist, here!
 # reload(sys)  # Reload does the trick!
