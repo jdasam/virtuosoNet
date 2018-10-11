@@ -6,7 +6,7 @@ import csv
 import math
 import os
 import pretty_midi
-from mxp import MusicXMLDocument
+from musicxml_parser.mxp import MusicXMLDocument
 # import sys
 # # sys.setdefaultencoding() does not exist, here!
 # reload(sys)  # Reload does the trick!
@@ -15,7 +15,7 @@ import midi_utils.midi_utils as midi_utils
 import copy
 import evaluation
 
-absolute_tempos_keywords = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
+absolute_tempos_keywords = ['adagio', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
                             'presto', 'prestissimo', 'maestoso', 'lullaby', 'tempo i', 'Freely, with expression', 'agitato', 'Assez vif']
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto',
@@ -30,7 +30,7 @@ tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'all
 
 absolute_dynamics_keywords = ['ppp', 'pp', 'p', 'piano', 'mp', 'mf', 'f', 'forte', 'ff', 'fff', 'fp']
 relative_dynamics_keywords = ['crescendo', 'diminuendo', 'cresc', 'dim', 'dimin' 'sotto voce',
-                              'mezza voce', 'sf', 'fz', 'sfz', 'sffz', 'con forza', 'con fuoco', 'smorzando', 'appassionato']
+                              'mezza voce', 'sf', 'fz', 'sfz', 'rf,' 'sffz', 'con forza', 'con fuoco', 'smorzando', 'appassionato']
 
 dynamics_keywords = absolute_dynamics_keywords + relative_dynamics_keywords
 dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'], 'ff', 'fff', 'fp', ['crescendo', 'cresc'],  ['diminuendo', 'dim', 'dimin'],
@@ -47,6 +47,9 @@ def apply_tied_notes(xml_parsed_notes):
                     tie_clean_list[j].note_duration.seconds +=  xml_parsed_notes[i].note_duration.seconds
                     tie_clean_list[j].note_duration.duration +=  xml_parsed_notes[i].note_duration.duration
                     tie_clean_list[j].note_duration.midi_ticks +=  xml_parsed_notes[i].note_duration.midi_ticks
+                    if xml_parsed_notes[i].note_notations.slurs:
+                        for slur in  xml_parsed_notes[i].note_notations.slurs:
+                            tie_clean_list[j].note_notations.slurs.append(slur)
                     break
     return tie_clean_list
 
@@ -204,7 +207,7 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
     notes = check_overlapped_notes(notes)
     notes = apply_rest_to_note(notes, rests)
     notes = omit_trill_notes(notes)
-
+    notes = extract_and_apply_slurs(notes)
     notes = rearrange_chord_index(notes)
     # for note in notes:
     #     print(note.staff, note.voice, note.note_duration.xml_position, note.note_duration.duration, note.pitch[1], note.chord_index)
@@ -227,12 +230,13 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
                     note.note_duration.after_grace_note = True
                     grc.note_duration.grace_order = grace_order
                     grc.following_note = note
-                    grace_order += -1
+                    if grc.chord_index == 0:
+                        grace_order -= 1
                     added_grc.append(grc)
                     # notes.append(grc)
                 else:
                     rest_grc.append(grc)
-            num_added = len(added_grc)
+            num_added = abs(grace_order) -1
             for grc in added_grc:
                 # grc.note_duration.grace_order /= num_added
                 grc.note_duration.num_grace = num_added
@@ -346,6 +350,9 @@ class MusicFeature():
         self.measure_index = 0
         self.no_following_note=0
         self.note_location = self.NoteLocation(None,None,None)
+        self.distance_from_abs_dynamic = None
+        self.slur_index = None
+
 
         self.dynamic  = None
         self.tempo = None
@@ -355,7 +362,7 @@ class MusicFeature():
         self.IOI_ratio = None
         self.articulation = None
         self.xml_deviation = None
-        self.velocity = None
+        self.velocity = 0
         self.pedal_at_start = None
         self.pedal_at_end = None
         self.pedal_refresh = None
@@ -363,6 +370,12 @@ class MusicFeature():
         self.pedal_cut = None
         self.pedal_cut_time = None
         self.soft_pedal = None
+
+        self.mean_piano_vel = None
+        self.mean_piano_mark = None
+        self.mean_forte_vel = None
+        self.mean_forte_mark = None
+
         self.midi_start  = None
         self.passed_second = None
         self.duration_second = None
@@ -375,7 +388,7 @@ class MusicFeature():
             self.voice = voice
 
 
-def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0):
+def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0, vel_standard=False):
     features = []
     xml_length = len(xml_notes)
     melody_notes = extract_melody_only_from_notes(xml_notes)
@@ -388,6 +401,9 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
     tempo_primo_word = direction_words_flatten(xml_notes[0].tempo)
     tempo_primo = dynamic_embedding(tempo_primo_word, tempo_embed_table, 3)
     tempo_primo = tempo_primo[0:2]
+
+    cresc_words = ['cresc', 'decresc', 'dim']
+
 
     for i in range(xml_length):
         note = xml_notes[i]
@@ -432,17 +448,36 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
         # feature.dynamic = keyword_into_onehot(dynamic_words, dynamics_merged_keys)
         feature.dynamic = dynamic_embedding(dynamic_words, dynamic_embed_table)
+        if dynamic_words and feature.dynamic[0] == 0:
+            print(dynamic_words.encode('utf-8'))
+        if feature.dynamic[1] != 0:
+            for rel in note.dynamic.relative:
+                for word in cresc_words:
+                    if word in rel.type['type'] or word in rel.type['content']:
+                        rel_length = rel.end_xml_position - rel.xml_position
+                        if rel_length == float("inf") or rel_length == 0:
+                            rel_length = note.state_fixed.divisions * 10
+                        ratio = (note_position - rel.xml_position) / rel_length
+                        feature.dynamic[1] *= (ratio+0.05)
+                        break
+        if note.dynamic.cresciuto:
+            feature.cresciuto = (note.dynamic.cresciuto.overlapped +1) / 2
+            if note.dynamic.cresciuto.type == 'diminuendo':
+                feature.cresciuto *= -1
+        else:
+            feature.cresciuto = 0
+        feature.dynamic.append(feature.cresciuto)
         feature.tempo = dynamic_embedding(tempo_words, tempo_embed_table, len_vec=3)
         # feature.tempo = keyword_into_onehot(note.tempo.absolute, tempos_merged_key)
         feature.notation = note_notation_to_vector(note)
         feature.qpm_primo = math.log(qpm_primo,10)
         feature.tempo_primo = tempo_primo
         feature.note_location.measure = note.measure_number-1
-
+        feature.distance_from_abs_dynamic = (note.note_duration.xml_position - note.dynamic.absolute_position) / note.state_fixed.divisions
         # print(feature.dynamic + feature.tempo)
-
         features.append(feature)
 
+    _, piano_mark, _, forte_mark = cal_mean_velocity_by_dynamics_marking(features)
     if beats:
         for beat in beats:
             num = 0
@@ -457,6 +492,13 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         note = xml_notes[i]
         beat = binaryIndex(beats, note.note_duration.xml_position)
         features[i].note_location.beat = beat
+        if vel_standard:
+            features[i].note_location.beat = beat
+            features[i].mean_piano_mark = piano_mark
+            features[i].mean_forte_mark = forte_mark
+            features[i].mean_piano_vel = vel_standard[0]
+            features[i].mean_forte_vel = vel_standard[1]
+
 
     return features
 
@@ -499,6 +541,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     prev_pedal = 0
     prev_soft_pedal = 0
     prev_start = 0
+
 
     for i in range(feat_len):
         feature= score_features[i]
@@ -569,9 +612,13 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
         feature.previous_tempo = math.log(previous_qpm, 10)
         feature.qpm_primo = qpm_primo
 
+    piano_vel, piano_vec, forte_vel, forte_vec = cal_mean_velocity_by_dynamics_marking(score_features)
+    for feature in score_features:
+        feature.mean_piano_vel = piano_vel
+        feature.mean_piano_mark = piano_vec
+        feature.mean_forte_vel = forte_vel
+        feature.mean_forte_mark = forte_vec
 
-
-        # feature['articulation']
     score_features = make_index_continuous(score_features, score=False)
 
 
@@ -979,7 +1026,6 @@ def load_pairs_from_folder(path):
             perf_name = file.split('_infer')[0]
             perf_score = evaluation.cal_score(perf_name)
 
-
             perf_midi_name = path + perf_name + '.mid'
             perf_midi = midi_utils.to_midi_zero(perf_midi_name)
             perf_midi = midi_utils.add_pedal_inf_to_notes(perf_midi)
@@ -1300,6 +1346,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         #     note.note_duration.time_position += feat['xml_deviation']
 
         end_note = copy.copy(note)
+        end_note.note_duration = copy.copy(note.note_duration)
         end_note.note_duration.xml_position = note.note_duration.xml_position + note.note_duration.duration
 
         end_position = cal_time_position_with_tempo(end_note, 0, tempos)
@@ -1307,6 +1354,8 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
             note, _ = apply_feat_to_a_note(note, feat, prev_vel)
             trill_vec = feat.trill_param
             num_trills = trill_vec[0]
+            if not isinstance(num_trills, int):
+                num_trills = num_trills.astype(int)
             last_velocity = trill_vec[1] * note.velocity
             first_note_ratio = trill_vec[2]
             last_note_ratio = trill_vec[3]
@@ -1317,7 +1366,6 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
             key = get_item_by_xml_position(key_signatures, note)
             key = key.key
             final_key = None
-
             for acc in trill_accidentals:
                 if acc.xml_position == note.note_duration.xml_position:
                     if acc.type['content'] == '#':
@@ -1326,7 +1374,6 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
                         final_key = -7
                     elif acc.type['content'] == '♮':
                         final_key = 0
-
             measure_accidentals = get_measure_accidentals(xml_notes, i)
             trill_pitch = note.pitch
             up_pitch, up_pitch_string = cal_up_trill_pitch(note.pitch, key, final_key, measure_accidentals)
@@ -1403,7 +1450,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         note = xml_notes[i]
         feat = features[i]
 
-        if note.note_duration.is_grace_note:
+        if note.note_duration.is_grace_note and note.note_duration.duration == 0:
             following_note = note.following_note
             next_second = following_note.note_duration.time_position
             note.note_duration.seconds = (next_second - note.note_duration.time_position) / note.note_duration.num_grace
@@ -1612,11 +1659,11 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
         for pedal in pedals:
             if pedal.time <0.3:
                 continue
-            if pedal.value < 30:
+            if pedal.value < 40:
                 previous_off_time = pedal.time
             else:
                 time_passed = pedal.time - previous_off_time
-                if time_passed < 0.15:
+                if time_passed < 0.25:
                     pedals.remove(pedal)
         piano_midi.instruments[0].control_changes = pedals
     piano_midi.write(output_name)
@@ -1680,7 +1727,7 @@ def merge_start_end_of_direction(directions):
 
 
 def apply_directions_to_notes(xml_notes, directions, time_signatures):
-    absolute_dynamics, relative_dynamics = get_dynamics(directions)
+    absolute_dynamics, relative_dynamics, cresciutos = get_dynamics(directions)
     absolute_dynamics_position = [dyn.xml_position for dyn in absolute_dynamics]
     absolute_tempos, relative_tempos = get_tempos(directions)
     absolute_tempos_position = [tmp.xml_position for tmp in absolute_tempos]
@@ -1695,6 +1742,7 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
         if num_dynamics > 0:
             index = binaryIndex(absolute_dynamics_position, note_position)
             note.dynamic.absolute = absolute_dynamics[index].type['content']
+            note.dynamic.absolute_position = absolute_dynamics[index].xml_position
 
         if num_tempos > 0:
             tempo_index = binaryIndex(absolute_tempos_position, note_position)
@@ -1710,6 +1758,24 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
                 continue
             if note_position < rel.end_xml_position:
                 note.dynamic.relative.append(rel)
+
+        for cresc in cresciutos:
+            if cresc.xml_position > note_position:
+                continue
+            if note_position < cresc.end_xml_position:
+                note_cresciuto = note.dynamic.cresciuto
+                if note_cresciuto is None:
+                    note.dynamic.cresciuto = cresc
+                else:
+                    prev_type = note.dynamic.cresciuto.type
+                    if cresc.type == prev_type:
+                        note.dynamic.cresciuto.overlapped += 1
+                    else:
+                        if note_cresciuto.overlapped == 0:
+                            note.dynamic.cresciuto = None
+                        else:
+                            note.dynamic.cresciuto.overlapped -= 1
+
         if len(note.dynamic.relative) >1:
             note = divide_cresc_staff(note)
 
@@ -1787,14 +1853,21 @@ def get_dynamics(directions):
     relative_dynamics = extract_directions_by_keywords(directions, relative_dynamics_keywords)
     abs_dynamic_dummy = []
     for abs in absolute_dynamics:
-        if abs.type['content'] in ['sf', 'fz', 'sfz', 'sffz']:
+        if abs.type['content'] in ['sf', 'fz', 'sfz', 'sffz', 'rf']:
             relative_dynamics.append(abs)
         else:
             abs_dynamic_dummy.append(abs)
             if abs.type['content'] == 'fp':
                 abs.type['content'] = 'f sfz'
                 abs2 = copy.copy(abs)
-                abs2.xml_position += 1
+                abs2.xml_position += 0.1
+                abs2.type = copy.copy(abs.type)
+                abs2.type['content'] = 'p'
+                abs_dynamic_dummy.append(abs2)
+            elif abs.type['content'] == 'sfp':
+                abs.type['content'] = 'sf'
+                abs2 = copy.copy(abs)
+                abs2.xml_position += 0.1
                 abs2.type = copy.copy(abs.type)
                 abs2.type['content'] = 'p'
                 abs_dynamic_dummy.append(abs2)
@@ -1805,19 +1878,33 @@ def get_dynamics(directions):
     relative_dynamics = merge_start_end_of_direction(relative_dynamics)
     absolute_dynamics_position = [dyn.xml_position for dyn in absolute_dynamics]
     relative_dynamics_position = [dyn.xml_position for dyn in relative_dynamics]
+    cresc_name = ['crescendo', 'diminuendo']
+    cresciuto_list = []
+    class Cresciuto:
+        def __init__(self, start, end, type):
+            self.xml_position = start
+            self.end_xml_position = end
+            self.type = type #crescendo or diminuendo
+            self.overlapped = 0
 
     for rel in relative_dynamics:
         index = binaryIndex(absolute_dynamics_position, rel.xml_position)
         rel.previous_dynamic = absolute_dynamics[index].type['content']
-        if rel.type['type'] == 'dynamic': # sf, fz, sfz
+        if rel.type['type'] == 'dynamic' and not rel.type['content'] == 'rf': # sf, fz, sfz
             rel.end_xml_position = rel.xml_position + 0.1
         if index+1 < len(absolute_dynamics):
-            rel.next_dynamic = absolute_dynamics[index+1].type['content']
+            rel.next_dynamic = absolute_dynamics[index+1] #.type['content']
             if not hasattr(rel, 'end_xml_position'):
                 rel.end_xml_position = absolute_dynamics_position[index+1]
+        else:
+            rel.next_dynamic = absolute_dynamics[index]
         if not hasattr(rel, 'end_xml_position'):
             rel.end_xml_position = float("inf")
-    return absolute_dynamics, relative_dynamics
+
+        if rel.type['type'] in cresc_name and rel.end_xml_position < rel.next_dynamic.xml_position:
+            cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, rel.type['type'])
+            cresciuto_list.append(cresciuto)
+    return absolute_dynamics, relative_dynamics, cresciuto_list
 
 
 def get_tempos(directions):
@@ -2013,7 +2100,7 @@ def check_overlapped_notes(xml_notes):
     return xml_notes
 
 
-def read_xml_to_array(path_name, means, stds, start_tempo):
+def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
     xml_name = path_name + 'musicxml_cleaned.musicxml'
     midi_name = path_name + 'midi_cleaned.mid'
 
@@ -2029,7 +2116,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
     xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
 
     measure_positions = extract_measure_position(xml_object)
-    features = extract_score_features(xml_notes, measure_positions, beats, start_tempo)
+    features = extract_score_features(xml_notes, measure_positions, beats, start_tempo, vel_standard)
     features = make_index_continuous(features, score=True)
 
     for i in range(len(stds[0])):
@@ -2050,6 +2137,9 @@ def read_xml_to_array(path_name, means, stds, start_tempo):
                   (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
                     (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
                  (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
+                  (feat.mean_piano_vel - means[0][7]) / stds[0][7],  (feat.mean_forte_vel - means[0][8]) / stds[0][8],
+                  (feat.mean_piano_mark - means[0][9]) / stds[0][9],  (feat.mean_forte_mark - means[0][10]) / stds[0][10],
+                  (feat.distance_from_abs_dynamic - means[0][11]) / stds[0][11],
                   feat.xml_position, feat.grace_order,
                   feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
                     + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
@@ -2365,20 +2455,18 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('fff', 0, 0.9))
 
     embed_table.append(EmbeddingKey('più p', 0, -0.5))
-    # embed_table.append(EmbeddingKey('più piano', 0, 0.3))
+    embed_table.append(EmbeddingKey('più piano', 0, -9.5))
     embed_table.append(EmbeddingKey('più f', 0, 0.5))
-    # embed_table.append(EmbeddingKey('più forte', 0, 0.7))
+    embed_table.append(EmbeddingKey('più forte', 0, 0.5))
     embed_table.append(EmbeddingKey('più forte possibile', 0, 1))
 
-
-
     embed_table.append(EmbeddingKey('cresc', 1, 0.7))
-    # embed_table.append(EmbeddingKey('crescendo', 1, 1))
+    embed_table.append(EmbeddingKey('crescendo', 1, 0.7))
     embed_table.append(EmbeddingKey('allargando', 1, 0.4))
     embed_table.append(EmbeddingKey('dim', 1, -0.7))
-    # embed_table.append(EmbeddingKey('diminuendo', 1, -1))
+    embed_table.append(EmbeddingKey('diminuendo', 1, -1))
     embed_table.append(EmbeddingKey('decresc', 1, -0.7))
-    # embed_table.append(EmbeddingKey('decrescendo', 1, -1))
+    embed_table.append(EmbeddingKey('decrescendo', 1, -0.7))
 
     embed_table.append(EmbeddingKey('smorz', 1, -0.4))
 
@@ -2386,15 +2474,13 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('poco cresc', 1, 0.5))
     embed_table.append(EmbeddingKey('molto cresc', 1, 1))
 
-    # TODO: sotto voce, mezza voce
-
     embed_table.append(EmbeddingKey('fz', 2, 0.3))
     embed_table.append(EmbeddingKey('sf', 2, 0.5))
     embed_table.append(EmbeddingKey('sfz', 2, 0.7))
     embed_table.append(EmbeddingKey('ffz', 2, 0.8))
     embed_table.append(EmbeddingKey('sffz', 2, 0.9))
 
-
+    embed_table.append(EmbeddingKey('rf', 3, 0))
     embed_table.append(EmbeddingKey('con forza', 3, 0.5))
     embed_table.append(EmbeddingKey('con fuoco', 3, 0.7))
     embed_table.append(EmbeddingKey('con più fuoco possibile', 3, 1))
@@ -2410,7 +2496,9 @@ def define_tempo_embedding_table():
     embed_table = EmbeddingTable()
     embed_table.append(EmbeddingKey('Freely, with expression', 0, 0.2))
     embed_table.append(EmbeddingKey('lento', 0, -0.9))
+    embed_table.append(EmbeddingKey('largo', 0, -0.7))
     embed_table.append(EmbeddingKey('adagio', 0, -0.7))
+    embed_table.append(EmbeddingKey('larghetto', 0, -0.6))
     embed_table.append(EmbeddingKey('andante', 0, -0.5))
     embed_table.append(EmbeddingKey('andantino', 0, -0.3))
     embed_table.append(EmbeddingKey('moderato', 0, 0))
@@ -2435,7 +2523,7 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('appassionato', 1, 0.2))
 
     embed_table.append(EmbeddingKey('poco ritenuto', 1, -0.3))
-    embed_table.append(EmbeddingKey('molto agitato', 1, 0.7))
+    embed_table.append(EmbeddingKey('molto agitato', 1, 0.8))
 
     embed_table.append(EmbeddingKey('allargando', 2, -0.2))
     embed_table.append(EmbeddingKey('ritardando', 2, -0.5))
@@ -2792,3 +2880,80 @@ def check_index_continuity(features):
         prev_measure = feat.measure_index
 
 
+def cal_mean_velocity_by_dynamics_marking(features):
+    piano_velocities = []
+    forte_velocities = []
+    forte_markings = []
+    piano_markings = []
+    entire_velocities = []
+    entire_markings = []
+
+
+    for feat in features:
+        absolute_dynamic = feat.dynamic[0]
+        rel_dynamic = feat.dynamic[1]
+        velocity = feat.velocity
+        if absolute_dynamic > 0 and rel_dynamic == 0:
+            forte_velocities.append(velocity)
+            forte_markings.append(absolute_dynamic)
+        elif absolute_dynamic < 0 and rel_dynamic == 0 :
+            piano_velocities.append(velocity)
+            piano_markings.append(absolute_dynamic)
+
+        entire_velocities.append(velocity)
+        entire_markings.append(absolute_dynamic)
+    mean_vel = sum(entire_velocities) / len(entire_velocities)
+    mean_dynamic = sum(entire_markings) / len(entire_markings)
+
+    if len(piano_velocities) >0:
+        mean_piano_vel = sum(piano_velocities) / len(piano_velocities)
+        mean_piano_marking = sum(piano_markings) / len(piano_markings)
+    else:
+        mean_piano_vel = mean_vel
+        mean_piano_marking = -0.2
+    if len(forte_velocities) > 0:
+        mean_forte_vel = sum(forte_velocities) / len(forte_velocities)
+        mean_forte_marking = sum(forte_markings) / len(forte_markings)
+    else:
+        mean_forte_vel = mean_vel
+        mean_forte_marking = 0.2
+
+
+    return mean_piano_vel, mean_piano_marking, mean_forte_vel, mean_forte_marking
+
+
+
+def extract_and_apply_slurs(xml_notes):
+    resolved_slurs = []
+    unresolved_slurs = []
+    slur_index = 0
+    for note in xml_notes:
+        slurs = note.note_notations.slurs
+        if slurs:
+            for slur in slurs:
+                slur.xml_position = note.note_duration.xml_position
+                slur.voice = note.voice
+                type= slur.type
+                if type == 'start':
+                    slur.index = slur_index
+                    unresolved_slurs.append(slur)
+                    slur_index += 1
+                elif type == 'stop':
+                    for prev_slur in unresolved_slurs:
+                        if prev_slur.number == slur.number and prev_slur.voice == slur.voice:
+                            prev_slur.end_xml_position = slur.xml_position
+                            resolved_slurs.append(prev_slur)
+                            unresolved_slurs.remove(prev_slur)
+                            note.note_notations.slurs.remove(slur)
+                            note.note_notations.slurs.append(prev_slur)
+                            break
+
+    for note in xml_notes:
+        slurs = note.note_notations.slurs
+        if not slurs:
+            for prev_slur in resolved_slurs:
+                if prev_slur.voice == note.voice and prev_slur.xml_position < note.note_duration.xml_position <= prev_slur.end_xml_position:
+                    note.note_notations.slurs.append(prev_slur)
+
+
+    return xml_notes

@@ -1,2 +1,5 @@
-musicXML-parser/
+musicxml_parser/
 .idea/
+chopin_cleaned/
+midi_utils/
+*.pyc

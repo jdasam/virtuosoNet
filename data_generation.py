@@ -8,7 +8,7 @@ NUM_TRILL_PARAM = 5
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [7, 11, 11]
+    num_normalize_feature = [12, 15, 15]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -35,13 +35,15 @@ def save_features_as_vector(dataset, save_name):
                     train_x.append(
                         [feature.pitch_interval, feature.duration,
                          feature.duration_ratio, feature.beat_position, feature.measure_length,
-                        feature.qpm_primo, feature.following_rest,feature.xml_position,
-                         feature.grace_order, feature.time_sig_num, feature.time_sig_den, feature.no_following_note]
+                        feature.qpm_primo, feature.following_rest, feature.mean_piano_vel, feature.mean_forte_vel,
+                         feature.mean_piano_mark, feature.mean_forte_mark, feature.distance_from_abs_dynamic,
+                         feature.xml_position, feature.grace_order, feature.time_sig_num,
+                         feature.time_sig_den, feature.no_following_note] #17
                         + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     # train_x.append( [ feature['pitch_interval'],feature['duration_ratio'] ] )
                     # train_y.append([feature['IOI_ratio'], feature['articulation'], feature['loudness'],
-                    temp_y = [feature.qpm, feature.articulation, feature.velocity,
-                              feature.xml_deviation, feature.pedal_refresh_time, feature.pedal_cut_time,
+                    temp_y = [feature.qpm, feature.velocity, feature.xml_deviation,
+                              feature.articulation, feature.pedal_refresh_time, feature.pedal_cut_time,
                               feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
                               feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
                     # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
@@ -89,6 +91,8 @@ def save_features_as_vector(dataset, save_name):
             samples = perf[target_data]
             for sample in samples:
                 value = sample[target_dimension]
+                if target_data == 1 and 10< target_dimension <15 and value == 0:
+                    continue
                 sum += value
                 squared_sum += value * value
                 count += 1
@@ -117,14 +121,16 @@ def save_features_as_vector(dataset, save_name):
                 new_sample = []
                 for index2 in range(num_normalize_feature[index1]):
                     if not (stds[index1][index2] ==0 or isinstance(stds[index1][index2], complex)):
-                        new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
+                        if index1==1 and 10< index2 <15 and sample[index2] == 0:
+                            new_sample.append(0)
+                        else:
+                            new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
                     else:
                         new_sample.append(0)
                 if index1 == 0:
                     new_sample[num_normalize_feature[index1]:num_input] = sample[num_normalize_feature[index1]:num_input]
                 else:
-                    new_sample[num_normalize_feature[index1]:num_output] = sample[
-                                                                          num_normalize_feature[index1]:num_output]
+                    new_sample[num_normalize_feature[index1]:num_output] = sample[num_normalize_feature[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
         complete_xy_normalized[-1].append(performance[3])
         complete_xy_normalized[-1].append(performance[4])
@@ -174,6 +180,6 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/8/')
-save_features_as_vector(chopin_pairs, 'beat_tempo_test')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'dynamic_modified')
 

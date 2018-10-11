@@ -7,7 +7,6 @@ import math
 import numpy as np
 import shutil
 import os
-import time
 import xml_matching
 import matplotlib
 matplotlib.use('Agg')
@@ -52,8 +51,8 @@ class NetParams:
 NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 2
-NET_PARAM.note.size = 32
-NET_PARAM.beat.layer = 2
+NET_PARAM.note.size = 64
+NET_PARAM.beat.layer = 1
 NET_PARAM.beat.size = 16
 NET_PARAM.measure.layer = 1
 NET_PARAM.measure.size= 8
@@ -88,8 +87,8 @@ num_tempo_info = 3
 batch_size = 1
 valid_batch_size = 50
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+torch.cuda.set_device(1)
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + NET_PARAM.measure.size * 2
 # if args.trainTrill is False:
