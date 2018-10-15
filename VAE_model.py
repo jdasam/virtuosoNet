@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="dynamic_modified_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="vae_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="single_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -48,6 +48,7 @@ class NetParams:
         self.final = self.Param()
         self.voice = self.Param()
         self.sum = self.Param()
+        self.encoder = self.Param()
         self.input_size = 0
         self.output_size = 0
 
@@ -66,13 +67,14 @@ NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
+NET_PARAM.encoder.size = 4
 
 learning_rate = 0.0003
-time_steps = 500
+time_steps = 100
 num_epochs = 150
 num_key_augmentation = 2
 
-SCORE_INPUT = 47
+SCORE_INPUT = 40
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -92,7 +94,7 @@ NET_PARAM.output_size = num_prime_param
 QPM_INDEX = 0
 VOICE_IDX = 11
 TEMPO_IDX = 30
-PITCH_IDX = 17
+PITCH_IDX = 12
 qpm_primo_index = 5
 tempo_primo_index = -2
 mean_vel_start_index = 7
@@ -105,7 +107,7 @@ torch.cuda.set_device(1)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
-                        NET_PARAM.measure.size * 2 + NET_PARAM.output_size + num_tempo_info + num_voice_feed_param + num_dynamic_info
+                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.size * 2
 # if args.trainTrill is False:
 #     NET_PARAM.final.input -= num_trill_param
 if args.voiceNet:
@@ -124,38 +126,6 @@ TrillNET_Param.note.layer = 3
 
 ### Model
 
-class BiRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_output):
-        super(BiRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.final_hidden_size = final_hidden
-        self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
-        self.output_lstm = nn.LSTM(hidden_size * 2 + num_output, final_hidden, num_layers=1, batch_first=True, bidirectional=False)
-        # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for bidirection
-        self.fc = nn.Linear(final_hidden, num_output)
-
-    def forward(self, x, y, hidden, final_hidden, hidden_out = False):
-        if not isinstance(hidden_out, torch.Tensor):
-            hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-        if not isinstance(y, torch.Tensor):
-            return hidden_out, hidden
-
-        out_combined = torch.cat((hidden_out,y), 2)
-        out, final_hidden = self.output_lstm(out_combined, final_hidden)
-        # Decode the hidden state of the last time step
-        out = self.fc(out)
-        return out, hidden, final_hidden
-
-    def init_hidden(self, batch_size):
-        h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
-        return (h0, h0)
-
-    def init_final_layer(self, batch_size):
-        h0 = torch.zeros(1, batch_size, self.final_hidden_size).to(device)
-        return (h0, h0)
-
-
 class HAN(nn.Module):
     def __init__(self, network_parameters, num_trill_param=5):
         super(HAN, self).__init__()
@@ -173,7 +143,9 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-
+        self.score_encoder_size_1 = 8
+        self.score_encoder_size_2 = network_parameters.encoder.size
+        self.perform_encoder_input_size = (self.hidden_size) *2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -195,11 +167,49 @@ class HAN(nn.Module):
             self.fc = nn.Linear(self.final_hidden_size, self.output_size)
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3+self.output_size-1, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1 + self.score_encoder_size_2*2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
+        self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.measure_hidden_size*2, num_layers=1, batch_first=True, bidirectional=False)
+        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.measure_hidden_size * 2,  num_layers=1, batch_first=True, bidirectional=False)
+        self.score_encoder_mean = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.measure_hidden_size*2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        )
+        self.score_encoder_var = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        )
+        self.score_decoder = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.measure_hidden_size*2)
+        )
+        self.performance_encoder_mean = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        )
+        self.performance_encoder_var = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        )
+        self.performance_decoder = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
+            nn.ReLU(),
+            nn.Linear(self.score_encoder_size_1, self.measure_hidden_size*2)
+        )
+        # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x, y, note_locations, start_index, step_by_step = False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
@@ -208,6 +218,16 @@ class HAN(nn.Module):
 
         hidden_out, beat_hidden_out, measure_hidden_out, voice_out = \
             self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
+
+        perform_concat = torch.cat((hidden_out, y),2)
+        score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
+        perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
+        #encode score style
+        score_z = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
+        perform_z = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
+        score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
+        perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
+
         num_notes = x.size(1)
         if not step_by_step:
             beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
@@ -323,17 +343,19 @@ class HAN(nn.Module):
 
         else:
 
-            qpm_primo = x[:, :, qpm_primo_index].view(1, -1, 1)
-            tempo_primo = x[:, :, tempo_primo_index:]
+            # qpm_primo = x[:, :, qpm_primo_index].view(1, -1, 1)
+            # tempo_primo = x[:, :, tempo_primo_index:]
             if args.beatTempo:
                 beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
                 num_beats = beat_tempos.size(1)
-                beat_qpm_primo = qpm_primo[0,0,0].repeat((1,num_beats,1))
-                beat_tempo_primo = tempo_primo[0,0,:].repeat((1,num_beats,1))
-                beat_tempo_vec = self.note_tempo_infos_to_beat(x[:,:,TEMPO_IDX:TEMPO_IDX+3], beat_numbers, start_index)
+                # beat_qpm_primo = qpm_primo[0,0,0].repeat((1,num_beats,1))
+                # beat_tempo_primo = tempo_primo[0,0,:].repeat((1,num_beats,1))
+                # beat_tempo_vec = self.note_tempo_infos_to_beat(x[:,:,TEMPO_IDX:TEMPO_IDX+3], beat_numbers, start_index)
                 if 'beat_hidden_out' not in locals():
                     beat_hidden_out = beat_hidden_spanned
-                beat_tempo_cat = torch.cat((beat_hidden_out.view(1,-1,self.beat_hidden_size*2), beat_tempos, beat_qpm_primo, beat_tempo_primo, beat_tempo_vec), 2)
+                score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
+                perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
+                beat_tempo_cat = torch.cat((beat_hidden_out, beat_tempos, score_z_beat_spanned, perform_z_beat_spanned), 2)
                 beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
                 tempos = self.beat_tempo_fc(beat_forward)
                 num_notes = hidden_out.size(1)
@@ -342,19 +364,17 @@ class HAN(nn.Module):
 
 
             if args.voiceNet:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, y, qpm_primo, tempo_primo), 2)
+                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, score_z_batched, perform_z_batched), 2)
             else:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, y, qpm_primo, tempo_primo), 2)
+                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, score_z_batched, perform_z_batched), 2)
 
             out, final_hidden = self.output_lstm(out_combined, final_hidden)
-
-
 
             out = self.fc(out)
             # out = torch.cat((out, trill_out), 2)
 
             if args.beatTempo:
-                out[0,:,0] = tempos_spanned.view(-1)
+                out = torch.cat((tempos_spanned, out), 2)
 
             return out
 
@@ -380,6 +400,22 @@ class HAN(nn.Module):
             voice_out = 0
 
         return hidden_out, beat_hidden_out, measure_hidden_out, voice_out
+
+    def encode_with_net(self, score_input, mean_net, var_net):
+        mu = mean_net(score_input)
+        var = var_net(score_input)
+
+        z = self.reparameterize(mu, var)
+        return z
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add_(mu)
+
+    # def decode_with_net(self, z, decode_network):
+    #     decode_network
+    #     return
 
     def sum_with_attention(self, hidden, attention_net):
         attention = attention_net(hidden)
@@ -657,7 +693,7 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', va
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=True)
+        prime_outputs = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
@@ -752,26 +788,25 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
         batch_end = (step + 1) * batch_size * time_steps
         batch_x = torch.Tensor(x[batch_start:batch_end])
         batch_y = torch.Tensor(y[batch_start:batch_end])
-        input_y = torch.Tensor(prev_feature[batch_start:batch_end])
+        # input_y = torch.Tensor(prev_feature[batch_start:batch_end])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
     else:
         # num_left_data = data_size % batch_size*time_steps
         batch_start = num_total_notes-(batch_size * time_steps)
         batch_x = torch.Tensor(x[batch_start:])
         batch_y = torch.Tensor(y[batch_start:])
-        input_y = torch.Tensor(prev_feature[batch_start:])
+        # input_y = torch.Tensor(prev_feature[batch_start:])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
     batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(device)
     batch_y = batch_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
-    input_y = input_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
+    # input_y = input_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
 
     # async def train_prime(batch_x, batch_y, input_y, model):
     prime_batch_x = batch_x
     prime_batch_y = batch_y[:,:,0:num_prime_param]
-    prime_input_y = input_y[:,:,0:num_prime_param]
 
     model_train = model.train()
-    prime_outputs = model_train(prime_batch_x, prime_input_y, note_locations, batch_start, step_by_step=True)
+    prime_outputs = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
 
     prime_loss = criterion(prime_outputs, prime_batch_y)
     optimizer.zero_grad()
@@ -824,7 +859,7 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     # loss = criterion(outputs, batch_y)
     tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
-    dev_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 2])
+    dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
 
     return tempo_loss, vel_loss, dev_loss, trill_loss
 
@@ -895,6 +930,7 @@ if args.sessMode == 'train':
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
+                    # print(tempo_loss)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     second_loss_total.append(second_loss.item())
@@ -929,7 +965,7 @@ if args.sessMode == 'train':
             # final_hidden = model.init_final_layer(1)
             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
 
-            batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
+            # batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
             #
             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=test_y[0][0], valid_y=batch_y)
             # outputs = outputs.view(1,-1,NET_PARAM.output_size)
@@ -1182,7 +1218,7 @@ elif args.sessMode=='plot':
             # input_y = Variable(
             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-            batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+            batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(device)
             # is_beat_batch = is_beat_list[batch_start:batch_end]
             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
@@ -1192,18 +1228,18 @@ elif args.sessMode=='plot':
             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
             #
             if args.trainTrill:
-                input_y = torch.zeros(1, 1, output_size)
+                input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
             else:
-                input_y = torch.zeros(1, 1, output_size - num_trill_param)
+                input_y = torch.zeros(1, 1, TOTAL_OUTPUT - num_trill_param)
 
             input_y[0] = batch_y[0][0]
-            input_y = input_y.view((1, 1, output_size)).to(device)
+            input_y = input_y.view((1, 1, TOTAL_OUTPUT)).to(device)
             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=batch_y[0][0])
-            outputs = torch.Tensor(outputs).view((1, -1, output_size))
+            outputs = torch.Tensor(outputs).view((1, -1, TOTAL_OUTPUT))
 
             outputs = outputs.cpu().detach().numpy()
             # batch_y = batch_y.cpu().detach().numpy()
-            batch_y = np.asarray(batch_y).reshape((1, -1, output_size))
+            batch_y = np.asarray(batch_y).reshape((1, -1, TOTAL_OUTPUT))
             plt.figure(figsize=(10, 7))
             for i in range(4):
                 plt.subplot(411+i)
