@@ -24,7 +24,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="vae_test", help="dat file name")
-parser.add_argument("--resume", type=str, default="single_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="vae_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
@@ -67,7 +67,8 @@ NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
-NET_PARAM.encoder.size = 4
+NET_PARAM.encoder.input = 32
+NET_PARAM.encoder.size = 8
 
 learning_rate = 0.0003
 time_steps = 100
@@ -107,7 +108,7 @@ torch.cuda.set_device(1)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
-                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.size * 2
+                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.input * 2
 # if args.trainTrill is False:
 #     NET_PARAM.final.input -= num_trill_param
 if args.voiceNet:
@@ -143,8 +144,9 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-        self.score_encoder_size_1 = 8
+        self.score_encoder_size_1 = 16
         self.score_encoder_size_2 = network_parameters.encoder.size
+        self.encoder_input_size = network_parameters.encoder.input
         self.perform_encoder_input_size = (self.hidden_size) *2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -167,39 +169,39 @@ class HAN(nn.Module):
             self.fc = nn.Linear(self.final_hidden_size, self.output_size)
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1 + self.score_encoder_size_2*2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + self.encoder_input_size*2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
 
-        self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.measure_hidden_size*2, num_layers=1, batch_first=True, bidirectional=False)
-        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.measure_hidden_size * 2,  num_layers=1, batch_first=True, bidirectional=False)
+        self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=1, batch_first=True, bidirectional=False)
         self.score_encoder_mean = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(self.measure_hidden_size*2, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.score_encoder_var = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.score_decoder = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
             nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.measure_hidden_size*2)
+            nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
         )
         self.performance_encoder_mean = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.performance_encoder_var = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(self.measure_hidden_size * 2, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
@@ -207,11 +209,11 @@ class HAN(nn.Module):
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
             nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.measure_hidden_size*2)
+            nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
         )
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
-    def forward(self, x, y, note_locations, start_index, step_by_step = False, rand_threshold=0.7):
+    def forward(self, x, y, note_locations, start_index, step_by_step = False, initial_z = False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
@@ -219,15 +221,23 @@ class HAN(nn.Module):
         hidden_out, beat_hidden_out, measure_hidden_out, voice_out = \
             self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
 
-        perform_concat = torch.cat((hidden_out, y),2)
         score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
-        perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
         #encode score style
-        score_z = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
-        perform_z = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
+        score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
+        if initial_z:
+            perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
+            perform_mu = 0
+            perform_var = 0
+            print(perform_z)
+        else:
+            perform_concat = torch.cat((hidden_out, y), 2)
+            perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
+            perform_z, perform_mu, perform_var = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
+
+        score_z = self.score_decoder(score_z)
+        perform_z = self.performance_decoder(perform_z)
         score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
-
         num_notes = x.size(1)
         if not step_by_step:
             beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
@@ -346,16 +356,16 @@ class HAN(nn.Module):
             # qpm_primo = x[:, :, qpm_primo_index].view(1, -1, 1)
             # tempo_primo = x[:, :, tempo_primo_index:]
             if args.beatTempo:
-                beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-                num_beats = beat_tempos.size(1)
+                # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
                 # beat_qpm_primo = qpm_primo[0,0,0].repeat((1,num_beats,1))
                 # beat_tempo_primo = tempo_primo[0,0,:].repeat((1,num_beats,1))
                 # beat_tempo_vec = self.note_tempo_infos_to_beat(x[:,:,TEMPO_IDX:TEMPO_IDX+3], beat_numbers, start_index)
                 if 'beat_hidden_out' not in locals():
                     beat_hidden_out = beat_hidden_spanned
+                num_beats = beat_hidden_out.size(1)
                 score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
                 perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
-                beat_tempo_cat = torch.cat((beat_hidden_out, beat_tempos, score_z_beat_spanned, perform_z_beat_spanned), 2)
+                beat_tempo_cat = torch.cat((beat_hidden_out, score_z_beat_spanned, perform_z_beat_spanned), 2)
                 beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
                 tempos = self.beat_tempo_fc(beat_forward)
                 num_notes = hidden_out.size(1)
@@ -376,7 +386,7 @@ class HAN(nn.Module):
             if args.beatTempo:
                 out = torch.cat((tempos_spanned, out), 2)
 
-            return out
+            return out, score_mu, score_var, perform_mu, perform_var
 
     def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
@@ -406,7 +416,7 @@ class HAN(nn.Module):
         var = var_net(score_input)
 
         z = self.reparameterize(mu, var)
-        return z
+        return z, mu, var
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -643,6 +653,17 @@ class TrillRNN(nn.Module):
         h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
         return (h0, h0)
 
+def vae_loss(recon_x, x, mu, logvar):
+    MSE = nn.MSELoss(recon_x, x.view(-1, 784), reduction='sum')
+
+    # see Appendix B from VAE paper:
+    # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+    # https://arxiv.org/abs/1312.6114
+    # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+    return BCE + KLD
+
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
 model = HAN(NET_PARAM).to(device)
@@ -655,11 +676,11 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
-def save_checkpoint(state, is_best, filename='_single_checkpoint', model_name='prime'):
+def save_checkpoint(state, is_best, filename='_vae_checkpoint', model_name='prime'):
     save_name = model_name+ '_' + filename  + '.pth.tar'
     torch.save(state, save_name)
     if is_best:
-        best_name = model_name + '_single_best.pth.tar'
+        best_name = model_name + '_vae_best.pth.tar'
         shutil.copyfile(save_name, best_name)
 
 def key_augmentation(data_x, key_change):
@@ -688,12 +709,12 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', valid_y = None):
+def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', valid_y = None, initial_z = False):
     # time1= time.time()
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False)
+        prime_outputs, _, _,_,_ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
@@ -806,9 +827,13 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     prime_batch_y = batch_y[:,:,0:num_prime_param]
 
     model_train = model.train()
-    prime_outputs = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
+    prime_outputs, score_mu, score_var, perform_mu, perform_var \
+        = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
 
-    prime_loss = criterion(prime_outputs, prime_batch_y)
+    MSE_Loss = criterion(prime_outputs, prime_batch_y)
+    score_KLD = -0.5 * torch.sum(1 + score_var - score_mu.pow(2) - score_var.exp())
+    perform_KLD =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+    prime_loss = MSE_Loss + score_KLD + perform_KLD
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -1092,7 +1117,9 @@ elif args.sessMode=='test':
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=start_tempo_norm)
+    initial_z = [0] * NET_PARAM.encoder.size
+
+    prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=start_tempo_norm, initial_z=initial_z)
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
     # prediction = outputs.cpu().detach().numpy()

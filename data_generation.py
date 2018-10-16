@@ -8,7 +8,7 @@ NUM_TRILL_PARAM = 5
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [12, 15, 15]
+    num_normalize_feature = [7, 15, 15]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -183,6 +183,6 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/5/')
-save_features_as_vector(chopin_pairs, 'vae_test')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'vae_entire')
 
