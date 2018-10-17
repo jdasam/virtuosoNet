@@ -30,6 +30,7 @@ parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="tr
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65' ,help="mean velocity of piano and forte")
+parser.add_argument("-dev", "--device", type=int, default=0 ,help="cuda device number")
 
 args = parser.parse_args()
 
@@ -101,7 +102,7 @@ vel_vec_start_index = 33
 batch_size = 1
 valid_batch_size = 50
 
-torch.cuda.set_device(1)
+torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
@@ -174,8 +175,8 @@ class HAN(nn.Module):
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
 
-
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.lstm = nn.LSTM(self.input_size, self.hidden_size,
+                            self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
@@ -199,7 +200,6 @@ class HAN(nn.Module):
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
-
 
     def forward(self, x, y, note_locations, start_index, step_by_step = False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
@@ -262,16 +262,17 @@ class HAN(nn.Module):
                 valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
             for i in range(num_notes):
                 current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
-                if current_beat > prev_beat:
-                    if i - prev_beat_end > 0:
+                if current_beat > prev_beat:  # beat changed
+                    # sum up the output features of the previous beat
+                    if i - prev_beat_end > 0:  # if there are outputs to consider
                         corresp_result = torch.stack(prev_out_list)
                         result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
                         prev_out_list = []
-                    else:
+                    else:  # there is no previous output
                         result_node = y[0, 0, 1:]
                     result_nodes[current_beat, :] = result_node
                     if is_valid and random.random() > rand_threshold:
-                        tmp_tempos = valid_tempos[:,current_beat,QPM_INDEX]
+                        tmp_tempos = valid_tempos[:, current_beat, QPM_INDEX]
                     else:
                         tempos = torch.zeros(1, num_beats, 1).to(device)
                         beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
