@@ -71,7 +71,7 @@ NET_PARAM.encoder.input = 32
 NET_PARAM.encoder.size = 8
 
 learning_rate = 0.0003
-time_steps = 100
+time_steps = 500
 num_epochs = 150
 num_key_augmentation = 2
 
@@ -87,8 +87,8 @@ num_trill_param = 5
 num_voice_feed_param = 2 # velocity, onset deviation
 num_tempo_info = 3
 num_dynamic_info = 10
-is_trill_index_score = -9
-is_trill_index_concated = -9 - (num_prime_param + num_second_param)
+is_trill_index_score = -7
+is_trill_index_concated = -7 - (num_prime_param + num_second_param)
 NET_PARAM.output_size = num_prime_param
 
 
@@ -176,37 +176,31 @@ class HAN(nn.Module):
         self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
         self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=1, batch_first=True, bidirectional=False)
         self.score_encoder_mean = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.score_encoder_var = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.score_decoder = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
         )
         self.performance_encoder_mean = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.performance_encoder_var = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
         )
         self.performance_decoder = nn.Sequential(
-            nn.ReLU(),
             nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
             nn.ReLU(),
             nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
@@ -228,7 +222,6 @@ class HAN(nn.Module):
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
             perform_var = 0
-            print(perform_z)
         else:
             perform_concat = torch.cat((hidden_out, y), 2)
             perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
@@ -662,7 +655,7 @@ def vae_loss(recon_x, x, mu, logvar):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return BCE + KLD
+    return MSE + KLD
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
@@ -719,7 +712,6 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', va
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
         # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-
         if torch.sum(input[:,:,is_trill_index_score])> 0:
             trill_inputs = torch.cat((input,prime_outputs), 2)
             model_eval = trill_model.eval()
@@ -1117,9 +1109,10 @@ elif args.sessMode=='test':
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    initial_z = [0] * NET_PARAM.encoder.size
+    initial_z = [0.01] * NET_PARAM.encoder.size
 
     prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=start_tempo_norm, initial_z=initial_z)
+
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
     # prediction = outputs.cpu().detach().numpy()
