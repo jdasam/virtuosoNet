@@ -234,10 +234,10 @@ class HAN(nn.Module):
             #     tempos = torch.zeros(1, num_beats, 1).to(device)
             #     is_valid = y.size(1) > 1
             #     if is_valid:
-            #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
+            #         true_prev_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
             #     for i in range(num_beats):
             #         if is_valid and i < 10:
-            #             prev_tempo = valid_tempos[:,i,QPM_INDEX]
+            #             prev_tempo = true_prev_tempos[:,i,QPM_INDEX]
             #         else:
             #             note_index = beat_numbers.index(i)
             #             beat_tempo_vec = x[0, note_index, TEMPO_IDX:TEMPO_IDX + 3]
@@ -257,58 +257,65 @@ class HAN(nn.Module):
             prev_out_list = []
             # if args.beatTempo:
             #     prev_out[0] = tempos_spanned[0, 0, 0]
-            is_valid = y.size(1) > 1
-            if is_valid:
-                valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+            has_ground_truth = y.size(1) > 1
+            if has_ground_truth:
+                true_prev_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
             for i in range(num_notes):
                 current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
                 if current_beat > prev_beat:  # beat changed
-                    # sum up the output features of the previous beat
-                    if i - prev_beat_end > 0:  # if there are outputs to consider
+                    if has_ground_truth and random.random() > rand_threshold:
+                        prev_tempos = true_prev_tempos[:, current_beat, QPM_INDEX]
                         corresp_result = torch.stack(prev_out_list)
-                        result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
-                        prev_out_list = []
-                    else:  # there is no previous output
-                        result_node = y[0, 0, 1:]
-                    result_nodes[current_beat, :] = result_node
-                    if is_valid and random.random() > rand_threshold:
-                        tmp_tempos = valid_tempos[:, current_beat, QPM_INDEX]
+
                     else:
-                        tempos = torch.zeros(1, num_beats, 1).to(device)
-                        beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
-                        beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
-                                                qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
-                        beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-                        tmp_tempos = self.beat_tempo_fc(beat_forward)
+                        # sum up the output features of the previous beat
+                        if i - prev_beat_end > 0:  # if there are outputs to consider
+                            corresp_result = torch.stack(prev_out_list)
+                        else:  # there is no previous output
+                            result_node = y[0, 0, 1:]
+
+                    result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
+                    prev_out_list = []
+                    result_nodes[current_beat, :] = result_node
+
+                    tempos = torch.zeros(1, num_beats, 1).to(device)
+                    beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
+                    beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
+                                            qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
+                    beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+                    tmp_tempos = self.beat_tempo_fc(beat_forward)
+
                     prev_beat_end = i
                     prev_tempo = tmp_tempos.view(1)
                     prev_beat = current_beat
 
                 tmp_voice = voice_numbers[start_index + i] - 1
-                if is_valid and i > 0 and random.random() > rand_threshold:
+                if has_ground_truth and random.random() > rand_threshold:
                     if args.beatTempo:
-                        out = y[0,i-1,1:]
+                        prev_out = y[0, i, 1:]
+                        true_current_tempo =
+                        prev_out = torch.cat( (prev_out))
                     else:
-                        out = y[0,i-1,:]
-                else:
-                    corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
-                    corresp_measure = measure_numbers[start_index + i] - measure_numbers[start_index]
-                    prev_voice_vel = vel_by_voice[tmp_voice]
-                    dynamic_info = torch.cat((x[:,i,mean_vel_start_index+4], x[0, i,vel_vec_start_index:vel_vec_start_index+5] ))
-                    if args.voiceNet:
-                        out_combined = torch.cat(
-                            (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-                             measure_hidden_out[0,corresp_measure,:], voice_out[0,i,:],
-                             prev_out, prev_voice_vel, mean_vel, dynamic_info, qpm_primo, tempo_primo)).view(1,1,-1)
-                    else:
-                        out_combined = torch.cat(
-                            (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-                             measure_hidden_out[0,corresp_measure,:], prev_out,prev_voice_vel, mean_vel, dynamic_info,
-                             qpm_primo, tempo_primo)).view(1,1,-1)
+                        prev_out = y[0, i, :]
 
-                    out, final_hidden = self.output_lstm(out_combined, final_hidden)
-                    out = out.view(-1)
-                    out = self.fc(out)
+                corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
+                corresp_measure = measure_numbers[start_index + i] - measure_numbers[start_index]
+                prev_voice_vel = vel_by_voice[tmp_voice]
+                dynamic_info = torch.cat((x[:,i,mean_vel_start_index+4], x[0, i,vel_vec_start_index:vel_vec_start_index+5] ))
+                if args.voiceNet:
+                    out_combined = torch.cat(
+                        (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
+                         measure_hidden_out[0,corresp_measure,:], voice_out[0,i,:],
+                         prev_out, prev_voice_vel, mean_vel, dynamic_info, qpm_primo, tempo_primo)).view(1,1,-1)
+                else:
+                    out_combined = torch.cat(
+                        (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
+                         measure_hidden_out[0,corresp_measure,:], prev_out,prev_voice_vel, mean_vel, dynamic_info,
+                         qpm_primo, tempo_primo)).view(1,1,-1)
+
+                out, final_hidden = self.output_lstm(out_combined, final_hidden)
+                out = out.view(-1)
+                out = self.fc(out)
 
 
                 if args.beatTempo:
