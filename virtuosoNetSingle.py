@@ -68,8 +68,8 @@ NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
-learning_rate = 0.001
-time_steps = 500
+learning_rate = 0.0003
+time_steps = 200
 num_epochs = 150
 num_key_augmentation = 2
 
@@ -840,7 +840,7 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step,
     # loss = criterion(outputs, batch_y)
     tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
-    dev_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 2])
+    dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
 
     return tempo_loss, vel_loss, dev_loss, trill_loss
 
