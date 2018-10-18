@@ -572,13 +572,13 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             # feature['loudness'] = math.log( pairs[i]['midi'].velocity / velocity_mean, 10)
             feature.velocity = pairs[i]['midi'].velocity
             # feature['xml_deviation'] = cal_onset_deviation(xml_notes, melody_notes, melody_onset_positions, pairs, i)
-            feature.pedal_at_start = pairs[i]['midi'].pedal_at_start
-            feature.pedal_at_end = pairs[i]['midi'].pedal_at_end
-            feature.pedal_refresh = pairs[i]['midi'].pedal_refresh
+            feature.pedal_at_start = pedal_sigmoid(pairs[i]['midi'].pedal_at_start)
+            feature.pedal_at_end = pedal_sigmoid(pairs[i]['midi'].pedal_at_end)
+            feature.pedal_refresh = pedal_sigmoid(pairs[i]['midi'].pedal_refresh)
             feature.pedal_refresh_time = pairs[i]['midi'].pedal_refresh_time
-            feature.pedal_cut = pairs[i]['midi'].pedal_cut
+            feature.pedal_cut = pedal_sigmoid(pairs[i]['midi'].pedal_cut)
             feature.pedal_cut_time = pairs[i]['midi'].pedal_cut_time
-            feature.soft_pedal = pairs[i]['midi'].soft_pedal
+            feature.soft_pedal = pedal_sigmoid(pairs[i]['midi'].soft_pedal)
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
 
             if previous_second is None:
@@ -2965,3 +2965,8 @@ def extract_and_apply_slurs(xml_notes):
 
 
     return xml_notes
+
+
+def pedal_sigmoid(pedal_value, k = 8):
+    sigmoid_pedal = 127 / (1 + math.exp( -(pedal_value-64)/k ) )
+    return int(sigmoid_pedal)
