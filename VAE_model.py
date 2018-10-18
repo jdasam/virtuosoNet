@@ -1109,7 +1109,7 @@ elif args.sessMode=='test':
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    initial_z = [1] * NET_PARAM.encoder.size
+    initial_z = [0] * NET_PARAM.encoder.size
 
     prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=start_tempo_norm, initial_z=initial_z)
 
