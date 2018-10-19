@@ -2481,6 +2481,8 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('poco a poco meno f', 1, -0.2))
     embed_table.append(EmbeddingKey('poco cresc', 1, 0.5))
     embed_table.append(EmbeddingKey('molto cresc', 1, 1))
+    embed_table.append(EmbeddingKey('cresc molto', 1, 1))
+
 
     embed_table.append(EmbeddingKey('fz', 2, 0.3))
     embed_table.append(EmbeddingKey('sf', 2, 0.5))
@@ -2495,6 +2497,7 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('sotto voce', 3, -0.5))
     embed_table.append(EmbeddingKey('mezza voce', 3, -0.3))
     embed_table.append(EmbeddingKey('appassionato', 3, 0.5))
+    embed_table.append(EmbeddingKey('più rinforz', 3, 0.8))
 
     return embed_table
 
