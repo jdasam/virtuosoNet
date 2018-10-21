@@ -57,19 +57,19 @@ NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 4
 NET_PARAM.note.size = 64
-NET_PARAM.beat.layer = 2
+NET_PARAM.beat.layer = 3
 NET_PARAM.beat.size = 32
 NET_PARAM.measure.layer = 1
 NET_PARAM.measure.size= 16
-NET_PARAM.final.layer = 1
-NET_PARAM.final.size = 24
+NET_PARAM.final.layer = 4
+NET_PARAM.final.size = 32
 NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
 learning_rate = 0.0003
-time_steps = 200
+TIME_STEPS = 200
 num_epochs = 150
 num_key_augmentation = 2
 
@@ -174,10 +174,11 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
+        self.num_final_layers = network_parameters.final.layer
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size,
                             self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=self.num_final_layers, batch_first=True, bidirectional=False)
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
         #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -201,7 +202,7 @@ class HAN(nn.Module):
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
-    def forward(self, x, y, note_locations, start_index, step_by_step = False, true_tempo = False, rand_threshold=0.7):
+    def forward(self, x, y, note_locations, start_index, step_by_step = True, true_tempo = False, initial_teaching=50):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
@@ -213,13 +214,10 @@ class HAN(nn.Module):
             beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
             measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
-            # print('note hidden time: ', time2-time1, ', attention time: ',time3-time2)
-
         tempo_hidden = self.init_beat_tempo_forward(x.size(0))
         final_hidden = self.init_final_layer(x.size(0))
 
         if step_by_step:
-            num_notes = x.size(1)
             num_beats = beat_hidden_out.size(1)
             qpm_primo = x[:, 0, qpm_primo_index]
             tempo_primo = x[0, 0, tempo_primo_index:]
@@ -263,9 +261,10 @@ class HAN(nn.Module):
             for i in range(num_notes):
                 current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
                 if current_beat > prev_beat:  # beat changed
-
                     # use true previous state by coin flip
-                    if has_ground_truth and random.random() > rand_threshold:
+                    # if has_ground_truth and random.random() > rand_threshold:
+                    if has_ground_truth and i < initial_teaching:
+                        # use true previous status
                         prev_tempos = true_prev_tempos[:, current_beat, QPM_INDEX]
                         number_of_prev_notes = len(prev_out_list)
                         corresp_result = y[0, i-number_of_prev_notes:i+1, 1:]
@@ -292,10 +291,11 @@ class HAN(nn.Module):
                     prev_beat = current_beat
 
                 tmp_voice = voice_numbers[start_index + i] - 1
-                if has_ground_truth and random.random() > rand_threshold:
+                # if has_ground_truth and random.random() > rand_threshold:
+                if has_ground_truth and i < initial_teaching:
                     if args.beatTempo:
                         prev_out = y[0, i, 1:]
-                        true_current_tempo = true_tempo[0,i,:]
+                        true_current_tempo = true_tempo[0, i, :]
                         prev_out = torch.cat( (true_current_tempo, prev_out))
                     else:
                         prev_out = y[0, i, :]
@@ -514,7 +514,7 @@ class HAN(nn.Module):
         return (h0, h0)
 
     def init_final_layer(self, batch_size):
-        h0 = torch.zeros(1, batch_size, self.final_hidden_size).to(device)
+        h0 = torch.zeros(self.num_final_layers, batch_size, self.final_hidden_size).to(device)
         return (h0, h0)
 
     def init_beat_layer(self, batch_size):
@@ -669,7 +669,8 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', tr
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=True, true_tempo=true_tempo)
+        prime_outputs = model_eval(
+            input, prime_input_y, note_locations=note_locations, start_index=0, true_tempo=true_tempo)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
@@ -757,9 +758,9 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', tr
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, note_locations, step,
-                        batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model,
-                        total_batch_num = 1, rand_threshold = 0.5):
+def batch_time_step_run(x, y, prev_feature, note_locations, step,
+                        batch_size=batch_size, time_steps=TIME_STEPS, model=model, trill_model=trill_model,
+                        total_batch_num = 1, initial_teaching = 50):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -787,7 +788,7 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step,
 
     model_train = model.train()
     prime_outputs = model_train(prime_batch_x, prime_input_y, note_locations, batch_start,
-                                step_by_step=True, true_tempo=true_tempo, rand_threshold=rand_threshold)
+                                step_by_step=True, true_tempo=true_tempo, initial_teaching=initial_teaching)
 
     prime_loss = criterion(prime_outputs, prime_batch_y)
     optimizer.zero_grad()
@@ -887,6 +888,7 @@ if args.sessMode == 'train':
         trill_loss_total =[]
 
         teacher_ratio = 1 - min(epoch * 0.1, 0.9)
+        initial_teaching = int(teacher_ratio * TIME_STEPS)
 
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
@@ -895,7 +897,7 @@ if args.sessMode == 'train':
             note_locations = xy_tuple[3]
 
             data_size = len(train_x)
-            total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+            total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
 
             key_lists = [0]
             key = 0
@@ -911,7 +913,7 @@ if args.sessMode == 'train':
                 for step in range(total_batch_num):
                     tempo_loss, vel_loss, second_loss, trill_loss = \
                         batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, step,
-                                            total_batch_num=total_batch_num, rand_threshold=1-teacher_ratio)
+                                            total_batch_num=total_batch_num, initial_teaching=initial_teaching)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
@@ -1190,11 +1192,11 @@ elif args.sessMode=='plot':
         note_locations = xy_tuple[3]
 
         data_size = len(train_x)
-        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+        total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
         batch_size=1
         for step in range(total_batch_num - 1):
-            batch_start = step * batch_size * time_steps
-            batch_end = (step + 1) * batch_size * time_steps
+            batch_start = step * batch_size * TIME_STEPS
+            batch_end = (step + 1) * batch_size * TIME_STEPS
             batch_x = Variable(
                 torch.Tensor(train_x[batch_start:batch_end]))
             batch_y = train_y[batch_start:batch_end]
@@ -1202,7 +1204,7 @@ elif args.sessMode=='plot':
             # input_y = Variable(
             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-            batch_x = batch_x.view((batch_size, time_steps, input_size)).to(device)
+            batch_x = batch_x.view((batch_size, TIME_STEPS, input_size)).to(device)
             # is_beat_batch = is_beat_list[batch_start:batch_end]
             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
