@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="dynamic_modified_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="sigmoid_pedal_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="single_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -47,6 +47,7 @@ class NetParams:
         self.beat = self.Param()
         self.measure = self.Param()
         self.final = self.Param()
+        self.final_dense = self.Param()
         self.voice = self.Param()
         self.sum = self.Param()
         self.input_size = 0
@@ -57,19 +58,21 @@ NET_PARAM = NetParams()
 
 NET_PARAM.note.layer = 4
 NET_PARAM.note.size = 64
-NET_PARAM.beat.layer = 3
+NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 32
-NET_PARAM.measure.layer = 2
+NET_PARAM.measure.layer = 1
 NET_PARAM.measure.size= 16
-NET_PARAM.final.layer = 4
-NET_PARAM.final.size = 48
+NET_PARAM.final.layer = 1
+NET_PARAM.final.size = 64
+NET_PARAM.final_dense.layer = 4
+NET_PARAM.final_dense.size = 64
 NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
-learning_rate = 0.0003
-TIME_STEPS = 200
+learning_rate = 0.001
+TIME_STEPS = 100
 num_epochs = 150
 num_key_augmentation = 2
 
@@ -162,24 +165,27 @@ class HAN(nn.Module):
         super(HAN, self).__init__()
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
-        self.num_layers = network_parameters.note.layer
-        self.hidden_size = network_parameters.note.size
-        self.num_beat_layers = network_parameters.beat.layer
+        self.note_layer_num = network_parameters.note.layer
+        self.note_hidden_size = network_parameters.note.size
+        self.beat_layer_num = network_parameters.beat.layer
         self.beat_hidden_size = network_parameters.beat.size
-        self.num_measure_layers = network_parameters.measure.layer
+        self.measure_layer_num = network_parameters.measure.layer
         self.measure_hidden_size = network_parameters.measure.size
-        self.final_hidden_size = network_parameters.final.size
-        # self.num_voice_layers = network_parameters.voice.layer
-        self.num_voice_layers = network_parameters.note.layer
-        self.voice_hidden_size = network_parameters.note.size
+        self.unidir_layer_num = network_parameters.final.layer
+        self.unidir_hidden_size = network_parameters.final.size
+        self.num_voice_layers = network_parameters.voice.layer
+        # self.num_voice_layers = network_parameters.note.layer
+        # self.voice_hidden_size = network_parameters.note.size
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
-        self.final_input = network_parameters.final.input
-        self.num_final_layers = network_parameters.final.layer
+        self.unidir_input_size = network_parameters.final.input
+        self.final_dense_layer_num = network_parameters.final_dense.layer
+        self.final_dense_hidden_size = network_parameters.final_dense.size
 
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size,
-                            self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=self.num_final_layers, batch_first=True, bidirectional=False)
+        self.lstm = nn.LSTM(self.input_size, self.note_hidden_size,
+                            self.note_layer_num, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.output_lstm = nn.LSTM(self.unidir_input_size, self.unidir_hidden_size, num_layers=self.unidir_layer_num, batch_first=True, bidirectional=False)
+        # self.final_dense =
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
         #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -187,19 +193,37 @@ class HAN(nn.Module):
         #     self.output_lstm = nn.LSTM(
         #         (self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) * 2 + num_output - num_trill_param + num_tempo_info,
         #         self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
-        self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.beat_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
+        self.beat_hidden = nn.LSTM(self.note_hidden_size * 2, self.beat_hidden_size, self.beat_layer_num, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
-        self.measure_hidden = nn.LSTM(self.beat_hidden_size*2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
+        self.measure_hidden = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.measure_layer_num, batch_first=True, bidirectional=True)
         self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
         if args.beatTempo:
-            self.fc = nn.Linear(self.final_hidden_size, self.output_size -1)
+            self.fc = nn.Linear(self.final_dense_hidden_size, self.output_size - 1)
         else:
-            self.fc = nn.Linear(self.final_hidden_size, self.output_size)
+            self.fc = nn.Linear(self.final_dense_hidden_size, self.output_size)
+        self.final_dense = nn.Sequential(
+            nn.Linear(self.unidir_hidden_size + self.unidir_input_size, self.final_dense_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+
+            nn.Linear(self.final_dense_hidden_size, self.final_dense_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+
+            nn.Linear(self.final_dense_hidden_size, self.final_dense_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+        )
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3+self.output_size-1, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
+        self.beat_tempo_fc = nn.Sequential(
+            nn.Linear(self.beat_hidden_size, self.beat_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+
+            nn.Linear(self.beat_hidden_size, 1))
         # self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
@@ -317,7 +341,9 @@ class HAN(nn.Module):
                          qpm_primo, tempo_primo)).view(1,1,-1)
 
                 out, final_hidden = self.output_lstm(out_combined, final_hidden)
+                out = torch.cat((out, out_combined), 2)
                 out = out.view(-1)
+                out = self.final_dense(out)
                 out = self.fc(out)
 
 
@@ -425,7 +451,7 @@ class HAN(nn.Module):
         beat = self.sum_with_attention(last_hidden, self.beat_attention)
         beat_nodes.append(beat)
 
-        beat_nodes = torch.stack(beat_nodes).view(1,-1,self.hidden_size*2)
+        beat_nodes = torch.stack(beat_nodes).view(1, -1, self.note_hidden_size * 2)
         # beat_nodes = torch.Tensor(beat_nodes)
 
         return beat_nodes
@@ -490,7 +516,8 @@ class HAN(nn.Module):
 
     def run_voice_net(self, batch_x, voice_hidden, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
-        output = torch.zeros(1, batch_x.size(1), self.voice_hidden_size * 2).to(device)
+        # output = torch.zeros(1, batch_x.size(1), self.voice_hidden_size * 2).to(device)
+        output = torch.zeros(1, batch_x.size(1), self.note_hidden_size * 2).to(device)
         voice_numbers = torch.Tensor(voice_numbers)
         for i in range(1,max_voice+1):
             voice_x_bool = voice_numbers == i
@@ -511,19 +538,19 @@ class HAN(nn.Module):
         return output, voice_hidden
 
     def init_hidden(self, batch_size):
-        h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
+        h0 = torch.zeros(self.note_layer_num * 2, batch_size, self.note_hidden_size).to(device)
         return (h0, h0)
 
     def init_final_layer(self, batch_size):
-        h0 = torch.zeros(self.num_final_layers, batch_size, self.final_hidden_size).to(device)
+        h0 = torch.zeros(self.unidir_layer_num, batch_size, self.unidir_hidden_size).to(device)
         return (h0, h0)
 
     def init_beat_layer(self, batch_size):
-        h0 = torch.zeros(self.num_beat_layers * 2, batch_size, self.beat_hidden_size).to(device)
+        h0 = torch.zeros(self.beat_layer_num * 2, batch_size, self.beat_hidden_size).to(device)
         return (h0, h0)
 
     def init_measure_layer(self, batch_size):
-        h0 = torch.zeros(self.num_measure_layers * 2, batch_size, self.measure_hidden_size).to(device)
+        h0 = torch.zeros(self.measure_layer_num * 2, batch_size, self.measure_hidden_size).to(device)
         return (h0, h0)
 
     def init_beat_tempo_forward(self, batch_size):
@@ -533,7 +560,8 @@ class HAN(nn.Module):
     def init_voice_layer(self, batch_size, max_voice):
         layers = []
         for i in range(max_voice):
-            h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(device)
+            # h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(device)
+            h0 = torch.zeros(self.note_layer_num * 2, batch_size, self.note_hidden_size).to(device)
             layers.append((h0,h0))
         return layers
 
@@ -541,7 +569,7 @@ class HAN(nn.Module):
 class ExtraHAN(HAN):
     def __init__(self, network_parameters):
         super(ExtraHAN, self).__init__(network_parameters)
-        self.fc = nn.Linear(self.final_hidden_size, self.output_size)
+        self.fc = nn.Linear(self.unidir_hidden_size, self.output_size)
 
     def forward(self, x, y, note_locations, start_index, step_by_step=False, rand_threshold = 0.7):
 
@@ -843,8 +871,8 @@ def batch_time_step_run(x, y, prev_feature, note_locations, step,
     tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
     dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
-
-    return tempo_loss, vel_loss, dev_loss, trill_loss
+    pedal_loss = criterion(prime_outputs[:,:,3:-num_trill_param], prime_batch_y[:, :, 3:-num_trill_param] )
+    return tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss
 
 
 ### training
@@ -885,7 +913,8 @@ if args.sessMode == 'train':
     for epoch in range(num_epochs):
         tempo_loss_total =[]
         vel_loss_total =[]
-        second_loss_total =[]
+        dev_loss_total =[]
+        pedal_loss_total = []
         trill_loss_total =[]
 
         teacher_ratio = 1 - min(epoch * 0.1, 0.9)
@@ -912,7 +941,7 @@ if args.sessMode == 'train':
                 temp_train_x = key_augmentation(train_x, key)
 
                 for step in range(total_batch_num):
-                    tempo_loss, vel_loss, second_loss, trill_loss = \
+                    tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss = \
                         batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, step,
                                             total_batch_num=total_batch_num, initial_teaching=initial_teaching)
                     # optimizer.zero_grad()
@@ -920,19 +949,21 @@ if args.sessMode == 'train':
                     # optimizer.step()
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
-                    second_loss_total.append(second_loss.item())
+                    dev_loss_total.append(dev_loss.item())
+                    pedal_loss_total.append(pedal_loss.item())
                     trill_loss_total.append(trill_loss.item())
 
-        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}'
+        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Pedal: {:.4f} Trill: {:.4f}'
               .format(epoch + 1, num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
-                      np.mean(second_loss_total), np.mean(trill_loss_total)) )
+                      np.mean(dev_loss_total), np.mean(pedal_loss_total), np.mean(trill_loss_total)))
 
 
         ## Validation
         valid_loss_total = []
         tempo_loss_total =[]
         vel_loss_total =[]
-        second_loss_total =[]
+        dev_loss_total =[]
+        pedal_loss_total = []
         trill_loss_total =[]
         for xy_tuple in test_xy:
             test_x = xy_tuple[0]
@@ -967,26 +998,29 @@ if args.sessMode == 'train':
                 valid_loss = criterion(outputs, batch_y)
             tempo_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
             vel_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
-            second_loss = criterion(outputs[:,:,2],
+            dev_loss = criterion(outputs[:, :, 2],
                                     batch_y[:,:,2])
+            pedal_loss = criterion(outputs[:,:,3:-num_trill_param], batch_y[:,:,3:-num_trill_param])
             trill_loss = criterion(outputs[:,:,-num_trill_param:], batch_y[:,:,-num_trill_param:])
 
             valid_loss_total.append(valid_loss.item())
             tempo_loss_total.append(tempo_loss.item())
             vel_loss_total.append(vel_loss.item())
-            second_loss_total.append(second_loss.item())
+            dev_loss_total.append(dev_loss.item())
+            pedal_loss_total.append(pedal_loss.item())
             trill_loss_total.append(trill_loss.item())
 
         mean_valid_loss = np.mean(valid_loss_total)
         mean_tempo_loss = np.mean(tempo_loss_total)
         mean_vel_loss =  np.mean(vel_loss_total)
-        mean_second_loss = np.mean(second_loss_total)
+        mean_dev_loss = np.mean(dev_loss_total)
+        mean_pedal_loss = np.mean(pedal_loss_total)
         mean_trill_loss = np.mean(trill_loss_total)
-        print("Valid Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}"
-              .format(mean_valid_loss, mean_tempo_loss , mean_vel_loss,
-                      mean_second_loss, mean_trill_loss))
+        print("Valid Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}"
+              .format(mean_valid_loss, mean_tempo_loss, mean_vel_loss,
+                      mean_dev_loss, mean_pedal_loss, mean_trill_loss))
 
-        mean_prime_loss = (mean_tempo_loss + mean_vel_loss + mean_second_loss) /3
+        mean_prime_loss = (mean_tempo_loss + mean_vel_loss + mean_dev_loss) / 3
         is_best = mean_valid_loss < best_prime_loss
         best_prime_loss = min(mean_valid_loss, best_prime_loss)
 
