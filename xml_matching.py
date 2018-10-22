@@ -2133,24 +2133,24 @@ def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
         #            (feat.voice - means[0][6]) / stds[0][6], (feat.qpm_primo - means[0][7]) / stds[0][7],
         #                 feat.xml_position, feat.grace_order, feat.time_sig_num, feat.time_sig_den]\
         #          + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
-        # temp_x = [(feat.pitch_interval - means[0][0]) / stds[0][0],
-        #           (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
-        #             (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
-        #          (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
-        #           (feat.mean_piano_vel - means[0][7]) / stds[0][7],  (feat.mean_forte_vel - means[0][8]) / stds[0][8],
-        #           (feat.mean_piano_mark - means[0][9]) / stds[0][9],  (feat.mean_forte_mark - means[0][10]) / stds[0][10],
-        #           (feat.distance_from_abs_dynamic - means[0][11]) / stds[0][11],
-        #           feat.xml_position, feat.grace_order,
-        #           feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
-        #             + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
         temp_x = [(feat.pitch_interval - means[0][0]) / stds[0][0],
                   (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
                     (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
-                  (feat.following_rest - means[0][5]) / stds[0][5],
-                  (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+                 (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
+                  (feat.mean_piano_vel - means[0][7]) / stds[0][7],  (feat.mean_forte_vel - means[0][8]) / stds[0][8],
+                  (feat.mean_piano_mark - means[0][9]) / stds[0][9],  (feat.mean_forte_mark - means[0][10]) / stds[0][10],
+                  (feat.distance_from_abs_dynamic - means[0][11]) / stds[0][11],
                   feat.xml_position, feat.grace_order,
                   feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
-                    + feat.pitch + feat.tempo + feat.dynamic + feat.notation
+                    + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+        # temp_x = [(feat.pitch_interval - means[0][0]) / stds[0][0],
+        #           (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
+        #             (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
+        #           (feat.following_rest - means[0][5]) / stds[0][5],
+        #           (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+        #           feat.xml_position, feat.grace_order,
+        #           feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
+        #             + feat.pitch + feat.tempo + feat.dynamic + feat.notation
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
         note_locations.append(feat.note_location)

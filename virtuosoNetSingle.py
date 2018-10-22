@@ -59,10 +59,10 @@ NET_PARAM.note.layer = 4
 NET_PARAM.note.size = 64
 NET_PARAM.beat.layer = 3
 NET_PARAM.beat.size = 32
-NET_PARAM.measure.layer = 1
+NET_PARAM.measure.layer = 2
 NET_PARAM.measure.size= 16
 NET_PARAM.final.layer = 4
-NET_PARAM.final.size = 32
+NET_PARAM.final.size = 48
 NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
@@ -169,8 +169,9 @@ class HAN(nn.Module):
         self.num_measure_layers = network_parameters.measure.layer
         self.measure_hidden_size = network_parameters.measure.size
         self.final_hidden_size = network_parameters.final.size
-        self.num_voice_layers = network_parameters.voice.layer
-        self.voice_hidden_size = network_parameters.voice.size
+        # self.num_voice_layers = network_parameters.voice.layer
+        self.num_voice_layers = network_parameters.note.layer
+        self.voice_hidden_size = network_parameters.note.size
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
@@ -199,7 +200,7 @@ class HAN(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2+1+3+3+self.output_size-1, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
-        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        # self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x, y, note_locations, start_index, step_by_step = True, true_tempo = False, initial_teaching=50):
@@ -505,7 +506,7 @@ class HAN(nn.Module):
                 voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.input_size)
                 ith_hidden = voice_hidden[i-1]
 
-                ith_voice_out, ith_hidden = self.voice_net(voice_x, ith_hidden)
+                ith_voice_out, ith_hidden = self.lstm(voice_x, ith_hidden)
                 output += torch.bmm(span_mat, ith_voice_out)
         return output, voice_hidden
 
@@ -888,7 +889,7 @@ if args.sessMode == 'train':
         trill_loss_total =[]
 
         teacher_ratio = 1 - min(epoch * 0.1, 0.9)
-        initial_teaching = int(teacher_ratio * TIME_STEPS)
+        initial_teaching = int(teacher_ratio / 2 * TIME_STEPS)
 
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
