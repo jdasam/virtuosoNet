@@ -2142,7 +2142,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
                   (feat.distance_from_abs_dynamic - means[0][11]) / stds[0][11],
                   feat.xml_position, feat.grace_order,
                   feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
-                    + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+                 + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
         # temp_x = [(feat.pitch_interval - means[0][0]) / stds[0][0],
         #           (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
         #             (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
@@ -2481,6 +2481,8 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('poco a poco meno f', 1, -0.2))
     embed_table.append(EmbeddingKey('poco cresc', 1, 0.5))
     embed_table.append(EmbeddingKey('molto cresc', 1, 1))
+    embed_table.append(EmbeddingKey('cresc molto', 1, 1))
+
 
     embed_table.append(EmbeddingKey('fz', 2, 0.3))
     embed_table.append(EmbeddingKey('sf', 2, 0.5))
@@ -2495,6 +2497,7 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('sotto voce', 3, -0.5))
     embed_table.append(EmbeddingKey('mezza voce', 3, -0.3))
     embed_table.append(EmbeddingKey('appassionato', 3, 0.5))
+    embed_table.append(EmbeddingKey('più rinforz', 3, 0.8))
 
     return embed_table
 
