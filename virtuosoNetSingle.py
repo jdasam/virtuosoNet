@@ -61,7 +61,7 @@ NET_PARAM.note.size = 64
 NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 32
 NET_PARAM.measure.layer = 1
-NET_PARAM.measure.size= 16
+NET_PARAM.measure.size = 16
 NET_PARAM.final.layer = 1
 NET_PARAM.final.size = 64
 NET_PARAM.final_dense.layer = 4
@@ -73,7 +73,7 @@ NET_PARAM.sum.size = 64
 
 learning_rate = 0.001
 TIME_STEPS = 100
-num_epochs = 150
+num_epochs = 190
 num_key_augmentation = 2
 
 SCORE_INPUT = 47
@@ -82,7 +82,7 @@ NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
 DROP_OUT = 0.5
 
-num_prime_param =11
+num_prime_param = 11
 num_second_param = 0
 num_trill_param = 5
 num_voice_feed_param = 2 # velocity, onset deviation
