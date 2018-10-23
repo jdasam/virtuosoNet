@@ -185,7 +185,6 @@ class HAN(nn.Module):
         self.lstm = nn.LSTM(self.input_size, self.note_hidden_size,
                             self.note_layer_num, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.unidir_input_size, self.unidir_hidden_size, num_layers=self.unidir_layer_num, batch_first=True, bidirectional=False)
-        # self.final_dense =
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
         #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -876,7 +875,6 @@ def batch_time_step_run(x, y, prev_feature, note_locations, step,
 
 
 ### training
-
 if args.sessMode == 'train':
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])

@@ -75,7 +75,7 @@ time_steps = 500
 num_epochs = 150
 num_key_augmentation = 2
 
-SCORE_INPUT = 40
+SCORE_INPUT = 47
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -144,8 +144,8 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-        self.score_encoder_size_1 = 16
-        self.score_encoder_size_2 = network_parameters.encoder.size
+        self.encoder_size_1 = 16
+        self.encoder_size_2 = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.perform_encoder_input_size = (self.hidden_size) *2 + self.output_size
 
@@ -173,37 +173,37 @@ class HAN(nn.Module):
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
 
-        self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
+        # self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
         self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=1, batch_first=True, bidirectional=False)
-        self.score_encoder_mean = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
-        )
-        self.score_encoder_var = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
-        )
-        self.score_decoder = nn.Sequential(
-            nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
-        )
+        # self.score_encoder_mean = nn.Sequential(
+        #     nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
+        #     nn.ReLU(),
+        #     nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        # )
+        # self.score_encoder_var = nn.Sequential(
+        #     nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
+        #     nn.ReLU(),
+        #     nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+        # )
+        # self.score_decoder = nn.Sequential(
+        #     nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
+        #     nn.ReLU(),
+        #     nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
+        # )
         self.performance_encoder_mean = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.encoder_size_1),
             nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+            nn.Linear(self.encoder_size_1, self.encoder_size_2)
         )
         self.performance_encoder_var = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
+            nn.Linear(self.encoder_input_size, self.encoder_size_1),
             nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.score_encoder_size_2)
+            nn.Linear(self.encoder_size_1, self.encoder_size_2)
         )
         self.performance_decoder = nn.Sequential(
-            nn.Linear(self.score_encoder_size_2, self.score_encoder_size_1),
+            nn.Linear(self.encoder_size_2, self.encoder_size_1),
             nn.ReLU(),
-            nn.Linear(self.score_encoder_size_1, self.encoder_input_size)
+            nn.Linear(self.encoder_size_1, self.encoder_input_size)
         )
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
@@ -215,9 +215,9 @@ class HAN(nn.Module):
         hidden_out, beat_hidden_out, measure_hidden_out, voice_out = \
             self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
 
-        score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
-        #encode score style
-        score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
+        # encode score style
+        # score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
+        # score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
         if initial_z:
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
@@ -227,9 +227,10 @@ class HAN(nn.Module):
             perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
             perform_z, perform_mu, perform_var = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
 
-        score_z = self.score_decoder(score_z)
+        # score_z = self.score_decoder(score_z)
+        # score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
+
         perform_z = self.performance_decoder(perform_z)
-        score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
         if not step_by_step:
@@ -367,9 +368,9 @@ class HAN(nn.Module):
 
 
             if args.voiceNet:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, score_z_batched, perform_z_batched), 2)
+                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, perform_z_batched), 2)
             else:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, score_z_batched, perform_z_batched), 2)
+                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, perform_z_batched), 2)
 
             out, final_hidden = self.output_lstm(out_combined, final_hidden)
 
@@ -379,7 +380,7 @@ class HAN(nn.Module):
             if args.beatTempo:
                 out = torch.cat((tempos_spanned, out), 2)
 
-            return out, score_mu, score_var, perform_mu, perform_var
+            return out, perform_mu, perform_var
 
     def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
@@ -707,7 +708,7 @@ def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', va
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs, _, _,_,_ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+        prime_outputs, _, _ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
@@ -819,13 +820,12 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     prime_batch_y = batch_y[:,:,0:num_prime_param]
 
     model_train = model.train()
-    prime_outputs, score_mu, score_var, perform_mu, perform_var \
+    prime_outputs, perform_mu, perform_var \
         = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
 
     MSE_Loss = criterion(prime_outputs, prime_batch_y)
-    score_KLD = -0.5 * torch.sum(1 + score_var - score_mu.pow(2) - score_var.exp())
     perform_KLD =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-    prime_loss = MSE_Loss + score_KLD + perform_KLD
+    prime_loss = MSE_Loss + perform_KLD
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)

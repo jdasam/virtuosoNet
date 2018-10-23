@@ -20,6 +20,8 @@ absolute_tempos_keywords = ['adagio', 'lento', 'largo', 'larghetto', 'andante', 
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto',
                             'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando', 'smorzando', 'appassionato']
+relative_long_tempo_keywords = ['meno mosso', 'più mosso', 'animato']
+
 
 tempos_keywords = absolute_tempos_keywords + relative_tempos_keywords
 tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
@@ -1911,6 +1913,7 @@ def get_tempos(directions):
 
     absolute_tempos = extract_directions_by_keywords(directions, absolute_tempos_keywords)
     relative_tempos = extract_directions_by_keywords(directions, relative_tempos_keywords)
+    relative_long_tempos = extract_directions_by_keywords(directions, relative_long_tempo_keywords)
 
     absolute_tempos_position = [tmp.xml_position for tmp in absolute_tempos]
     num_abs_tempos = len(absolute_tempos)
@@ -1922,7 +1925,7 @@ def get_tempos(directions):
 
     for i in range(num_rel_tempos):
         rel = relative_tempos[i]
-        if i+1< num_rel_tempos:
+        if rel not in relative_long_tempos and i+1< num_rel_tempos:
             rel.end_xml_position = relative_tempos[i+1].xml_position
         index = binaryIndex(absolute_tempos_position, rel.xml_position)
         rel.previous_tempo = absolute_tempos[index].type['content']
