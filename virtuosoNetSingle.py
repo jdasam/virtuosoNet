@@ -226,7 +226,7 @@ class HAN(nn.Module):
         # self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
-    def forward(self, x, y, note_locations, start_index, step_by_step = True, true_tempo = False, initial_teaching=50):
+    def forward(self, x, y, note_locations, start_index, step_by_step = True, true_tempo=False, initial_teaching=50):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
