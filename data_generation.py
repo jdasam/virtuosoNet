@@ -89,6 +89,7 @@ def save_features_as_vector(dataset, save_name):
 
     print(train_x[0])
     print(train_y[0])
+
     def get_mean_and_sd(performances, target_data, target_dimension):
         sum = 0
         squared_sum = 0
@@ -155,7 +156,6 @@ def save_features_as_vector(dataset, save_name):
             std = stds[index1][index2]
             if std == 0:
                 print('STD of ' + str(index1) + ',' + str(index2) + ' is zero')
-
 
     with open(save_name + ".dat", "wb") as f:
         pickle.dump(complete_xy, f, protocol=2)

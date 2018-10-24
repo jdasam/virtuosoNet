@@ -61,14 +61,14 @@ NET_PARAM.note.size = 64
 NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 32
 NET_PARAM.measure.layer = 1
-NET_PARAM.measure.size= 16
+NET_PARAM.measure.size = 16
 NET_PARAM.final.layer = 1
 NET_PARAM.final.size = 24
 NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
-NET_PARAM.encoder.input = 16
+NET_PARAM.encoder.input = 32
 NET_PARAM.encoder.size = 8
 
 learning_rate = 0.001
@@ -146,14 +146,14 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-        self.encoder_size_1 = 8
+        self.encoder_size_1 = 16
         self.encoder_size_2 = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.perform_encoder_input_size = self.hidden_size * 2 + self.beat_hidden_size * 2 +\
                                           self.measure_hidden_size * 2 + self.voice_hidden_size * 2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=True)
+        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         # if args.trainTrill:
         #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
         #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -169,18 +169,18 @@ class HAN(nn.Module):
         if args.beatTempo:
             # self.fc = nn.Linear(self.final_hidden_size * 2, self.output_size -1)
             self.fc = nn.Sequential(
-                nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
-                nn.ReLU(),
-                nn.Dropout(DROP_OUT),
+                # nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
+                # nn.ReLU(),
+                # nn.Dropout(DROP_OUT),
+                #
+                # nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
+                # nn.ReLU(),
+                # nn.Dropout(DROP_OUT),
 
-                nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
-                nn.ReLU(),
-                nn.Dropout(DROP_OUT),
-
-                nn.Linear(self.final_hidden_size * 2, self.output_size - 1)
+                nn.Linear(self.final_hidden_size, self.output_size - 1)
             )
         else:
-            self.fc = nn.Linear(self.final_hidden_size * 2, self.output_size)
+            self.fc = nn.Linear(self.final_hidden_size , self.output_size)
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
@@ -255,7 +255,6 @@ class HAN(nn.Module):
 
         # score_z = self.score_decoder(score_z)
         # score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
-
         perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
@@ -567,7 +566,7 @@ class HAN(nn.Module):
         return (h0, h0)
 
     def init_final_layer(self, batch_size):
-        h0 = torch.zeros(1 * 2, batch_size, self.final_hidden_size).to(device)
+        h0 = torch.zeros(1 , batch_size, self.final_hidden_size).to(device)
         return (h0, h0)
 
     def init_beat_layer(self, batch_size):
