@@ -30,6 +30,7 @@ parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="tr
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65' ,help="mean velocity of piano and forte")
+parser.add_argument("-dev", "--device", type=int, default=0 ,help="cuda device number")
 
 args = parser.parse_args()
 
@@ -67,12 +68,12 @@ NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
-NET_PARAM.encoder.input = 64
-NET_PARAM.encoder.size = 16
+NET_PARAM.encoder.input = 16
+NET_PARAM.encoder.size = 8
 
-learning_rate = 0.0003
+learning_rate = 0.001
 time_steps = 200
-print('Learning Rate and Time Steps are ',learning_rate, time_steps)
+print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
 
@@ -105,7 +106,7 @@ vel_vec_start_index = 33
 batch_size = 1
 valid_batch_size = 50
 
-torch.cuda.set_device(1)
+torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
@@ -145,11 +146,11 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-        self.encoder_size_1 = 32
+        self.encoder_size_1 = 8
         self.encoder_size_2 = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.perform_encoder_input_size = self.hidden_size * 2 + self.beat_hidden_size * 2 +\
-                                          self.measure_hidden_size * 2  + self.output_size
+                                          self.measure_hidden_size * 2 + self.voice_hidden_size * 2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=True)
@@ -183,22 +184,21 @@ class HAN(nn.Module):
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1+2+ self.encoder_input_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=True)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1 + 2 + self.encoder_input_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Sequential(
-            nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
-            nn.ReLU(),
-            nn.Dropout(DROP_OUT),
-
-            nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
-            nn.ReLU(),
-            nn.Dropout(DROP_OUT),
-
-            nn.Linear(self.beat_hidden_size * 2,  1)
+            # nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
+            # nn.ReLU(),
+            # nn.Dropout(DROP_OUT),
+            #
+            # nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
+            # nn.ReLU(),
+            # nn.Dropout(DROP_OUT),
+            nn.Linear(self.beat_hidden_size,  1)
         )
 
-        # self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=2, dropout=DROP_OUT, batch_first=True, bidirectional=False)
+        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=1, batch_first=True, bidirectional=False)
         # self.score_encoder_mean = nn.Sequential(
         #     nn.Linear(self.encoder_input_size, self.score_encoder_size_1),
         #     nn.ReLU(),
@@ -249,7 +249,7 @@ class HAN(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((hidden_out,beat_hidden_spanned, measure_hidden_spanned, y), 2)
+            perform_concat = torch.cat((hidden_out,beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
             perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
             perform_z, perform_mu, perform_var = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
 
@@ -557,8 +557,8 @@ class HAN(nn.Module):
                 voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.input_size)
                 ith_hidden = voice_hidden[i-1]
 
-                # ith_voice_out, ith_hidden = self.voice_net(voice_x, ith_hidden)
-                ith_voice_out, ith_hidden = self.lstm(voice_x, ith_hidden)
+                ith_voice_out, ith_hidden = self.voice_net(voice_x, ith_hidden)
+                # ith_voice_out, ith_hidden = self.lstm(voice_x, ith_hidden)
                 output += torch.bmm(span_mat, ith_voice_out)
         return output, voice_hidden
 
@@ -579,14 +579,14 @@ class HAN(nn.Module):
         return (h0, h0)
 
     def init_beat_tempo_forward(self, batch_size):
-        h0 = torch.zeros(1*2, batch_size, self.beat_hidden_size).to(device)
+        h0 = torch.zeros(1, batch_size, self.beat_hidden_size).to(device)
         return (h0, h0)
 
     def init_voice_layer(self, batch_size, max_voice):
         layers = []
         for i in range(max_voice):
             # h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(device)
-            h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(device)
+            h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.hidden_size).to(device)
             layers.append((h0, h0))
         return layers
 
