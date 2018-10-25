@@ -2119,7 +2119,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
     xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
 
     measure_positions = extract_measure_position(xml_object)
-    features = extract_score_features(xml_notes, measure_positions, beats, start_tempo, vel_standard)
+    features = extract_score_features(xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
     features = make_index_continuous(features, score=True)
 
     for i in range(len(stds[0])):

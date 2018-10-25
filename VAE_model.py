@@ -150,8 +150,7 @@ class HAN(nn.Module):
         self.encoder_size_1 = 16
         self.encoder_size_2 = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
-        self.perform_encoder_input_size = self.hidden_size * 2 + self.beat_hidden_size * 2 +\
-                                          self.measure_hidden_size * 2 + self.voice_hidden_size * 2 + self.output_size
+        self.perform_encoder_input_size = self.hidden_size * 2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -241,8 +240,7 @@ class HAN(nn.Module):
             self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
         beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-        print(x[0,:,0])
-        print(hidden_out[0,:,0])
+
         # encode score style
         # score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
         # score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
@@ -251,7 +249,7 @@ class HAN(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
+            perform_concat = torch.cat((hidden_out, y), 2)
             perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
             perform_z, perform_mu, perform_var = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
 
@@ -746,7 +744,7 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-def perform_xml(input, input_y, note_locations, tempo_stats, start_tempo='0', valid_y = None, initial_z = False):
+def perform_xml(input, input_y, note_locations, tempo_stats, valid_y = None, initial_z = False):
     # time1= time.time()
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
@@ -866,9 +864,9 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     prime_outputs, perform_mu, perform_var \
         = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
 
-    MSE_Loss = criterion(prime_outputs, prime_batch_y)
-    perform_KLD =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-    prime_loss = MSE_Loss + perform_KLD
+    mse_loss = criterion(prime_outputs, prime_batch_y)
+    perform_kld =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+    prime_loss = mse_loss + perform_kld
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -1027,7 +1025,7 @@ if args.sessMode == 'train':
 
             # batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
             #
-            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=test_y[0][0], valid_y=batch_y)
+            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, valid_y=batch_y)
             # outputs = outputs.view(1,-1,NET_PARAM.output_size)
             # outputs = torch.Tensor(outputs).view((1, -1, output_size)).to(device)
             # if args.trainTrill:
@@ -1131,7 +1129,7 @@ elif args.sessMode=='test':
     if args.startTempo == 0:
         start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
         start_tempo = math.log(start_tempo, 10)
-        start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
+        # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
     else:
         start_tempo = math.log(args.startTempo, 10)
     start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
@@ -1154,7 +1152,7 @@ elif args.sessMode=='test':
 
     initial_z = [0] * NET_PARAM.encoder.size
 
-    prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=start_tempo_norm, initial_z=initial_z)
+    prediction = perform_xml(batch_x, input_y, note_locations, tempo_stats, initial_z=initial_z)
 
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
@@ -1297,7 +1295,7 @@ elif args.sessMode=='plot':
 
             input_y[0] = batch_y[0][0]
             input_y = input_y.view((1, 1, TOTAL_OUTPUT)).to(device)
-            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, start_tempo=batch_y[0][0])
+            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats)
             outputs = torch.Tensor(outputs).view((1, -1, TOTAL_OUTPUT))
 
             outputs = outputs.cpu().detach().numpy()
