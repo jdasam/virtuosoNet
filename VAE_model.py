@@ -88,9 +88,9 @@ num_second_param = 0
 num_trill_param = 5
 num_voice_feed_param = 2 # velocity, onset deviation
 num_tempo_info = 3
-num_dynamic_info = 10
-is_trill_index_score = -7
-is_trill_index_concated = -7 - (num_prime_param + num_second_param)
+num_dynamic_info = 9 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
+is_trill_index_score = -9
+is_trill_index_concated = -9 - (num_prime_param + num_second_param)
 NET_PARAM.output_size = num_prime_param
 
 
@@ -110,7 +110,8 @@ torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
-                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.input
+                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.input + \
+                        num_tempo_info + num_dynamic_info
 # if args.trainTrill is False:
 #     NET_PARAM.final.input -= num_trill_param
 if args.voiceNet:
@@ -184,7 +185,7 @@ class HAN(nn.Module):
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1 + 2 + self.encoder_input_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 1 + 2 + 3 + self.encoder_input_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Sequential(
             # nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
             # nn.ReLU(),
@@ -240,7 +241,8 @@ class HAN(nn.Module):
             self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
         beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-
+        print(x[0,:,0])
+        print(hidden_out[0,:,0])
         # encode score style
         # score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
         # score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
@@ -249,7 +251,7 @@ class HAN(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((hidden_out,beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
+            perform_concat = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
             perform_style_reduced = self.perf_score_combine_rnn(perform_concat)
             perform_z, perform_mu, perform_var = self.encode_with_net(perform_style_reduced[0][:,-1,:], self.performance_encoder_mean, self.performance_encoder_var)
 
@@ -258,9 +260,9 @@ class HAN(nn.Module):
         perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
-        if not step_by_step:
-            beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
-            measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
+        # if not step_by_step:
+        #     beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
+        #     measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
             # print('note hidden time: ', time2-time1, ', attention time: ',time3-time2)
 
@@ -269,141 +271,154 @@ class HAN(nn.Module):
 
         num_notes = x.size(1)
         num_beats = beat_hidden_out.size(1)
-        if step_by_step:
-            qpm_primo = x[:, 0, qpm_primo_index]
-            tempo_primo = x[0, 0, tempo_primo_index:]
-            mean_vel = x[0, 0, mean_vel_start_index:mean_vel_start_index+4]
-            max_voice = max(voice_numbers[start_index:start_index+num_notes])
-            if args.beatTempo:
-                vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
-            else:
-                vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
-            # if args.beatTempo:
-            #     prev_tempo = y[:,0,QPM_INDEX]
-            #     tempos = torch.zeros(1, num_beats, 1).to(device)
-            #     is_valid = y.size(1) > 1
-            #     if is_valid:
-            #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
-            #     for i in range(num_beats):
-            #         if is_valid and i < 10:
-            #             prev_tempo = valid_tempos[:,i,QPM_INDEX]
-            #         else:
-            #             note_index = beat_numbers.index(i)
-            #             beat_tempo_vec = x[0, note_index, TEMPO_IDX:TEMPO_IDX + 3]
-            #             beat_tempo_cat = torch.cat((beat_hidden_out[0,i,:], prev_tempo,
-            #                                     qpm_primo, tempo_primo, beat_tempo_vec)).view(1,1,-1)
-            #             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-            #             tmp_tempos = self.beat_tempo_fc(beat_forward)
-            #             prev_tempo = tmp_tempos.view(1)
-            #         tempos[0, i, 0] = prev_tempo
-            #     tempos_spanned = self.span_beat_to_note_num(tempos,beat_numbers,num_notes ,0)
-            prev_out = y[0, 0, :]
-            prev_tempo = y[:, 0, QPM_INDEX]
-            prev_beat = -1
-            prev_beat_end = 0
-            out_total = torch.zeros(num_notes,self.output_size).to(device)
-            result_nodes = torch.zeros(num_beats, self.output_size-1).to(device)
-            prev_out_list = []
-            # if args.beatTempo:
-            #     prev_out[0] = tempos_spanned[0, 0, 0]
-            is_valid = y.size(1) > 1
-            if is_valid:
-                valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-            for i in range(num_notes):
-                current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
-                if current_beat > prev_beat:
-                    if i - prev_beat_end > 0:
-                        corresp_result = torch.stack(prev_out_list)
-                        result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
-                        prev_out_list = []
-                    else:
-                        result_node = y[0, 0, 1:]
-                    result_nodes[current_beat, :] = result_node
-                    if is_valid and random.random() > rand_threshold:
-                        tmp_tempos = valid_tempos[:,current_beat,QPM_INDEX]
-                    else:
-                        tempos = torch.zeros(1, num_beats, 1).to(device)
-                        beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
-                        beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
-                                                qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
-                        beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-                        tmp_tempos = self.beat_tempo_fc(beat_forward)
-                    prev_beat_end = i
-                    prev_tempo = tmp_tempos.view(1)
-                    prev_beat = current_beat
+        # if step_by_step:
+        #     qpm_primo = x[:, 0, qpm_primo_index]
+        #     tempo_primo = x[0, 0, tempo_primo_index:]
+        #     mean_vel = x[0, 0, mean_vel_start_index:mean_vel_start_index+4]
+        #     max_voice = max(voice_numbers[start_index:start_index+num_notes])
+        #     if args.beatTempo:
+        #         vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
+        #     else:
+        #         vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
+        #     # if args.beatTempo:
+        #     #     prev_tempo = y[:,0,QPM_INDEX]
+        #     #     tempos = torch.zeros(1, num_beats, 1).to(device)
+        #     #     is_valid = y.size(1) > 1
+        #     #     if is_valid:
+        #     #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
+        #     #     for i in range(num_beats):
+        #     #         if is_valid and i < 10:
+        #     #             prev_tempo = valid_tempos[:,i,QPM_INDEX]
+        #     #         else:
+        #     #             note_index = beat_numbers.index(i)
+        #     #             beat_tempo_vec = x[0, note_index, TEMPO_IDX:TEMPO_IDX + 3]
+        #     #             beat_tempo_cat = torch.cat((beat_hidden_out[0,i,:], prev_tempo,
+        #     #                                     qpm_primo, tempo_primo, beat_tempo_vec)).view(1,1,-1)
+        #     #             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+        #     #             tmp_tempos = self.beat_tempo_fc(beat_forward)
+        #     #             prev_tempo = tmp_tempos.view(1)
+        #     #         tempos[0, i, 0] = prev_tempo
+        #     #     tempos_spanned = self.span_beat_to_note_num(tempos,beat_numbers,num_notes ,0)
+        #     prev_out = y[0, 0, :]
+        #     prev_tempo = y[:, 0, QPM_INDEX]
+        #     prev_beat = -1
+        #     prev_beat_end = 0
+        #     out_total = torch.zeros(num_notes,self.output_size).to(device)
+        #     result_nodes = torch.zeros(num_beats, self.output_size-1).to(device)
+        #     prev_out_list = []
+        #     # if args.beatTempo:
+        #     #     prev_out[0] = tempos_spanned[0, 0, 0]
+        #     is_valid = y.size(1) > 1
+        #     if is_valid:
+        #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+        #     for i in range(num_notes):
+        #         current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
+        #         if current_beat > prev_beat:
+        #             if i - prev_beat_end > 0:
+        #                 corresp_result = torch.stack(prev_out_list)
+        #                 result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
+        #                 prev_out_list = []
+        #             else:
+        #                 result_node = y[0, 0, 1:]
+        #             result_nodes[current_beat, :] = result_node
+        #             if is_valid and random.random() > rand_threshold:
+        #                 tmp_tempos = valid_tempos[:,current_beat,QPM_INDEX]
+        #             else:
+        #                 tempos = torch.zeros(1, num_beats, 1).to(device)
+        #                 beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
+        #                 beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
+        #                                         qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
+        #                 beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+        #                 tmp_tempos = self.beat_tempo_fc(beat_forward)
+        #             prev_beat_end = i
+        #             prev_tempo = tmp_tempos.view(1)
+        #             prev_beat = current_beat
+        #
+        #         tmp_voice = voice_numbers[start_index + i] - 1
+        #         if is_valid and i > 0 and random.random() > rand_threshold:
+        #             if args.beatTempo:
+        #                 out = y[0,i-1,1:]
+        #             else:
+        #                 out = y[0,i-1,:]
+        #         else:
+        #             corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
+        #             corresp_measure = measure_numbers[start_index + i] - measure_numbers[start_index]
+        #             prev_voice_vel = vel_by_voice[tmp_voice]
+        #             dynamic_info = torch.cat((x[:,i,mean_vel_start_index+4], x[0, i,vel_vec_start_index:vel_vec_start_index+5] ))
+        #             if args.voiceNet:
+        #                 out_combined = torch.cat(
+        #                     (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
+        #                      measure_hidden_out[0,corresp_measure,:], voice_out[0,i,:],
+        #                      prev_out, prev_voice_vel, mean_vel, dynamic_info, qpm_primo, tempo_primo)).view(1,1,-1)
+        #             else:
+        #                 out_combined = torch.cat(
+        #                     (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
+        #                      measure_hidden_out[0,corresp_measure,:], prev_out,prev_voice_vel, mean_vel, dynamic_info,
+        #                      qpm_primo, tempo_primo)).view(1,1,-1)
+        #
+        #             out, final_hidden = self.output_lstm(out_combined, final_hidden)
+        #             out = out.view(-1)
+        #             out = self.fc(out)
+        #
+        #
+        #         if args.beatTempo:
+        #             prev_out_list.append(out)
+        #             out = torch.cat((prev_tempo, out))
+        #
+        #         prev_out = out
+        #         vel_by_voice[tmp_voice] = out[1:1+num_voice_feed_param].view(-1)
+        #         out_total[i,:] = out
+        #
+        #     out_total = out_total.view(batch_size, num_notes, -1)
+        #     return out_total
+        #
+        # else:
+        qpm_primo = x[:, 0, qpm_primo_index].view(1, 1, 1)
+        tempo_primo = x[:, 0, tempo_primo_index:].view(1, 1, -1)
+        if args.beatTempo:
+            # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+            beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
+            beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
+            beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
+            if 'beat_hidden_out' not in locals():
+                beat_hidden_out = beat_hidden_spanned
+            num_beats = beat_hidden_out.size(1)
+            # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
+            perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
+            beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector, perform_z_beat_spanned), 2)
+            beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+            tempos = self.beat_tempo_fc(beat_forward)
+            num_notes = hidden_out.size(1)
+            tempos_spanned = self.span_beat_to_note_num(tempos, beat_numbers, num_notes, start_index)
+            # y[0, :, 0] = tempos_spanned.view(-1)
 
-                tmp_voice = voice_numbers[start_index + i] - 1
-                if is_valid and i > 0 and random.random() > rand_threshold:
-                    if args.beatTempo:
-                        out = y[0,i-1,1:]
-                    else:
-                        out = y[0,i-1,:]
-                else:
-                    corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
-                    corresp_measure = measure_numbers[start_index + i] - measure_numbers[start_index]
-                    prev_voice_vel = vel_by_voice[tmp_voice]
-                    dynamic_info = torch.cat((x[:,i,mean_vel_start_index+4], x[0, i,vel_vec_start_index:vel_vec_start_index+5] ))
-                    if args.voiceNet:
-                        out_combined = torch.cat(
-                            (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-                             measure_hidden_out[0,corresp_measure,:], voice_out[0,i,:],
-                             prev_out, prev_voice_vel, mean_vel, dynamic_info, qpm_primo, tempo_primo)).view(1,1,-1)
-                    else:
-                        out_combined = torch.cat(
-                            (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-                             measure_hidden_out[0,corresp_measure,:], prev_out,prev_voice_vel, mean_vel, dynamic_info,
-                             qpm_primo, tempo_primo)).view(1,1,-1)
 
-                    out, final_hidden = self.output_lstm(out_combined, final_hidden)
-                    out = out.view(-1)
-                    out = self.fc(out)
+        qpm_primo = x[:,:,qpm_primo_index].view(1,-1,1)
+        tempo_primo = x[:,:,tempo_primo_index:].view(1,-1,2)
+        mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
+        dynamic_info = torch.cat((x[:, :, mean_vel_start_index + 4].view(1,-1,1),
+                                  x[:, :, vel_vec_start_index:vel_vec_start_index + 4]), 2).view(1,-1,5)
 
-
-                if args.beatTempo:
-                    prev_out_list.append(out)
-                    out = torch.cat((prev_tempo, out))
-
-                prev_out = out
-                vel_by_voice[tmp_voice] = out[1:1+num_voice_feed_param].view(-1)
-                out_total[i,:] = out
-
-            out_total = out_total.view(batch_size, num_notes, -1)
-            return out_total
-
+        if args.voiceNet:
+            out_combined = torch.cat((
+                hidden_out, beat_hidden_spanned, measure_hidden_spanned,
+                qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
+                voice_out, perform_z_batched), 2)
         else:
-            qpm_primo = x[:, 0, qpm_primo_index].view(1, 1, 1)
-            tempo_primo = x[:, 0, tempo_primo_index:].view(1, 1, -1)
-            if args.beatTempo:
-                # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-                beat_qpm_primo = qpm_primo[0,0,0].repeat((1,num_beats,1))
-                beat_tempo_primo = tempo_primo[0,0,:].repeat((1,num_beats,1))
-                if 'beat_hidden_out' not in locals():
-                    beat_hidden_out = beat_hidden_spanned
-                num_beats = beat_hidden_out.size(1)
-                # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
-                perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
-                beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, perform_z_beat_spanned), 2)
-                beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-                tempos = self.beat_tempo_fc(beat_forward)
-                num_notes = hidden_out.size(1)
-                tempos_spanned = self.span_beat_to_note_num(tempos, beat_numbers, num_notes, start_index)
-                # y[0, :, 0] = tempos_spanned.view(-1)
+            out_combined = torch.cat((
+                hidden_out, beat_hidden_spanned, measure_hidden_spanned,
+                qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
+                perform_z_batched), 2)
 
+        out, final_hidden = self.output_lstm(out_combined, final_hidden)
 
-            if args.voiceNet:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, perform_z_batched), 2)
-            else:
-                out_combined = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, perform_z_batched), 2)
+        out = self.fc(out)
+        # out = torch.cat((out, trill_out), 2)
 
-            out, final_hidden = self.output_lstm(out_combined, final_hidden)
+        if args.beatTempo:
+            out = torch.cat((tempos_spanned, out), 2)
 
-            out = self.fc(out)
-            # out = torch.cat((out, trill_out), 2)
-
-            if args.beatTempo:
-                out = torch.cat((tempos_spanned, out), 2)
-
-            return out, perform_mu, perform_var
+        return out, perform_mu, perform_var
 
     def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
@@ -531,12 +546,15 @@ class HAN(nn.Module):
             if cur_beat > prev_beat:
                 if index is None:
                     beat_tempos.append(y[0,i,:])
+                if index == TEMPO_IDX:
+                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+3])
                 else:
                     beat_tempos.append(y[0,i,index])
                 prev_beat = cur_beat
         num_beats = len(beat_tempos)
         beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
         return beat_tempos
+
 
     def run_voice_net(self, batch_x, voice_hidden, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
