@@ -68,8 +68,9 @@ NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
-NET_PARAM.encoder.input = 32
-NET_PARAM.encoder.size = 8
+NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.measure.size + NET_PARAM.voice) * 2
+
+NET_PARAM.encoder.size = 32
 
 learning_rate = 0.001
 time_steps = 200
@@ -147,90 +148,35 @@ class HAN(nn.Module):
         self.summarize_layers = network_parameters.sum.layer
         self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
-        self.encoder_size_1 = 16
-        self.encoder_size_2 = network_parameters.encoder.size
+        self.encoder_size = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
-        self.perform_encoder_input_size = self.hidden_size * 2 + self.output_size
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        # if args.trainTrill:
-        #     self.output_lstm = nn.LSTM((self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) *2 + num_output + num_tempo_info,
-        #                                self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        # else:
-        #     self.output_lstm = nn.LSTM(
-        #         (self.hidden_size + self.beat_hidden_size + self.measure_hidden_size) * 2 + num_output - num_trill_param + num_tempo_info,
-        #         self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
         self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
         self.measure_hidden = nn.LSTM(self.beat_hidden_size*2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
-        self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
+        # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
+
+        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3 + self.encoder_size * 2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_fc = nn.Linear(self.beat_hidden_size,  1)
+
+        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         if args.beatTempo:
             # self.fc = nn.Linear(self.final_hidden_size * 2, self.output_size -1)
-            self.fc = nn.Sequential(
-                # nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
-                # nn.ReLU(),
-                # nn.Dropout(DROP_OUT),
-                #
-                # nn.Linear(self.final_hidden_size * 2, self.final_hidden_size * 2),
-                # nn.ReLU(),
-                # nn.Dropout(DROP_OUT),
-
-                nn.Linear(self.final_hidden_size, self.output_size - 1)
-            )
+            self.fc = nn.Linear(self.final_hidden_size, self.output_size - 1)
         else:
             self.fc = nn.Linear(self.final_hidden_size , self.output_size)
 
+        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=2, batch_first=True, bidirectional=False)
+        self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
+        self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
+
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3 + self.encoder_input_size * 2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.beat_tempo_fc = nn.Sequential(
-            # nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
-            # nn.ReLU(),
-            # nn.Dropout(DROP_OUT),
-            #
-            # nn.Linear(self.beat_hidden_size * 2, self.beat_hidden_size * 2),
-            # nn.ReLU(),
-            # nn.Dropout(DROP_OUT),
-            nn.Linear(self.beat_hidden_size,  1)
-        )
 
-        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.score_reducing_rnn = nn.LSTM(self.measure_hidden_size*2, self.encoder_input_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.perf_score_combine_rnn = nn.LSTM(self.perform_encoder_input_size, self.encoder_input_size,  num_layers=1, batch_first=True, bidirectional=False)
-        self.score_encoder_mean = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_size_2)
-        )
-        self.score_encoder_var = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_size_2)
-        )
-        self.score_decoder = nn.Sequential(
-            nn.Linear(self.encoder_size_2, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_input_size)
-        )
-        self.performance_encoder_mean = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_size_2)
-        )
-        self.performance_encoder_var = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_size_2)
-        )
-        self.performance_decoder = nn.Sequential(
-            nn.Linear(self.encoder_size_2, self.encoder_size_1),
-            nn.ReLU(),
-            nn.Linear(self.encoder_size_1, self.encoder_input_size)
-        )
-        self.perform_attention = nn.Linear(self.encoder_input_size, self.encoder_input_size)
-        # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
     def forward(self, x, y, note_locations, start_index, step_by_step = False, initial_z = False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
@@ -242,23 +188,19 @@ class HAN(nn.Module):
         beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
-        # encode score style
-        score_style_reduced = self.score_reducing_rnn(measure_hidden_out)
-        score_z, score_mu, score_var = self.encode_with_net(score_style_reduced[0][:,-1,:], self.score_encoder_mean, self.score_encoder_var)
         if initial_z:
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((hidden_out, y), 2)
-            perform_style_reduced, _ = self.perf_score_combine_rnn(perform_concat)
-            perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
-            perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
+            perform_concat = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
+            perform_style_encoded, _ = self.performance_encoder(perform_concat)
+            # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
+            # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
+            perform_style_vector = perform_style_encoded[:, -1, :]  # need check
             perform_z, perform_mu, perform_var = \
-                self.encode_with_net(perform_style_node, self.performance_encoder_mean, self.performance_encoder_var)
+                self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
 
-        score_z = self.score_decoder(score_z)
-        score_z_batched = score_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
@@ -273,110 +215,9 @@ class HAN(nn.Module):
 
         num_notes = x.size(1)
         num_beats = beat_hidden_out.size(1)
-        # if step_by_step:
-        #     qpm_primo = x[:, 0, qpm_primo_index]
-        #     tempo_primo = x[0, 0, tempo_primo_index:]
-        #     mean_vel = x[0, 0, mean_vel_start_index:mean_vel_start_index+4]
-        #     max_voice = max(voice_numbers[start_index:start_index+num_notes])
-        #     if args.beatTempo:
-        #         vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
-        #     else:
-        #         vel_by_voice = [torch.zeros(num_voice_feed_param).to(device)] * max_voice
-        #     # if args.beatTempo:
-        #     #     prev_tempo = y[:,0,QPM_INDEX]
-        #     #     tempos = torch.zeros(1, num_beats, 1).to(device)
-        #     #     is_valid = y.size(1) > 1
-        #     #     if is_valid:
-        #     #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
-        #     #     for i in range(num_beats):
-        #     #         if is_valid and i < 10:
-        #     #             prev_tempo = valid_tempos[:,i,QPM_INDEX]
-        #     #         else:
-        #     #             note_index = beat_numbers.index(i)
-        #     #             beat_tempo_vec = x[0, note_index, TEMPO_IDX:TEMPO_IDX + 3]
-        #     #             beat_tempo_cat = torch.cat((beat_hidden_out[0,i,:], prev_tempo,
-        #     #                                     qpm_primo, tempo_primo, beat_tempo_vec)).view(1,1,-1)
-        #     #             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-        #     #             tmp_tempos = self.beat_tempo_fc(beat_forward)
-        #     #             prev_tempo = tmp_tempos.view(1)
-        #     #         tempos[0, i, 0] = prev_tempo
-        #     #     tempos_spanned = self.span_beat_to_note_num(tempos,beat_numbers,num_notes ,0)
-        #     prev_out = y[0, 0, :]
-        #     prev_tempo = y[:, 0, QPM_INDEX]
-        #     prev_beat = -1
-        #     prev_beat_end = 0
-        #     out_total = torch.zeros(num_notes,self.output_size).to(device)
-        #     result_nodes = torch.zeros(num_beats, self.output_size-1).to(device)
-        #     prev_out_list = []
-        #     # if args.beatTempo:
-        #     #     prev_out[0] = tempos_spanned[0, 0, 0]
-        #     is_valid = y.size(1) > 1
-        #     if is_valid:
-        #         valid_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-        #     for i in range(num_notes):
-        #         current_beat = beat_numbers[start_index+ i] - beat_numbers[start_index]
-        #         if current_beat > prev_beat:
-        #             if i - prev_beat_end > 0:
-        #                 corresp_result = torch.stack(prev_out_list)
-        #                 result_node = self.sum_with_attention(corresp_result, self.tempo_attention)
-        #                 prev_out_list = []
-        #             else:
-        #                 result_node = y[0, 0, 1:]
-        #             result_nodes[current_beat, :] = result_node
-        #             if is_valid and random.random() > rand_threshold:
-        #                 tmp_tempos = valid_tempos[:,current_beat,QPM_INDEX]
-        #             else:
-        #                 tempos = torch.zeros(1, num_beats, 1).to(device)
-        #                 beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
-        #                 beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
-        #                                         qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
-        #                 beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-        #                 tmp_tempos = self.beat_tempo_fc(beat_forward)
-        #             prev_beat_end = i
-        #             prev_tempo = tmp_tempos.view(1)
-        #             prev_beat = current_beat
-        #
-        #         tmp_voice = voice_numbers[start_index + i] - 1
-        #         if is_valid and i > 0 and random.random() > rand_threshold:
-        #             if args.beatTempo:
-        #                 out = y[0,i-1,1:]
-        #             else:
-        #                 out = y[0,i-1,:]
-        #         else:
-        #             corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
-        #             corresp_measure = measure_numbers[start_index + i] - measure_numbers[start_index]
-        #             prev_voice_vel = vel_by_voice[tmp_voice]
-        #             dynamic_info = torch.cat((x[:,i,mean_vel_start_index+4], x[0, i,vel_vec_start_index:vel_vec_start_index+5] ))
-        #             if args.voiceNet:
-        #                 out_combined = torch.cat(
-        #                     (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-        #                      measure_hidden_out[0,corresp_measure,:], voice_out[0,i,:],
-        #                      prev_out, prev_voice_vel, mean_vel, dynamic_info, qpm_primo, tempo_primo)).view(1,1,-1)
-        #             else:
-        #                 out_combined = torch.cat(
-        #                     (hidden_out[0,i,:], beat_hidden_out[0,corresp_beat,:],
-        #                      measure_hidden_out[0,corresp_measure,:], prev_out,prev_voice_vel, mean_vel, dynamic_info,
-        #                      qpm_primo, tempo_primo)).view(1,1,-1)
-        #
-        #             out, final_hidden = self.output_lstm(out_combined, final_hidden)
-        #             out = out.view(-1)
-        #             out = self.fc(out)
-        #
-        #
-        #         if args.beatTempo:
-        #             prev_out_list.append(out)
-        #             out = torch.cat((prev_tempo, out))
-        #
-        #         prev_out = out
-        #         vel_by_voice[tmp_voice] = out[1:1+num_voice_feed_param].view(-1)
-        #         out_total[i,:] = out
-        #
-        #     out_total = out_total.view(batch_size, num_notes, -1)
-        #     return out_total
-        #
-        # else:
-        # qpm_primo = x[:, 0, qpm_primo_index].view(1, 1, 1)
-        # tempo_primo = x[:, 0, tempo_primo_index:].view(1, 1, -1)
+
+        # non autoregressive
+
         if args.beatTempo:
             # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
             # beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
@@ -385,9 +226,9 @@ class HAN(nn.Module):
             if 'beat_hidden_out' not in locals():
                 beat_hidden_out = beat_hidden_spanned
             num_beats = beat_hidden_out.size(1)
-            score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
+            # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
             perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
-            beat_tempo_cat = torch.cat((beat_hidden_out, beat_tempo_vector, score_z_beat_spanned, perform_z_beat_spanned), 2)
+            beat_tempo_cat = torch.cat((beat_hidden_out, beat_tempo_vector, perform_z_beat_spanned), 2)
             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
             tempos = self.beat_tempo_fc(beat_forward)
             num_notes = hidden_out.size(1)
@@ -405,12 +246,12 @@ class HAN(nn.Module):
             out_combined = torch.cat((
                 hidden_out, beat_hidden_spanned, measure_hidden_spanned,
                 # qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
-                voice_out, score_z_batched, perform_z_batched), 2)
+                voice_out, perform_z_batched), 2)
         else:
             out_combined = torch.cat((
                 hidden_out, beat_hidden_spanned, measure_hidden_spanned,
                 # qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
-                score_z_batched, perform_z_batched), 2)
+                perform_z_batched), 2)
 
         out, final_hidden = self.output_lstm(out_combined, final_hidden)
 
@@ -420,7 +261,7 @@ class HAN(nn.Module):
         if args.beatTempo:
             out = torch.cat((tempos_spanned, out), 2)
 
-        return out, score_mu, score_var, perform_mu, perform_var
+        return out, perform_mu, perform_var
 
     def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
@@ -865,13 +706,12 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     prime_batch_y = batch_y[:,:,0:num_prime_param]
 
     model_train = model.train()
-    prime_outputs, score_mu, score_var, perform_mu, perform_var \
+    prime_outputs, perform_mu, perform_var \
         = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
 
     mse_loss = criterion(prime_outputs, prime_batch_y)
-    score_kld =  -0.5 * torch.sum(1 + score_var - score_mu.pow(2) - score_var.exp())
     perform_kld =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-    prime_loss = mse_loss + score_kld + perform_kld
+    prime_loss = mse_loss + perform_kld
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
