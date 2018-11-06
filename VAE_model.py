@@ -29,8 +29,8 @@ parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start t
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
-parser.add_argument("-vel", "--velocity", type=str, default='50,65' ,help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=0 ,help="cuda device number")
+parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
+parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='non_regressive_vae', help="code name for saving the model")
 
 
@@ -72,6 +72,7 @@ NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
 
 NET_PARAM.encoder.size = 64
+NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
 time_steps = 500
@@ -149,11 +150,10 @@ class HAN_VAE(nn.Module):
         self.final_hidden_size = network_parameters.final.size
         self.num_voice_layers = network_parameters.voice.layer
         self.voice_hidden_size = network_parameters.voice.size
-        self.summarize_layers = network_parameters.sum.layer
-        self.summarize_size = network_parameters.sum.size
         self.final_input = network_parameters.final.input
         self.encoder_size = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
+        self.encoder_layer_num = network_parameters.encoder.layer
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
@@ -174,15 +174,14 @@ class HAN_VAE(nn.Module):
         else:
             self.fc = nn.Linear(self.final_hidden_size , self.output_size)
 
-        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=2, batch_first=True, bidirectional=False)
+        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
 
-
-    def forward(self, x, y, note_locations, start_index, step_by_step = False, initial_z = False, rand_threshold=0.7):
+    def forward(self, x, y, note_locations, start_index, step_by_step = False, initial_z=False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
