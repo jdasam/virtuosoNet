@@ -31,6 +31,8 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65' ,help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0 ,help="cuda device number")
+parser.add_argument("-code", "--modelCode", type=str, default='non_regressive_vae', help="code name for saving the model")
+
 
 args = parser.parse_args()
 
@@ -68,12 +70,11 @@ NET_PARAM.voice.layer = 2
 NET_PARAM.voice.size = 64
 NET_PARAM.sum.layer = 2
 NET_PARAM.sum.size = 64
-NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.measure.size + NET_PARAM.voice) * 2
 
-NET_PARAM.encoder.size = 32
+NET_PARAM.encoder.size = 64
 
-learning_rate = 0.001
-time_steps = 200
+learning_rate = 0.0003
+time_steps = 500
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
@@ -84,7 +85,7 @@ NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
 DROP_OUT = 0.5
 
-num_prime_param =11
+num_prime_param = 11
 num_second_param = 0
 num_trill_param = 5
 num_voice_feed_param = 0 # velocity, onset deviation
@@ -111,8 +112,11 @@ torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
-                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.input * 2 + \
+                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.size + \
                         num_tempo_info + num_dynamic_info
+NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                           NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                          + num_prime_param
 # if args.trainTrill is False:
 #     NET_PARAM.final.input -= num_trill_param
 if args.voiceNet:
@@ -131,9 +135,9 @@ TrillNET_Param.note.layer = 3
 
 ### Model
 
-class HAN(nn.Module):
+class HAN_VAE(nn.Module):
     def __init__(self, network_parameters, num_trill_param=5):
-        super(HAN, self).__init__()
+        super(HAN_VAE, self).__init__()
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
         self.num_layers = network_parameters.note.layer
@@ -160,7 +164,7 @@ class HAN(nn.Module):
 
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
 
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3 + self.encoder_size * 2, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size,  1)
 
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -201,7 +205,7 @@ class HAN(nn.Module):
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
 
-        perform_z = self.performance_decoder(perform_z)
+        # perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
         # if not step_by_step:
@@ -451,9 +455,9 @@ class HAN(nn.Module):
         return layers
 
 
-class ExtraHAN(HAN):
+class ExtraHANVAE(HAN_VAE):
     def __init__(self, network_parameters):
-        super(ExtraHAN, self).__init__(network_parameters)
+        super(ExtraHANVAE, self).__init__(network_parameters)
         self.fc = nn.Linear(self.final_hidden_size, self.output_size)
 
     def forward(self, x, y, note_locations, start_index, step_by_step=False, rand_threshold = 0.7):
@@ -546,7 +550,7 @@ def vae_loss(recon_x, x, mu, logvar):
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-model = HAN(NET_PARAM).to(device)
+model = HAN_VAE(NET_PARAM).to(device)
 # second_model = ExtraHAN(NET_PARAM).to(device)
 trill_model =TrillRNN(TrillNET_Param).to(device)
 
@@ -556,12 +560,14 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
-def save_checkpoint(state, is_best, filename='_vae_checkpoint', model_name='prime'):
-    save_name = model_name+ '_' + filename  + '.pth.tar'
+
+def save_checkpoint(state, is_best, filename='vae', model_name='prime'):
+    save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
     torch.save(state, save_name)
     if is_best:
-        best_name = model_name + '_vae_best.pth.tar'
+        best_name = model_name + '_' + filename + '_best.pth.tar'
         shutil.copyfile(save_name, best_name)
+
 
 def key_augmentation(data_x, key_change):
     # key_change = 0
@@ -594,7 +600,7 @@ def perform_xml(input, input_y, note_locations, tempo_stats, valid_y = None, ini
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs, _, _, _, _ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+        prime_outputs, _, _ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
