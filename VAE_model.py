@@ -560,7 +560,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
 
-def save_checkpoint(state, is_best, filename='vae', model_name='prime'):
+def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
     save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
     torch.save(state, save_name)
     if is_best:
