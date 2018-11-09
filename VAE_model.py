@@ -24,14 +24,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="tempo_primo_test", help="dat file name")
-parser.add_argument("--resume", type=str, default="vae_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="non_reg_tempo_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='non_regressive_vae', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='non_reg_tempo', help="code name for saving the model")
 
 
 args = parser.parse_args()
