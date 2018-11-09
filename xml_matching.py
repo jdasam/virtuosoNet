@@ -1859,24 +1859,26 @@ def get_dynamics(directions):
     relative_dynamics = extract_directions_by_keywords(directions, relative_dynamics_keywords)
     abs_dynamic_dummy = []
     for abs in absolute_dynamics:
+        if abs.type['content'] == 'fp':
+            abs.type['content'] = 'f sfz'
+            abs2 = copy.copy(abs)
+            abs2.xml_position += 0.1
+            abs2.type = copy.copy(abs.type)
+            abs2.type['content'] = 'p'
+            abs_dynamic_dummy.append(abs2)
+        elif abs.type['content'] == 'sfp':
+            abs.type['content'] = 'sf'
+            abs2 = copy.copy(abs)
+            abs2.xml_position += 0.1
+            abs2.type = copy.copy(abs.type)
+            abs2.type['content'] = 'p'
+            abs_dynamic_dummy.append(abs2)
+
         if abs.type['content'] in ['sf', 'fz', 'sfz', 'sffz', 'rf']:
             relative_dynamics.append(abs)
         else:
             abs_dynamic_dummy.append(abs)
-            if abs.type['content'] == 'fp':
-                abs.type['content'] = 'f sfz'
-                abs2 = copy.copy(abs)
-                abs2.xml_position += 0.1
-                abs2.type = copy.copy(abs.type)
-                abs2.type['content'] = 'p'
-                abs_dynamic_dummy.append(abs2)
-            elif abs.type['content'] == 'sfp':
-                abs.type['content'] = 'sf'
-                abs2 = copy.copy(abs)
-                abs2.xml_position += 0.1
-                abs2.type = copy.copy(abs.type)
-                abs2.type['content'] = 'p'
-                abs_dynamic_dummy.append(abs2)
+
 
     absolute_dynamics = abs_dynamic_dummy
 
