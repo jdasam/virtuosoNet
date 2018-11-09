@@ -186,33 +186,37 @@ def match_xml_midi_perform(xml_notes, midi_notes, perform_notes, corresp):
 
 
 def extract_notes(xml_Doc, melody_only = False, grace_note = False):
-    parts = xml_Doc.parts[0]
-    notes =[]
+    # parts = xml_Doc.parts[0]
+    notes = []
     previous_grace_notes = []
     rests = []
-    measure_number = 1
-    for measure in parts.measures:
-        for note in measure.notes:
-            note.measure_number = measure_number
-            if melody_only:
-                if note.voice==1:
-                    notes, previous_grace_notes, rests= check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
-            else:
-                notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
+    instrument_index = 0
+    for part in xml_Doc.parts:
+        measure_number = 1
+        for measure in part.measures:
+            for note in measure.notes:
+                note.measure_number = measure_number
+                note.voice += instrument_index * 10
+                if melody_only:
+                    if note.voice == 1:
+                        notes, previous_grace_notes, rests= check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
+                else:
+                    notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
 
-        measure_number += 1
-    notes = apply_after_grace_note_to_chord_notes(notes)
-    if melody_only:
-        notes = delete_chord_notes_for_melody(notes)
-    notes = apply_tied_notes(notes)
-    notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.grace_order, -x.pitch[1]))
-    notes = check_overlapped_notes(notes)
-    notes = apply_rest_to_note(notes, rests)
-    notes = omit_trill_notes(notes)
-    notes = extract_and_apply_slurs(notes)
-    notes = rearrange_chord_index(notes)
+            measure_number += 1
+        notes = apply_after_grace_note_to_chord_notes(notes)
+        if melody_only:
+            notes = delete_chord_notes_for_melody(notes)
+        notes = apply_tied_notes(notes)
+        notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.grace_order, -x.pitch[1]))
+        notes = check_overlapped_notes(notes)
+        notes = apply_rest_to_note(notes, rests)
+        notes = omit_trill_notes(notes)
+        notes = extract_and_apply_slurs(notes)
+        notes = rearrange_chord_index(notes)
     # for note in notes:
     #     print(note.staff, note.voice, note.note_duration.xml_position, note.note_duration.duration, note.pitch[1], note.chord_index)
+        instrument_index += 1
 
     return notes
 
