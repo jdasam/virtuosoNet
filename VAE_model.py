@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="score_only_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="tempo_primo_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="vae_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -80,7 +80,7 @@ print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
 
-SCORE_INPUT = 40 #score information only
+SCORE_INPUT = 43 #score information only
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -92,17 +92,17 @@ num_trill_param = 5
 num_voice_feed_param = 0 # velocity, onset deviation
 num_tempo_info = 0
 num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
-is_trill_index_score = -7
-is_trill_index_concated = -7 - (num_prime_param + num_second_param)
+is_trill_index_score = -9
+is_trill_index_concated = -9 - (num_prime_param + num_second_param)
 NET_PARAM.output_size = num_prime_param
 
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 25
-PITCH_IDX = 12
-# qpm_primo_index = 5
-# tempo_primo_index = -2
+TEMPO_IDX = 26
+PITCH_IDX = 13
+qpm_primo_index = 5
+tempo_primo_index = -2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
 
@@ -164,7 +164,7 @@ class HAN_VAE(nn.Module):
 
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
 
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size,  1)
 
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -220,18 +220,19 @@ class HAN_VAE(nn.Module):
         num_beats = beat_hidden_out.size(1)
 
         # non autoregressive
-
+        qpm_primo = x[:,:,qpm_primo_index].view(1,-1,1)
+        tempo_primo = x[:,:,tempo_primo_index:].view(1,-1,2)
         if args.beatTempo:
             # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-            # beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
-            # beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
+            beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
+            beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
             beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
             if 'beat_hidden_out' not in locals():
                 beat_hidden_out = beat_hidden_spanned
             num_beats = beat_hidden_out.size(1)
             # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
             perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
-            beat_tempo_cat = torch.cat((beat_hidden_out, beat_tempo_vector, perform_z_beat_spanned), 2)
+            beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector, perform_z_beat_spanned), 2)
             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
             tempos = self.beat_tempo_fc(beat_forward)
             num_notes = hidden_out.size(1)
@@ -239,8 +240,7 @@ class HAN_VAE(nn.Module):
             # y[0, :, 0] = tempos_spanned.view(-1)
 
 
-        # qpm_primo = x[:,:,qpm_primo_index].view(1,-1,1)
-        # tempo_primo = x[:,:,tempo_primo_index:].view(1,-1,2)
+
         # mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
         # dynamic_info = torch.cat((x[:, :, mean_vel_start_index + 4].view(1,-1,1),
         #                           x[:, :, vel_vec_start_index:vel_vec_start_index + 4]), 2).view(1,-1,5)
