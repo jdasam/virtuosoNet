@@ -8,7 +8,7 @@ NUM_TRILL_PARAM = 5
 
 
 def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [7, 15, 15]
+    num_normalize_feature = [8, 15, 15]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -48,12 +48,19 @@ def save_features_as_vector(dataset, save_name):
                     #      feature.time_sig_den, feature.no_following_note]  # 17
                     #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     train_x.append(
-                        [feature.pitch_interval, feature.duration,
-                         feature.duration_ratio, feature.beat_position, feature.measure_length,
-                        feature.following_rest, feature.distance_from_abs_dynamic,
-                         feature.xml_position, feature.grace_order, feature.time_sig_num,
-                         feature.time_sig_den, feature.no_following_note]  # 12
-                        + feature.pitch + feature.tempo + feature.dynamic + feature.notation)
+                            [feature.pitch_interval, feature.duration,
+                             feature.duration_ratio, feature.beat_position, feature.measure_length,
+                             feature.qpm_primo, feature.following_rest,  feature.distance_from_abs_dynamic,
+                             feature.xml_position, feature.grace_order, feature.time_sig_num,
+                             feature.time_sig_den, feature.no_following_note]  # 17
+                            + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
+                    # train_x.append(
+                    #     [feature.pitch_interval, feature.duration,
+                    #      feature.duration_ratio, feature.beat_position, feature.measure_length,
+                    #     feature.following_rest, feature.distance_from_abs_dynamic,
+                    #      feature.xml_position, feature.grace_order, feature.time_sig_num,
+                    #      feature.time_sig_den, feature.no_following_note]  # 12
+                    #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation)
 
                     temp_y = [feature.qpm, feature.velocity, feature.xml_deviation,
                               feature.articulation, feature.pedal_refresh_time, feature.pedal_cut_time,
@@ -198,5 +205,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Chopin_Etude_op_10/5/')
-save_features_as_vector(chopin_pairs, 'score_only_test')
+chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, 'tempo_primo')
