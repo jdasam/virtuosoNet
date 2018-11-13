@@ -8,9 +8,9 @@ import pickle
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Chopin_Etude_op_10/3/'
+folderDir = 'chopin_cleaned/Chopin_Ballade/1/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'SunMeiting08'
+artistName = 'Ali01'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -120,8 +120,8 @@ features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perf
 # ioi_list = []
 # articul_list =[]
 # loudness_list = []
-for feat in features:
-    print(feat.dynamic, feat.tempo)
+# for feat in features:
+#     print(feat.dynamic, feat.tempo)
     # if not feat['IOI_ratio'] == None:
         # ioi_list.append(feat['IOI_ratio'])
         # articul_list.append(feat['articulation'])
