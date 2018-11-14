@@ -569,8 +569,6 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.trill_param = [0] * 5
             trill_length = None
 
-        if i == 74:
-            print(i)
         if not pairs[i] == []:
             feature.note_matched = 1
             feature.articulation = cal_articulation_with_tempo(pairs, i, tempo.qpm, trill_length)
@@ -1517,6 +1515,7 @@ def make_available_note_feature_list(notes, features, predicted):
             self.divisions = divisions
             self.pitch = pitch
             self.time_position = time_pos
+            self.is_arpeggiate = False
 
     if not predicted:
         available_notes = []
@@ -1530,6 +1529,8 @@ def make_available_note_feature_list(notes, features, predicted):
                 divisions = xml_note.state_fixed.divisions
                 qpm = feature.qpm
                 pos_pair = PosTempoPair(xml_pos, xml_note.pitch[1], qpm, i, divisions, time_pos)
+                if xml_note.note_notations.is_arpeggiate:
+                    pos_pair.is_arpeggiate = True
                 available_notes.append(pos_pair)
 
     else:
@@ -1583,14 +1584,17 @@ def make_average_onset_cleaned_pair(position_pairs, minimum_time_interval=0.05):
         pos_pair = position_pairs[i]
         current_position = pos_pair.xml_position
         current_time = pos_pair.time_position
-        print(pos_pair.index)
         if current_position > previous_position and current_time > previous_time + minimum_time_interval:
             if len(notes_in_chord) > 0:
                 average_pos_pair = copy.copy(notes_in_chord[0])
                 notes_in_chord_cleaned, average_pos_pair.time_position = get_average_onset_time(notes_in_chord)
-                cleaned_list.append(average_pos_pair)
-                for note in notes_in_chord:
-                    if note not in notes_in_chord_cleaned:
+                if len(cleaned_list) == 0 or average_pos_pair.time_position > cleaned_list[-1].time_position + minimum_time_interval:
+                    cleaned_list.append(average_pos_pair)
+                    for note in notes_in_chord:
+                        if note not in notes_in_chord_cleaned:
+                            mismatched_indexes.append(note.index)
+                else:
+                    for note in notes_in_chord:
                         mismatched_indexes.append(note.index)
             notes_in_chord = list()
             notes_in_chord.append(pos_pair)
