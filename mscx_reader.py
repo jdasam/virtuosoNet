@@ -1,4 +1,4 @@
-# -*- coding: cp949 -*-
+    # -*- coding: cp949 -*-
 
 
 from xml.dom import minidom
@@ -13,13 +13,10 @@ parser.add_argument("-path", "--filePath", type=str, default='./mscx_files/', he
 args = parser.parse_args()
 
 
-
-
 def print_nodes_recursive(xmldoc):
     for child in xmldoc.childNodes:
         print(child)
         print_nodes_recursive(child)
-
 
 
 def delete_invisible_elements(xmldoc, tagname):
@@ -34,16 +31,13 @@ def delete_invisible_elements(xmldoc, tagname):
     return xmldoc
 
 
-
 def ommit_invisible_and_save(filepath):
     mscx_file = open(filepath, 'r')
     xmldoc = minidom.parse(mscx_file)
     mscx_file.close()
     outname = filepath[:-5] + '_cleaned.mscx'
 
-
-    target_tags = ['Dynamic', 'Tempo', 'Pedal']
-
+    target_tags = ['Dynamic', 'Tempo', 'Pedal', 'HairPin']
 
     for tag in target_tags:
         xmldoc = delete_invisible_elements(xmldoc, tag)
