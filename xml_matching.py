@@ -15,12 +15,21 @@ import midi_utils.midi_utils as midi_utils
 import copy
 import evaluation
 
-absolute_tempos_keywords = ['adagio', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
-                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'tempo i', 'Freely, with expression', 'agitato', 'Assez vif']
+absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
+                            'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido',
+                            'presto', 'prestissimo', 'maestoso', 'lullaby',
+                            'tempo i', 'tempo primo', 'erstes Tempo', '1er mouvement', '1er mouvt', 'au mouvtdu début', 'au mouvement', 'au Mouvt', '1o tempo',
+                            'Freely, with expression', "d'un rythme souple", 'agitato',
+                            'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft',
+                            'lent', 'large', 'vif', 'animé']
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto',
-                            'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando', 'smorzando', 'appassionato']
-relative_long_tempo_keywords = ['meno mosso', 'più mosso', 'animato']
+                            'a tempo', 'stretto', 'slentando', 'meno mosso', 'meno vivo', 'più mosso', 'allargando', 'smorzando', 'appassionato', 'perdendo',
+                            'langsamer', 'schneller', 'bewegter',
+                            'plus lent', 'più lento', 'retenu', 'revenez', 'cédez', 'mesuré', 'élargissant', 'accélerez', 'rapide', 'Reprenez  le  mouvement']
+relative_long_tempo_keywords = ['meno mosso', 'meno vivo', 'più mosso', 'animato', 'langsamer', 'schneller',
+                                'stretto', 'bewegter',
+                                'plus lent']
 
 
 tempos_keywords = absolute_tempos_keywords + relative_tempos_keywords
@@ -30,13 +39,15 @@ tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'all
                     'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando' ]
 
 
-absolute_dynamics_keywords = ['ppp', 'pp', 'p', 'piano', 'mp', 'mf', 'f', 'forte', 'ff', 'fff', 'fp']
+absolute_dynamics_keywords = ['pppp','ppp', 'pp', 'p', 'piano', 'mp', 'mf', 'f', 'forte', 'ff', 'fff', 'fp', 'ffp']
 relative_dynamics_keywords = ['crescendo', 'diminuendo', 'cresc', 'dim', 'dimin' 'sotto voce',
-                              'mezza voce', 'sf', 'fz', 'sfz', 'rf,' 'sffz', 'con forza', 'con fuoco', 'smorzando', 'appassionato']
+                              'mezza voce', 'sf', 'fz', 'sfz', 'rf,' 'sffz', 'rf', 'rinf',
+                              'con forza', 'con fuoco', 'smorzando', 'appassionato', 'perdendo']
 
 dynamics_keywords = absolute_dynamics_keywords + relative_dynamics_keywords
 dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'], 'ff', 'fff', 'fp', ['crescendo', 'cresc'],  ['diminuendo', 'dim', 'dimin'],
                         'sotto voce', 'mezza voce', ['sf', 'fz', 'sfz', 'sffz'] ]
+
 
 def apply_tied_notes(xml_parsed_notes):
     tie_clean_list = []
@@ -125,6 +136,7 @@ def matchXMLtoMIDI(xml_notes, midi_notes):
             match_list.append([])
     return match_list
 
+
 def make_xml_midi_pair(xml_notes, midi_notes, match_list):
     pairs = []
     for i in range(len(match_list)):
@@ -149,15 +161,16 @@ def read_corresp(txtpath):
     return corresp_list
 
 
-def find_by_key(list, key1, value1, key2, value2):
-    for i, dic in enumerate(list):
-        if abs(float(dic[key1]) - value1) <0.001 and int(dic[key2]) ==value2 :
+def find_by_key(alist, key1, value1, key2, value2):
+    for i, dic in enumerate(alist):
+        if abs(float(dic[key1]) - value1) < 0.001 and int(dic[key2]) == value2:
             return i
     return -1
 
-def find_by_attr(list, value1, value2):
-    for i, obj in enumerate(list):
-        if abs(obj.start - value1) <0.001 and obj.pitch ==value2 :
+
+def find_by_attr(alist, value1, value2):
+    for i, obj in enumerate(alist):
+        if abs(obj.start - value1) < 0.001 and obj.pitch == value2:
             return i
     return []
 
@@ -174,6 +187,7 @@ def match_score_pair2perform(pairs, perform_midi, corresp_list):
         index_in_perform_midi = find_by_attr(perform_midi, float(corresp_pair['alignOntime']),  int(corresp_pair['alignPitch']))
         match_list.append(index_in_perform_midi)
     return match_list
+
 
 def match_xml_midi_perform(xml_notes, midi_notes, perform_notes, corresp):
     # xml_notes = apply_tied_notes(xml_notes)
@@ -219,6 +233,7 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
         instrument_index += 1
 
     return notes
+
 
 def check_notes_and_append(note, notes, previous_grace_notes, rests, include_grace_note):
     if note.note_duration.is_grace_note:
@@ -288,7 +303,6 @@ def apply_rest_to_note(xml_notes, rests):
     return xml_notes
 
 
-
 def apply_after_grace_note_to_chord_notes(notes):
     for note in notes:
         if note.note_duration.after_grace_note:
@@ -300,7 +314,6 @@ def apply_after_grace_note_to_chord_notes(notes):
     return notes
 
 
-
 def extract_measure_position(xml_Doc):
     parts = xml_Doc.parts[0]
     measure_positions = []
@@ -309,6 +322,7 @@ def extract_measure_position(xml_Doc):
         measure_positions.append(measure.start_xml_position)
 
     return measure_positions
+
 
 def delete_chord_notes_for_melody(melody_notes):
     note_onset_positions = list(set(note.note_duration.xml_position for note in melody_notes))
@@ -324,14 +338,14 @@ def delete_chord_notes_for_melody(melody_notes):
 
     return unique_melody
 
-def find(f, seq):
-  """Return first item in sequence where f(item) == True."""
-  items_list = []
-  for item in seq:
-    if f(item):
-      items_list.append(item)
-  return items_list
 
+def find(f, seq):
+    """Return first item in sequence where f(item) == True."""
+    items_list = []
+    for item in seq:
+        if f(item):
+            items_list.append(item)
+    return items_list
 
 
 class MusicFeature():
@@ -410,7 +424,6 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
     cresc_words = ['cresc', 'decresc', 'dim']
 
-
     for i in range(xml_length):
         note = xml_notes[i]
         feature = MusicFeature()
@@ -447,7 +460,6 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.time_sig_num = 1/note.tempo.time_numerator
         feature.time_sig_den = 1/note.tempo.time_denominator
         feature.following_rest = note.following_rest_duration / note.state_fixed.divisions
-
 
         dynamic_words = direction_words_flatten(note.dynamic)
         tempo_words = direction_words_flatten(note.tempo)
@@ -505,12 +517,11 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
             features[i].mean_piano_vel = vel_standard[0]
             features[i].mean_forte_vel = vel_standard[1]
 
-
     return features
 
 
 def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_positions):
-    print(len(xml_notes), len(pairs))
+    # print(len(xml_notes), len(pairs))
     velocity_mean = calculate_mean_velocity(pairs)
     total_length_tuple = calculate_total_length(pairs)
     # measure_seocnds = make_midi_measure_seconds(pairs, measure_positions)
@@ -548,6 +559,8 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     prev_soft_pedal = 0
     prev_start = 0
 
+    num_matched_notes = 0
+    num_unmatched_notes = 0
 
     for i in range(feat_len):
         feature= score_features[i]
@@ -571,10 +584,9 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
 
         if not pairs[i] == []:
             feature.note_matched = 1
+            num_matched_notes += 1
             feature.articulation = cal_articulation_with_tempo(pairs, i, tempo.qpm, trill_length)
             feature.xml_deviation = cal_onset_deviation_with_tempo(pairs, i, tempo)
-            if abs(feature.xml_deviation) > 1:
-                print(i, feature.xml_deviation)
             # feature['IOI_ratio'], feature['articulation']  = calculate_IOI_articulation(pairs,i, total_length_tuple)
             # feature['loudness'] = math.log( pairs[i]['midi'].velocity / velocity_mean, 10)
             feature.velocity = pairs[i]['midi'].velocity
@@ -604,6 +616,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             prev_start = feature.midi_start
         else:
             feature.note_matched = 0
+            num_unmatched_notes += 1
             feature.articulation = prev_articulation
             feature.xml_deviation = 0
             feature.velocity = prev_vel
@@ -628,7 +641,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
         feature.mean_forte_mark = forte_vec
 
     score_features = make_index_continuous(score_features, score=False)
-
+    print('Number of Matched Notes: ' + str(num_matched_notes) + ', unmatched notes: ' + str(num_unmatched_notes))
 
     return score_features
 
@@ -662,6 +675,7 @@ def calculate_IOI_articulation(pairs, index, total_length):
             articulation = xml_ioi / xml_length / (midi_ioi / midi_length)
             return ioi, articulation
     return None, None
+
 
 def calculate_total_length(pairs):
     first_pair_index = 0
@@ -941,8 +955,9 @@ def cal_articulation_with_tempo(pairs, i, tempo, trill_length):
         actual_second = midi.end - midi.start
 
     articulation = actual_second / second_in_tempo
-    if articulation > 10:
+    if articulation > 6:
         print('check: articulation is ' + str(articulation))
+    articulation = math.log(articulation, 10)
     return articulation
 
 
@@ -1007,7 +1022,8 @@ def load_entire_subfolder(path):
         if os.path.isfile(xml_name) :
             print(foldername)
             piece_pairs = load_pairs_from_folder(foldername)
-            entire_pairs.append(piece_pairs)
+            if piece_pairs is not None:
+                entire_pairs.append(piece_pairs)
 
     return entire_pairs
 
@@ -1015,6 +1031,8 @@ def load_entire_subfolder(path):
 def load_pairs_from_folder(path):
     xml_name = path+'musicxml_cleaned.musicxml'
     score_midi_name = path+'midi_cleaned.mid'
+    composer_name = copy.copy(path).split('/')[1]
+    composer_name_vec = composer_name_to_vec(composer_name)
 
     XMLDocument = MusicXMLDocument(xml_name)
     xml_notes = extract_notes(XMLDocument, melody_only=False, grace_note=True)
@@ -1023,7 +1041,11 @@ def load_pairs_from_folder(path):
     score_midi_notes.sort(key=lambda x:x.start)
     match_list = matchXMLtoMIDI(xml_notes, score_midi_notes)
     score_pairs = make_xml_midi_pair(xml_notes, score_midi_notes, match_list)
-    check_pairs(score_pairs)
+    num_non_matched = check_pairs(score_pairs)
+    if num_non_matched > 100:
+        print("There are too many xml-midi matching errors")
+        return None
+
     measure_positions = extract_measure_position(XMLDocument)
     filenames = os.listdir(path)
     perform_features_piece = []
@@ -1033,7 +1055,8 @@ def load_pairs_from_folder(path):
     for file in filenames:
         if file[-18:] == '_infer_corresp.txt':
             perf_name = file.split('_infer')[0]
-            perf_score = evaluation.cal_score(perf_name)
+            # perf_score = evaluation.cal_score(perf_name)
+            perf_score = 0
 
             perf_midi_name = path + perf_name + '.mid'
             perf_midi = midi_utils.to_midi_zero(perf_midi_name)
@@ -1047,7 +1070,7 @@ def load_pairs_from_folder(path):
             print("performance name is " + perf_name)
             check_pairs(perform_pairs)
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
-            perform_feat_score = {'features': perform_features, 'score': perf_score}
+            perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec}
 
             perform_features_piece.append(perform_feat_score)
 
@@ -1468,7 +1491,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
     xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
     return xml_notes
 
-def apply_time_position_features(xml_notes, features, start_time=0):
+def apply_time_position_features(xml_notes, features, start_time=0, include_unmatched=True):
     num_notes = len(xml_notes)
     tempos = []
     # xml_positions = [x.note_duration.xml_position for x in xml_notes]
@@ -1546,10 +1569,9 @@ def make_available_note_feature_list(notes, features, predicted):
             pos_pair = PosTempoPair(xml_pos, xml_note.pitch[1], qpm, i, divisions, time_pos)
             available_notes.append(pos_pair)
 
-    minimum_time_interval = 0.05
+    # minimum_time_interval = 0.05
     # available_notes = save_lowest_note_on_same_position(available_notes, minimum_time_interval)
-    available_notes, mismatched_indexes = make_average_onset_cleaned_pair(available_notes, minimum_time_interval)
-
+    available_notes, _ = make_average_onset_cleaned_pair(available_notes)
     return available_notes
 
 
@@ -1571,7 +1593,7 @@ def save_lowest_note_on_same_position(alist, minimum_time_interval = 0.08):
     return new_list
 
 
-def make_average_onset_cleaned_pair(position_pairs, minimum_time_interval=0.05):
+def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=500):
     length = len(position_pairs)
     previous_position = -float("Inf")
     previous_time = -float("Inf")
@@ -1584,6 +1606,10 @@ def make_average_onset_cleaned_pair(position_pairs, minimum_time_interval=0.05):
         pos_pair = position_pairs[i]
         current_position = pos_pair.xml_position
         current_time = pos_pair.time_position
+        if current_position > previous_position and previous_position >= 0:
+            minimum_time_interval = (current_position - previous_position) / pos_pair.divisions / maximum_qpm * 60 + 0.01
+        else:
+            minimum_time_interval = 0
         if current_position > previous_position and current_time > previous_time + minimum_time_interval:
             if len(notes_in_chord) > 0:
                 average_pos_pair = copy.copy(notes_in_chord[0])
@@ -1643,7 +1669,7 @@ def get_average_onset_time(notes_in_chord_saved, threshold=0.2):
         dev = abs(pos_pair.time_position - average_onset_time)
         deviations.append(dev)
     if max(deviations) > threshold:
-        print(deviations)
+        # print(deviations)
         if len(notes_in_chord) == 2:
             del notes_in_chord[0:2]
         else:
@@ -1804,6 +1830,7 @@ def extract_directions(xml_doc):
     time_signatures = xml_doc.get_time_signatures()
     return cleaned_direction, time_signatures
 
+
 def merge_start_end_of_direction(directions):
     for i in range(len(directions)):
         dir = directions[i]
@@ -1928,6 +1955,7 @@ def extract_directions_by_keywords(directions, keywords):
 
     return sub_directions
 
+
 def check_direction_by_keywords(dir, keywords):
     if dir.type['type'] in keywords:
         return True
@@ -1945,6 +1973,7 @@ def check_direction_by_keywords(dir, keywords):
         for key in keywords: # words like 'sempre più mosso'
             if len(key) > 2 and key in dir.type['content']:
                 return True
+
 
 def get_dynamics(directions):
     temp_abs_key = absolute_dynamics_keywords
@@ -2055,7 +2084,7 @@ def get_all_words_from_folders(path):
 
         for wrd in words:
             entire_words.append(wrd.type['content'])
-            print(wrd.type['content'], wrd.state.qpm)
+            # print(wrd.type['content'], wrd.state.qpm)
 
     entire_words = list(set(entire_words))
     return entire_words
@@ -2175,6 +2204,8 @@ def check_pairs(pairs):
             non_matched += 1
 
     print('Number of non matched pairs: ' + str(non_matched))
+    return non_matched
+
 
 def check_overlapped_notes(xml_notes):
     previous_onset = -1
@@ -2503,7 +2534,7 @@ def make_available_xml_midi_positions(pairs):
 
     # available_pairs = save_lowest_note_on_same_position(available_pairs)
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
-    print(mismatched_indexes)
+    print('Number of mismatched notes: ', len(mismatched_indexes))
     for index in mismatched_indexes:
         pairs[index] = []
 
@@ -2612,7 +2643,9 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('ffz', 2, 0.8))
     embed_table.append(EmbeddingKey('sffz', 2, 0.9))
 
-    embed_table.append(EmbeddingKey('rf', 3, 0))
+    embed_table.append(EmbeddingKey('rf', 3, 0.1))
+    embed_table.append(EmbeddingKey('rinf', 3, 0.1))
+    embed_table.append(EmbeddingKey('con brio', 3, 0.3))
     embed_table.append(EmbeddingKey('con forza', 3, 0.5))
     embed_table.append(EmbeddingKey('con fuoco', 3, 0.7))
     embed_table.append(EmbeddingKey('con più fuoco possibile', 3, 1))
@@ -2627,26 +2660,33 @@ def define_dyanmic_embedding_table():
 def define_tempo_embedding_table():
     # [abs tempo, abs_tempo_added, tempo increase or decrease, sudden change]
     embed_table = EmbeddingTable()
-    embed_table.append(EmbeddingKey('Freely, with expression', 0, 0.2))
+    embed_table.append(EmbeddingKey('freely, with expression', 0, 0.2))
     embed_table.append(EmbeddingKey('lento', 0, -0.9))
+    embed_table.append(EmbeddingKey('grave', 0, -0.9))
     embed_table.append(EmbeddingKey('largo', 0, -0.7))
-    embed_table.append(EmbeddingKey('adagio', 0, -0.7))
+    embed_table.append(EmbeddingKey('languido', 0, -0.6))
+    embed_table.append(EmbeddingKey('molto languido', 0, -0.7))
+    embed_table.append(EmbeddingKey('adagio', 0, -0.6))
     embed_table.append(EmbeddingKey('larghetto', 0, -0.6))
+    embed_table.append(EmbeddingKey('adagietto', 0, -0.55))
     embed_table.append(EmbeddingKey('andante', 0, -0.5))
+    embed_table.append(EmbeddingKey('andantino molto', 0, -0.4))
     embed_table.append(EmbeddingKey('andantino', 0, -0.3))
+    embed_table.append(EmbeddingKey('maestoso', 0, -0.3))
+    embed_table.append(EmbeddingKey('accarezzevole', 0, -0.4))
     embed_table.append(EmbeddingKey('moderato', 0, 0))
     embed_table.append(EmbeddingKey('allegretto', 0, 0.3))
     embed_table.append(EmbeddingKey('allegro', 0, 0.5))
     embed_table.append(EmbeddingKey('vivace', 0, 0.6))
     embed_table.append(EmbeddingKey('presto', 0, 0.8))
     embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
-    embed_table.append(EmbeddingKey('Assez vif', 0, 0.6))
-
 
     embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
+    embed_table.append(EmbeddingKey('allegro molto', 0, 0.85))
 
     embed_table.append(EmbeddingKey('a tempo', 1, 0))
     embed_table.append(EmbeddingKey('meno mosso', 1, -0.8))
+    embed_table.append(EmbeddingKey('meno vivo', 1, -0.7))
     embed_table.append(EmbeddingKey('ritenuto', 1, -0.5))
     embed_table.append(EmbeddingKey('animato', 1, 0.5))
     embed_table.append(EmbeddingKey('più animato', 1, 0.6))
@@ -2656,7 +2696,55 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('appassionato', 1, 0.2))
 
     embed_table.append(EmbeddingKey('poco ritenuto', 1, -0.3))
+    embed_table.append(EmbeddingKey('poco meno mosso', 1, -0.5))
+    embed_table.append(EmbeddingKey('poco più mosso', 1, 0.5))
     embed_table.append(EmbeddingKey('molto agitato', 1, 0.8))
+
+    # French
+    embed_table.append(EmbeddingKey('très grave', 0, -1.0))
+    embed_table.append(EmbeddingKey('très lent', 0, -0.9))
+    embed_table.append(EmbeddingKey('lent', 0, -0.7))
+    embed_table.append(EmbeddingKey('large', 0, -0.7))
+    embed_table.append(EmbeddingKey("Assez doux, mais d'une sonoritè large", 0, -0.6))
+    embed_table.append(EmbeddingKey('assez vif', 0, 0.6))
+    embed_table.append(EmbeddingKey('assez animé', 0, 0.7))
+    embed_table.append(EmbeddingKey("d'un rythme souple", 0, 0))
+
+    embed_table.append(EmbeddingKey('un peau retenu', 1, -0.3))
+    embed_table.append(EmbeddingKey('retenez', 1, -0.5))
+    embed_table.append(EmbeddingKey('en élargissant beaucoup', 2, -0.4))
+    embed_table.append(EmbeddingKey('plus lent', 1, -0.5))
+    embed_table.append(EmbeddingKey('un peu plus lent', 1, -0.3))
+    embed_table.append(EmbeddingKey('encore plus lent', 1, -0.5))
+    embed_table.append(EmbeddingKey('cédez', 1, -0.4))
+    embed_table.append(EmbeddingKey('un peu retenu', 1, -0.2))
+    embed_table.append(EmbeddingKey('Un pe moins vif', 1, -0.2))
+    embed_table.append(EmbeddingKey('cédez légèrement', 1, -0.2))
+    embed_table.append(EmbeddingKey('mesuré', 1, 0))
+    embed_table.append(EmbeddingKey('au mouvt', 1, 0))
+    embed_table.append(EmbeddingKey('reprenez le mouvement', 1, 0))
+    embed_table.append(EmbeddingKey('Un peu plus vif', 1, 0.2))
+    embed_table.append(EmbeddingKey('en accélérant', 1, 0.3))
+    embed_table.append(EmbeddingKey('en animant', 1, 0.6))
+    embed_table.append(EmbeddingKey('rapide', 1, 0.6))
+    embed_table.append(EmbeddingKey('rapido molto', 1, 0.8))
+
+    embed_table.append(EmbeddingKey('accélerez', 2, 0.5))
+    embed_table.append(EmbeddingKey('sans ralentir', 2, 0.01))
+
+    # German
+    embed_table.append(EmbeddingKey('sehr langsam', 0, -0.55))
+    embed_table.append(EmbeddingKey('sehr innig', 0, -0.4))
+    embed_table.append(EmbeddingKey('leicht uns zart', 0, 0.2))
+    embed_table.append(EmbeddingKey('sehr lebhaft', 0, 0.6))
+    embed_table.append(EmbeddingKey('sehr aufgeregt', 0, 0.6))
+    embed_table.append(EmbeddingKey('sehr rasch', 0, 0.8))
+    embed_table.append(EmbeddingKey('Sehr innig und nicht zu rasch', 0, -0.8))
+
+    embed_table.append(EmbeddingKey('langsamer', 1, -0.5))
+    embed_table.append(EmbeddingKey('etwas langsamer', 1, -0.3))
+    embed_table.append(EmbeddingKey('bewegter', 1, 0.4))
+    embed_table.append(EmbeddingKey('schneller', 1, 0.5))
 
     embed_table.append(EmbeddingKey('allargando', 2, -0.2))
     embed_table.append(EmbeddingKey('ritardando', 2, -0.5))
@@ -2669,9 +2757,22 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('accelerando', 2, 0.5))
     embed_table.append(EmbeddingKey('smorz', 2, -0.5))
 
-
     embed_table.append(EmbeddingKey('poco rall', 2, -0.3))
     embed_table.append(EmbeddingKey('poco rit', 2, -0.3))
+
+    # non troppo presto
+    # energico
+    # tempo di marcia
+    # marcia funbre
+    # ben marcato
+    # rinforzando assai
+    # rinforzando molto
+    # piu presto possibile
+    # mesto
+    # tempo giusto
+    # sempre più largo
+    # plus lent
+    # 1er Mouvement
 
     return embed_table
 
@@ -2709,8 +2810,8 @@ def omit_trill_notes(xml_notes):
 
     xml_notes = apply_wavy_lines(xml_notes, wavy_lines)
 
-
     return xml_notes
+
 
 def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, accidentals, index):
     #start of trill, end of trill
@@ -2731,12 +2832,10 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
             elif acc.type['content'] == '♮':
                 final_key = 0
 
-
     measure_accidentals = get_measure_accidentals(xml_notes, index)
     trill_pitch = note.pitch[1]
 
     up_pitch, _ = cal_up_trill_pitch(note.pitch, key, final_key, measure_accidentals)
-
 
     prev_search = 1
     prev_idx = index
@@ -2774,6 +2873,9 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
         skipped_pitches_end.append(skipped_note.pitch[1])
         next_idx += 1
 
+    if pairs[next_idx] == [] or pairs[prev_idx] == []:
+        print("Error: Cannot find trill start or end note")
+        return [0] * 5, 0
     prev_midi_note = pairs[prev_idx]['midi']
     next_midi_note = pairs[next_idx]['midi']
     search_range_start = perf_midi.index(prev_midi_note)
@@ -2801,7 +2903,7 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
             next_midi_note = midi_note
             break
         elif 0 < midi_note.pitch - trill_pitch < 4:
-            print('check up_pitch', midi_note.pitch, trill_pitch, up_pitch)
+            print('check trill pitch - detected pitch: ', midi_note.pitch, ' trill note pitch: ', trill_pitch, 'expected up trill pitch: ', up_pitch)
 
     # while len(skipped_pitches_start) > 0:
     #     skipped_pitch = skipped_pitches_start[0]
@@ -2923,7 +3025,11 @@ def combine_wavy_lines(wavy_lines):
                     break
             if not deleted:
                 wavy_lines.remove(wavy)
-
+    num_wavy = len(wavy_lines)
+    for i in reversed(range(num_wavy)):
+        wavy = wavy_lines[i]
+        if wavy.type == 'start' and wavy.end_xml_position == 0:
+            wavy_lines.remove(wavy)
     return wavy_lines
 
 
@@ -2951,7 +3057,6 @@ def apply_wavy_lines(xml_notes, wavy_lines):
         for idx in reversed(omit_indices):
             del xml_notes[idx]
 
-
     return xml_notes
 
 
@@ -2973,6 +3078,7 @@ def get_measure_accidentals(xml_notes, index):
                     measure_accidentals.append(temp_pair)
 
     return measure_accidentals
+
 
 def make_index_continuous(features, score=False):
     prev_beat = 0
@@ -3002,7 +3108,6 @@ def check_index_continuity(features):
     prev_beat = 0
     prev_measure = 0
 
-
     for feat in features:
         if feat.beat_index - prev_beat > 1:
             print(feat.beat_index, prev_beat)
@@ -3020,7 +3125,6 @@ def cal_mean_velocity_by_dynamics_marking(features):
     piano_markings = []
     entire_velocities = []
     entire_markings = []
-
 
     for feat in features:
         absolute_dynamic = feat.dynamic[0]
@@ -3051,9 +3155,7 @@ def cal_mean_velocity_by_dynamics_marking(features):
         mean_forte_vel = mean_vel
         mean_forte_marking = 0.2
 
-
     return mean_piano_vel, mean_piano_marking, mean_forte_vel, mean_forte_marking
-
 
 
 def extract_and_apply_slurs(xml_notes):
@@ -3088,10 +3190,20 @@ def extract_and_apply_slurs(xml_notes):
                 if prev_slur.voice == note.voice and prev_slur.xml_position < note.note_duration.xml_position <= prev_slur.end_xml_position:
                     note.note_notations.slurs.append(prev_slur)
 
-
     return xml_notes
 
 
-def pedal_sigmoid(pedal_value, k = 8):
-    sigmoid_pedal = 127 / (1 + math.exp( -(pedal_value-64)/k ) )
+def pedal_sigmoid(pedal_value, k=8):
+    sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
     return int(sigmoid_pedal)
+
+
+def composer_name_to_vec(composer_name):
+    composer_name_list = ['Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Haydn',
+                          'Liszt', 'Mozart', 'Rachmaninoff', 'Ravel', 'Schumann', 'Scriabin']
+
+    index = composer_name_list.index(composer_name)
+    one_hot_vec = [0] * len(composer_name_list)
+    one_hot_vec[index] = 1
+
+    return one_hot_vec
