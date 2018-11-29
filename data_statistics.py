@@ -31,7 +31,7 @@ for i in index1:
 
 
         plt.figure(figsize=(10, 7))
-        n, bins, patches = plt.hist(x=target_features, bins='auto', color='#0504aa',
+        n, bins, patches = plt.hist(x=target_features, bins='sturges', color='#0504aa',
                                     alpha=0.7, rwidth=0.85)
 
         plt.savefig(save_name)
