@@ -975,7 +975,7 @@ def cal_onset_deviation_with_tempo(pairs, i, tempo_obj):
     pos_diff_in_quarter_note = xml_pos_difference / note.state_fixed.divisions
     deviation_time = xml_pos_difference / note.state_fixed.divisions / tempo_obj.qpm * 60
 
-    return pos_diff_in_quarter_note
+    return pos_diff_in_quarter_note ** (1/3)
     # return deviation_time, pos_diff_in_quarter_note
 
 
@@ -1704,7 +1704,7 @@ def find_notes_between_melody_notes(total_notes, melody_notes):
 def apply_feat_to_a_note(note, feat, prev_vel):
 
     if not feat.articulation == None:
-        note.note_duration.seconds *= feat.articulation
+        note.note_duration.seconds *= 10 ** (feat.articulation)
     if not feat.velocity == None:
         note.velocity = feat.velocity
         prev_vel = note.velocity
@@ -1998,7 +1998,7 @@ def get_dynamics(directions):
             abs2.type['content'] = 'p'
             abs_dynamic_dummy.append(abs2)
 
-        if abs.type['content'] in ['sf', 'fz', 'sfz', 'sffz', 'rf']:
+        if abs.type['content'] in ['sf', 'fz', 'sfz', 'sffz', 'rf', 'rfz']:
             relative_dynamics.append(abs)
         else:
             abs_dynamic_dummy.append(abs)
@@ -2826,11 +2826,14 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
     for acc in accidentals:
         if acc.xml_position == note.note_duration.xml_position:
             if acc.type['content'] == '#':
-                final_key = 7
+                final_key = 1
+                break
             elif acc.type['content'] == '♭':
-                final_key = -7
+                final_key = -1
+                break
             elif acc.type['content'] == '♮':
                 final_key = 0
+                break
 
     measure_accidentals = get_measure_accidentals(xml_notes, index)
     trill_pitch = note.pitch[1]
@@ -3061,7 +3064,7 @@ def apply_wavy_lines(xml_notes, wavy_lines):
 
 
 def get_measure_accidentals(xml_notes, index):
-    accs = ['♭', '♮', '#']
+    accs = ['bb', 'b', '♮', '#', 'x']
     note = xml_notes[index]
     num_note = len(xml_notes)
     measure_accidentals=[]
@@ -3073,9 +3076,10 @@ def get_measure_accidentals(xml_notes, index):
             for acc in accs:
                 if acc in prev_note.pitch[0]:
                     pitch = prev_note.pitch[0][0] + prev_note.pitch[0][-1]
-                    accident = accs.index(acc) - 1
+                    accident = accs.index(acc) - 2
                     temp_pair = {'pitch': pitch, 'accident': accident}
                     measure_accidentals.append(temp_pair)
+                    break
 
     return measure_accidentals
 
