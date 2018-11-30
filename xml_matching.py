@@ -1368,7 +1368,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         note = xml_notes[i]
         feat = features[i]
         if not feat.xml_deviation == None:
-            xml_deviation = feat.xml_deviation *note.state_fixed.divisions
+            xml_deviation = (feat.xml_deviation ** 3) * note.state_fixed.divisions
         else:
             xml_deviation =0
 
