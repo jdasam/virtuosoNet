@@ -6,12 +6,9 @@ import copy
 
 NUM_TRILL_PARAM = 5
 
-data_exceptions = ['Beethoven/']
 
-
-
-def save_features_as_vector(dataset, save_name):
-    num_normalize_feature = [8, 15, 15]
+def save_features_as_vector(dataset, num_train, save_name):
+    num_normalize_feature = [9, 15, 15]
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -56,6 +53,7 @@ def save_features_as_vector(dataset, save_name):
                             [feature.pitch_interval, feature.duration,
                              feature.duration_ratio, feature.beat_position, feature.measure_length,
                              feature.qpm_primo, feature.following_rest,  feature.distance_from_abs_dynamic,
+                             feature.distance_from_recent_tempo,
                              feature.xml_position, feature.grace_order, feature.time_sig_num,
                              feature.time_sig_den, feature.no_following_note]  # 17
                             + feature.pitch + feature.tempo + feature.dynamic + composer_vec + feature.notation + feature.tempo_primo)
@@ -169,7 +167,11 @@ def save_features_as_vector(dataset, save_name):
         # complete_xy_normalized[-1].append(performance[5])
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
-    random.shuffle(complete_xy)
+    complete_xy_train = complete_xy[0:num_train]
+    complete_xy_valid = complete_xy[num_train:]
+    random.shuffle(complete_xy_train)
+    random.shuffle(complete_xy_valid)
+
 
     for index1 in (0,1):
         for index2 in range(len(stds[index1])):
@@ -178,7 +180,7 @@ def save_features_as_vector(dataset, save_name):
                 print('STD of ' + str(index1) + ',' + str(index2) + ' is zero')
 
     with open(save_name + ".dat", "wb") as f:
-        pickle.dump(complete_xy, f, protocol=2)
+        pickle.dump({'train': complete_xy_train, 'valid': complete_xy_valid}, f, protocol=2)
     with open(save_name + "_stat.dat", "wb") as f:
         pickle.dump([means, stds], f, protocol=2)
 
@@ -211,5 +213,6 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-chopin_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Ravel/')
-save_features_as_vector(chopin_pairs, 'composer_test')
+
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'composer_entire')
