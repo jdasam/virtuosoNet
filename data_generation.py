@@ -24,6 +24,7 @@ def save_features_as_vector(dataset, save_name):
             train_x = []
             train_y = []
             previous_y = []
+            align_matched_status = []
             # is_beat_list = []
             # beat_numbers = []
             # measure_numbers = []
@@ -75,6 +76,7 @@ def save_features_as_vector(dataset, save_name):
                     #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
                     #           feature.pedal_refresh, feature.pedal_cut]
                     train_y.append(temp_y)
+                    align_matched_status.append(feature.align_matched)
                     # prev_feat[0] = feature.previous_tempo
                     prev_feat[0] = feature.qpm # for beat tempo network.
                     previous_y.append(prev_feat)
@@ -88,7 +90,7 @@ def save_features_as_vector(dataset, save_name):
                     # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
-            complete_xy.append([train_x, train_y, previous_y, note_locations, score])
+            complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score])
 
             # key_changed_num = []
             # for i in range(3):

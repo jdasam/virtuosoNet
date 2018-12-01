@@ -373,7 +373,7 @@ class MusicFeature():
         self.distance_from_abs_dynamic = None
         self.slur_index = None
 
-        self.note_matched = 0
+        self.align_matched = 0
         self.dynamic  = None
         self.tempo = None
         self.notation = None
@@ -583,7 +583,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             trill_length = None
 
         if not pairs[i] == []:
-            feature.note_matched = 1
+            feature.align_matched = 1
             num_matched_notes += 1
             feature.articulation = cal_articulation_with_tempo(pairs, i, tempo.qpm, trill_length)
             feature.xml_deviation = cal_onset_deviation_with_tempo(pairs, i, tempo)
@@ -615,7 +615,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             prev_soft_pedal = feature.soft_pedal
             prev_start = feature.midi_start
         else:
-            feature.note_matched = 0
+            feature.align_matched = 0
             num_unmatched_notes += 1
             feature.articulation = prev_articulation
             feature.xml_deviation = 0
@@ -1370,7 +1370,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         if not feat.xml_deviation == None:
             xml_deviation = (feat.xml_deviation ** 3) * note.state_fixed.divisions
         else:
-            xml_deviation =0
+            xml_deviation = 0
 
         note.note_duration.time_position = cal_time_position_with_tempo(note, xml_deviation, tempos)
 
