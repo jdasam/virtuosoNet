@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="tempo_primo_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="composer_test_mozart", help="dat file name")
 parser.add_argument("--resume", type=str, default="non_reg_tempo_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -80,11 +80,11 @@ print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
 
-SCORE_INPUT = 43 #score information only
+SCORE_INPUT = 57 #score information only
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
-DROP_OUT = 0.5
+DROP_OUT = 0.25
 
 num_prime_param = 11
 num_second_param = 0
@@ -92,22 +92,21 @@ num_trill_param = 5
 num_voice_feed_param = 0 # velocity, onset deviation
 num_tempo_info = 0
 num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
-is_trill_index_score = -9
-is_trill_index_concated = -9 - (num_prime_param + num_second_param)
+is_trill_index_score = -10
+is_trill_index_concated = -10 - (num_prime_param + num_second_param)
 NET_PARAM.output_size = num_prime_param
 
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 26
-PITCH_IDX = 13
+TEMPO_IDX = 27
+PITCH_IDX = 14
 qpm_primo_index = 5
 tempo_primo_index = -2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
 
 batch_size = 1
-valid_batch_size = 50
 
 torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -612,87 +611,17 @@ def perform_xml(input, input_y, note_locations, tempo_stats, valid_y = None, ini
             trill_outputs = torch.zeros(1, input.size(1), num_trill_param).to(device)
 
         outputs = torch.cat((prime_outputs, trill_outputs),2)
-        # input.view((1,-1,input_size))
-        # # num_notes = input.shape[1]
-        # final_hidden = model.init_final_layer(1)
-        # tempo_hidden = model.init_beat_tempo_forward(1)
-        # model_eval = model.eval()
-        # # hidden_output, hidden = model(input, False, hidden, final_hidden)
-        # hidden_output, beat_output, measure_output, voice_output =\
-        #     model_eval(batch_x, False, final_hidden, tempo_hidden, note_locations, 0)
-        #
-        #
-        # # print(input_y.shape)
-        # piece_length = input.shape[1]
-        # outputs = []
-        #
-        # previous_tempo = start_tempo
-        # # print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
-        # save_tempo = 0
-        # num_added_tempo = 0
-        # # previous_position = input[0,0,7] #xml_position of first note
-        # prev_beat = 0
-        # for i in range(piece_length):
-        #     # is_beat = is_beat_list[i]
-        #     beat = note_locations[i].beat
-        #     # print(is_beat)
-        #     if beat > prev_beat and num_added_tempo > 0: # is_beat and
-        #         prev_beat = beat
-        #         previous_tempo = save_tempo / num_added_tempo
-        #         save_tempo =0
-        #         num_added_tempo = 0
-        #         # print(10 ** (previous_tempo * tempo_stats[1] + tempo_stats[0]))
-        #         beat_changed= True
-        #     else:
-        #         beat_changed = False
-        #
-        #     input_y = input_y.cpu()
-        #     # print(previous_tempo)
-        #     input_y[0, 0, 0] = previous_tempo
-        #     input_y = input_y.to(device)
-        #     if isinstance(valid_y, torch.Tensor) and i < 100:
-        #         input_y = valid_y[0,i-1,:].to(device).view(1,1,-1)
-        #     if not args.trainTrill:
-        #         input_y = input_y[:,:,:-num_trill_param]
-        #     note_feature = input[0,i,:].view(1,1,input_size).to(device)
-        #     # print(hidden_output.shape)
-        #     temp_hidden_output = hidden_output[0, i, :].view(1, 1, -1)
-        #     temp_beat_output = beat_output[0, i, :].view(1, 1, -1)
-        #     temp_measure_output = measure_output[0, i, :].view(1, 1, -1)
-        #     if args.voiceNet:
-        #         temp_voice_output = voice_output[0,i,:].view(1,1,-1)
-        #     else:
-        #         temp_voice_output = 0
-        #
-        #     # output, _, final_hidden = model(note_feature, input_y, hidden, final_hidden, temp_hidden_output)
-        #     output, final_hidden, tempo_hidden = model(note_feature, input_y, final_hidden, tempo_hidden, note_locations, i,
-        #                                     hidden_out=temp_hidden_output,
-        #                                     beat_hidden_spanned = temp_beat_output, measure_hidden_spanned=temp_measure_output,
-        #                                     beat_changed= beat_changed, voice_out=temp_voice_output)
-        #
-        #     output_for_save = output.cpu().detach().numpy()
-        #     input_y = output
-        #     ## change tempo of input_y
-        #     # if is_beat:
-        #     #     if input[0, i, 6] > previous_position:
-        #     #         save_tempo = output_for_save[0][0][0] #save qpm of this beat
-        #     #
-        #     save_tempo += output_for_save[0][0][0]
-        #     num_added_tempo += 1
-        #     outputs.append(output_for_save)
-
-        # time2= time.time()
-        # print('Elapsed time for perform_xml: ', time2-time1)
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
+def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
         batch_end = (step + 1) * batch_size * time_steps
         batch_x = torch.Tensor(x[batch_start:batch_end])
         batch_y = torch.Tensor(y[batch_start:batch_end])
+        align_matched = torch.Tensor(align_matched[batch_start:batch_end])
         # input_y = torch.Tensor(prev_feature[batch_start:batch_end])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
     else:
@@ -700,23 +629,29 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
         batch_start = num_total_notes-(batch_size * time_steps)
         batch_x = torch.Tensor(x[batch_start:])
         batch_y = torch.Tensor(y[batch_start:])
+        align_matched = torch.Tensor(align_matched[batch_start:])
         # input_y = torch.Tensor(prev_feature[batch_start:])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
     batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(device)
     batch_y = batch_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
+    align_matched = align_matched.view((batch_size, time_steps, 1)).to(device)
+    align_matched = align_matched.repeat(1,1,num_prime_param)
     # input_y = input_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
 
     # async def train_prime(batch_x, batch_y, input_y, model):
     prime_batch_x = batch_x
     prime_batch_y = batch_y[:,:,0:num_prime_param]
+    prime_batch_y *= align_matched
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var \
         = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
+    prime_outputs *= align_matched
 
-    mse_loss = criterion(prime_outputs, prime_batch_y)
-    perform_kld =  -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-    prime_loss = mse_loss + perform_kld
+    tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
+    mse_loss = criterion(prime_outputs[:,:,1:], prime_batch_y[:,:,1:])
+    perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+    prime_loss = tempo_loss + mse_loss + perform_kld
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -769,7 +704,26 @@ def batch_time_step_run(x,y,prev_feature, note_locations, step, batch_size=batch
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
     dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
 
-    return tempo_loss, vel_loss, dev_loss, trill_loss
+    return tempo_loss, vel_loss, dev_loss, trill_loss, perform_kld
+
+def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
+    previous_beat = -1
+    current_index = 0
+    num_notes = pred_x.shape[1]
+    num_beats = note_locations[num_notes+start_index-1].beat - note_locations[start_index].beat + 1
+
+    pred_beat_tempo = torch.Tensor(num_beats).to(device)
+    true_beat_tempo = torch.Tensor(num_beats).to(device)
+    for i in range(num_notes):
+        current_beat = note_locations[i+start_index].beat
+        if current_beat > previous_beat:
+            current_beat = previous_beat
+            pred_beat_tempo[current_index] = pred_x[0,i,QPM_INDEX]
+            true_beat_tempo[current_index] = true_x[0,i,QPM_INDEX]
+
+    tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
+
+    return tempo_loss
 
 
 ### training
@@ -794,13 +748,13 @@ if args.sessMode == 'train':
         u.encoding = 'latin1'
         means, stds = u.load()
 
-    perform_num = len(complete_xy)
+    # perform_num = len(complete_xy)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    train_perf_num = int(perform_num * training_ratio)
-    train_xy = complete_xy[:train_perf_num]
-    test_xy = complete_xy[train_perf_num:]
-    print('number of performance: ', perform_num, 'number of test perf: ', len(test_xy))
+    # train_perf_num = int(perform_num * training_ratio)
+    train_xy = complete_xy['train']
+    test_xy = complete_xy['valid']
+    print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
 
     print(train_xy[0][0][0])
     best_prime_loss = float("inf")
@@ -812,11 +766,13 @@ if args.sessMode == 'train':
         vel_loss_total =[]
         second_loss_total =[]
         trill_loss_total =[]
+        kld_total = []
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
             train_y = xy_tuple[1]
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
+            align_matched = xy_tuple[4]
 
             data_size = len(train_x)
             total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
@@ -833,8 +789,8 @@ if args.sessMode == 'train':
                 temp_train_x = key_augmentation(train_x, key)
 
                 for step in range(total_batch_num):
-                    tempo_loss, vel_loss, second_loss, trill_loss = \
-                        batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, step)
+                    tempo_loss, vel_loss, second_loss, trill_loss, kld = \
+                        batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, align_matched, step)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
@@ -843,10 +799,11 @@ if args.sessMode == 'train':
                     vel_loss_total.append(vel_loss.item())
                     second_loss_total.append(second_loss.item())
                     trill_loss_total.append(trill_loss.item())
+                    kld_total.append(kld.item())
 
-        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}'
+        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
               .format(epoch + 1, num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
-                      np.mean(second_loss_total), np.mean(trill_loss_total)) )
+                      np.mean(second_loss_total), np.mean(trill_loss_total), np.mean(kld_total) *1000))
 
 
         ## Validation
@@ -860,10 +817,13 @@ if args.sessMode == 'train':
             test_y = xy_tuple[1]
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
+            align_matched = xy_tuple[4]
 
             batch_x = torch.Tensor(test_x).view((1, -1, SCORE_INPUT)).to(device)
             batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(device)
             input_y = torch.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(device)
+            align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(device)
+            align_matched = align_matched.repeat(1,1,TOTAL_OUTPUT)
             # if args.trainTrill:
             #     input_y = torch.Tensor(prev_feature).view((1, -1, output_size)).to(device)
             # else:
@@ -876,6 +836,9 @@ if args.sessMode == 'train':
             # batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
             #
             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, valid_y=batch_y)
+
+            outputs *= align_matched
+            batch_y *= align_matched
             # outputs = outputs.view(1,-1,NET_PARAM.output_size)
             # outputs = torch.Tensor(outputs).view((1, -1, output_size)).to(device)
             # if args.trainTrill:
@@ -886,7 +849,7 @@ if args.sessMode == 'train':
                 valid_loss = criterion(outputs[:,:,:-num_trill_param], batch_y[:,:,:-num_trill_param])
             else:
                 valid_loss = criterion(outputs, batch_y)
-            tempo_loss = criterion(outputs[:,:,0], batch_y[:,:,0])
+            tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
             vel_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
             second_loss = criterion(outputs[:,:,2],
                                     batch_y[:,:,2])
