@@ -450,7 +450,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
     cresc_words = ['cresc', 'decresc', 'dim']
 
-    onset_positions = list(set([note.note_duration.xml_position for note in melody_notes]))
+    onset_positions = list(set([note.note_duration.xml_position for note in xml_notes]))
     onset_positions.sort()
 
     for i in range(xml_length):

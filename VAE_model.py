@@ -30,7 +30,7 @@ parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="tr
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
+parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='na_onset', help="code name for saving the model")
 
 
@@ -46,6 +46,7 @@ class NetParams:
 
     def __init__(self):
         self.note = self.Param()
+        self.onset = self.Param()
         self.beat = self.Param()
         self.measure = self.Param()
         self.final = self.Param()
@@ -58,8 +59,10 @@ class NetParams:
 ### parameters
 NET_PARAM = NetParams()
 
-NET_PARAM.note.layer = 4
+NET_PARAM.note.layer = 2
 NET_PARAM.note.size = 64
+NET_PARAM.onset.layer = 2
+NET_PARAM.onset.size = 64
 NET_PARAM.beat.layer = 2
 NET_PARAM.beat.size = 32
 NET_PARAM.measure.layer = 1
@@ -111,10 +114,10 @@ batch_size = 1
 torch.cuda.set_device(args.device)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size *2 + \
-                        NET_PARAM.measure.size * 2 + NET_PARAM.encoder.size + \
+NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.onset.size + NET_PARAM.beat.size + \
+                        NET_PARAM.measure.size ) * 2 + NET_PARAM.encoder.size + \
                         num_tempo_info + num_dynamic_info
-NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.onset.size + NET_PARAM.beat.size +
                            NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
                           + num_prime_param
 # if args.trainTrill is False:
@@ -153,13 +156,16 @@ class HAN_VAE(nn.Module):
         self.encoder_size = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.encoder_layer_num = network_parameters.encoder.layer
+        self.onset_hidden_size = network_parameters.onset.size
+        self.num_onset_layers = network_parameters.onset.layer
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.onset_encoder = nn.LSTM(self.input_size, self.hidden_size * 2, self.num_layers, batch_first=True, bidirectional=False, dropout=DROP_OUT)
+        self.onset_encoder = nn.LSTM( (self.hidden_size + self.voice_hidden_size)*2, self.onset_hidden_size, 1, batch_first=True, bidirectional=False)
+        self.onset_rnn = nn.LSTM(self.onset_hidden_size, self.onset_hidden_size, self.num_onset_layers, batch_first=True, bidirectional=True)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
-        self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.beat_rnn = nn.LSTM(self.hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
-        self.measure_hidden = nn.LSTM(self.beat_hidden_size*2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
+        self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
         self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -187,17 +193,18 @@ class HAN_VAE(nn.Module):
         voice_numbers = [x.voice for x in note_locations]
         onset_numbers = [x.onset for x in note_locations]
         num_notes = x.size(1)
-        hidden_out, beat_hidden_out, measure_hidden_out, voice_out = \
+        note_out, onset_out, beat_hidden_out, measure_hidden_out, voice_out = \
             self.run_offline_score_model(x, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index)
-        beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
-        measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
+        onset_out_spanned = self.span_beat_to_note_num(onset_out, onset_numbers, num_notes, start_index)
+        beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
+        measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
         if initial_z:
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out, y), 2)
+            perform_concat = torch.cat((note_out, onset_out_spanned, beat_out_spanned, measure_out_spanned, voice_out, y), 2)
             perform_style_encoded, _ = self.performance_encoder(perform_concat)
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
@@ -209,8 +216,8 @@ class HAN_VAE(nn.Module):
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
         # if not step_by_step:
-        #     beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
-        #     measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
+        #     beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
+        #     measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
             # print('note hidden time: ', time2-time1, ', attention time: ',time3-time2)
 
@@ -229,14 +236,14 @@ class HAN_VAE(nn.Module):
             beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
             beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
             if 'beat_hidden_out' not in locals():
-                beat_hidden_out = beat_hidden_spanned
+                beat_hidden_out = beat_out_spanned
             num_beats = beat_hidden_out.size(1)
             # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
             perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
             beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector, perform_z_beat_spanned), 2)
             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
             tempos = self.beat_tempo_fc(beat_forward)
-            num_notes = hidden_out.size(1)
+            num_notes = note_out.size(1)
             tempos_spanned = self.span_beat_to_note_num(tempos, beat_numbers, num_notes, start_index)
             # y[0, :, 0] = tempos_spanned.view(-1)
 
@@ -246,16 +253,10 @@ class HAN_VAE(nn.Module):
         # dynamic_info = torch.cat((x[:, :, mean_vel_start_index + 4].view(1,-1,1),
         #                           x[:, :, vel_vec_start_index:vel_vec_start_index + 4]), 2).view(1,-1,5)
 
-        if args.voiceNet:
-            out_combined = torch.cat((
-                hidden_out, beat_hidden_spanned, measure_hidden_spanned,
-                # qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
-                voice_out, perform_z_batched), 2)
-        else:
-            out_combined = torch.cat((
-                hidden_out, beat_hidden_spanned, measure_hidden_spanned,
-                # qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
-                perform_z_batched), 2)
+        out_combined = torch.cat((
+            note_out, onset_out_spanned, beat_out_spanned, measure_out_spanned,
+            # qpm_primo, tempo_primo, mean_velocity_info, dynamic_info,
+            voice_out, perform_z_batched), 2)
 
         out, final_hidden = self.output_lstm(out_combined, final_hidden)
 
@@ -267,7 +268,7 @@ class HAN_VAE(nn.Module):
 
         return out, perform_mu, perform_var
 
-    def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
+    def run_offline_score_model(self, x, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
         beat_hidden = self.init_beat_layer(x.size(0))
         measure_hidden = self.init_measure_layer(x.size(0))
@@ -279,42 +280,67 @@ class HAN_VAE(nn.Module):
         voice_hidden = self.init_voice_layer(1, max_voice)
         voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
 
-        hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-        beat_nodes = self.make_beat_node(hidden_out, beat_numbers, start_index)
-        beat_hidden_out, beat_hidden = self.beat_hidden(beat_nodes, beat_hidden)
-        measure_nodes = self.make_measure_node(beat_hidden_out, measure_numbers, beat_numbers, start_index)
-        measure_hidden_out, measure_hidden = self.measure_hidden(measure_nodes, measure_hidden)
+        note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
+        # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        beat_nodes = self.make_higher_node(onset_out, self.beat_attention, onset_numbers, beat_numbers, start_index)
+        # beat_nodes = self.make_beat_node(onset_out, beat_numbers, start_index)
+        beat_hidden_out, beat_hidden = self.beat_rnn(beat_nodes, beat_hidden)
+        measure_nodes = self.make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers, start_index)
+        # measure_nodes = self.make_measure_node(beat_hidden_out, measure_numbers, beat_numbers, start_index)
+        measure_hidden_out, measure_hidden = self.measure_rnn(measure_nodes, measure_hidden)
 
-        return hidden_out, beat_hidden_out, measure_hidden_out, voice_out
+        return note_out, onset_out, beat_hidden_out, measure_hidden_out, voice_out
 
-    def run_onset_rnn(self, input_notes, onset_numbers, start_index):
+    def run_onset_rnn(self, input_notes, voice_outputs, onset_numbers, start_index):
+        note_nodes = []
         onset_nodes = []
-        prev_onset = -1
+        prev_onset = onset_numbers[start_index]
         onset_notes_start = 0
         beat_notes_end = 0
         num_notes = input_notes.shape[1]
         for note_index in range(num_notes):
             abs_index = start_index + note_index
             if onset_numbers[abs_index] > prev_onset:
-                # new beat start
+                # new beat start or sequence ends
                 onset_notes_end = note_index
-                corresp_notes= input_notes[0, onset_notes_start:onset_notes_end, :]
+                corresp_notes = input_notes[:, onset_notes_start:onset_notes_end, :]
+                corresp_voice_hiden = voice_outputs[:, onset_notes_start:onset_notes_end,:]
+
                 note_hidden = self.init_hidden(1)
-                notes_output = self.onset_encoder(corresp_notes, note_hidden)
-                beat = self.sum_with_attention(corresp_hidden, self.beat_attention)
-                beat_nodes.append(beat)
+                onset_encoder_hidden = self.init_onset_encoder(1)
+
+                note_output, note_hidden = self.lstm(corresp_notes, note_hidden)
+                note_concated = torch.cat((note_output, corresp_voice_hiden), 2)
+                encoded_onset, _ = self.onset_encoder(note_concated, onset_encoder_hidden)
+
+                onset = encoded_onset[0,-1,:]
+                onset_nodes.append(onset)
+                note_nodes.append(note_output)
 
                 onset_notes_start = note_index
-                prev_beat = beat_number[actual_index]
+                prev_onset = onset_numbers[abs_index]
 
-        last_hidden = hidden_out[0, beat_notes_end:, :]
-        beat = self.sum_with_attention(last_hidden, self.beat_attention)
-        beat_nodes.append(beat)
+        corresp_notes = input_notes[:, onset_notes_start:, :]
+        corresp_voice_hiden = voice_outputs[:, onset_notes_start:, :]
 
-        beat_nodes = torch.stack(beat_nodes).view(1, -1, self.hidden_size * 2)
-        # beat_nodes = torch.Tensor(beat_nodes)
+        note_hidden = self.init_hidden(1)
+        onset_encoder_hidden = self.init_onset_encoder(1)
 
-        return beat_nodes
+        note_output, note_hidden = self.lstm(corresp_notes, note_hidden)
+        note_concated = torch.cat((note_output, corresp_voice_hiden), 2)
+        encoded_onset, _ = self.onset_encoder(note_concated, onset_encoder_hidden)
+
+        onset = encoded_onset[0, -1, :]
+        onset_nodes.append(onset)
+        note_nodes.append(note_output)
+
+        onset_nodes = torch.stack(onset_nodes).view(1, -1, self.onset_hidden_size)
+        note_out = torch.cat(note_nodes, 1)
+
+        onset_hidden = self.init_onset_layer(1)
+        onset_out, onset_hidden = self.onset_rnn(onset_nodes, onset_hidden)
+
+        return note_out, onset_out
 
 
     def encode_with_net(self, score_input, mean_net, var_net):
@@ -340,6 +366,36 @@ class HAN_VAE(nn.Module):
         upper_node_sum = torch.sum(upper_node, dim=0)
 
         return upper_node_sum
+
+    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index):
+        higher_nodes = []
+        prev_higher_index = higher_indexes[start_index]
+        lower_node_start = 0
+        lower_node_end = 0
+        num_lower_nodes = lower_out.shape[1]
+        start_lower_index = lower_indexes[start_index]
+        lower_hidden_size = lower_out.shape[2]
+        for low_index in range(num_lower_nodes):
+            absolute_low_index = start_lower_index + low_index
+            current_note_index = lower_indexes.index(absolute_low_index)
+
+            if higher_indexes[current_note_index] > prev_higher_index:
+                # new beat start
+                lower_node_end = low_index
+                corresp_lower_out = lower_out[0, lower_node_start:lower_node_end, :]
+                higher = self.sum_with_attention(corresp_lower_out, attention_weights)
+                higher_nodes.append(higher)
+
+                lower_node_start = low_index
+                prev_higher_index = higher_indexes[current_note_index]
+
+        corresp_lower_out = lower_out[0, lower_node_start:, :]
+        higher = self.sum_with_attention(corresp_lower_out, attention_weights)
+        higher_nodes.append(higher)
+
+        higher_nodes = torch.stack(higher_nodes).view(1, -1, lower_hidden_size)
+
+        return higher_nodes
 
 
     def make_beat_node(self, hidden_out, beat_number, start_index):
@@ -461,6 +517,10 @@ class HAN_VAE(nn.Module):
         h0 = torch.zeros(1 , batch_size, self.final_hidden_size).to(device)
         return (h0, h0)
 
+    def init_onset_layer(self, batch_size):
+        h0 = torch.zeros(self.num_onset_layers * 2, batch_size, self.onset_hidden_size).to(device)
+        return (h0, h0)
+
     def init_beat_layer(self, batch_size):
         h0 = torch.zeros(self.num_beat_layers * 2, batch_size, self.beat_hidden_size).to(device)
         return (h0, h0)
@@ -480,6 +540,10 @@ class HAN_VAE(nn.Module):
             h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.hidden_size).to(device)
             layers.append((h0, h0))
         return layers
+
+    def init_onset_encoder(self, batch_size):
+        h0 = torch.zeros(1, batch_size, self.onset_hidden_size).to(device)
+        return (h0, h0)
 
 
 class ExtraHANVAE(HAN_VAE):

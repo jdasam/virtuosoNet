@@ -8,9 +8,9 @@ import pickle
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Chopin/Chopin_Sonata_2/1st_no_repeat/'
+folderDir = 'chopin_cleaned/Mozart/Piano_Sonatas/12-3/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'Giltburg02'
+artistName = 'MunA05'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
