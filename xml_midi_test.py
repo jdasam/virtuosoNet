@@ -8,9 +8,9 @@ import pickle
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Liszt/Sonata/'
+folderDir = 'chopin_cleaned/Chopin/Chopin_Sonata_2/1st_no_repeat/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'Dulu07'
+artistName = 'Giltburg02'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -104,7 +104,7 @@ for note in melody_notes:
 #         # print(dir)
 #         pass
 
-# words = xml_matching.get_all_words_from_folders('chopin_cleaned/Scriabin/')
+# words = xml_matching.get_all_words_from_folders('chopin_cleaned/Liszt/')
 # for wrd in words:
 #     print (wrd)
 
