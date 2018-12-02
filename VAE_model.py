@@ -198,7 +198,6 @@ class HAN_VAE(nn.Module):
         onset_out_spanned = self.span_beat_to_note_num(onset_out, onset_numbers, num_notes, start_index)
         beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-        print('beat out: ', beat_hidden_out[0,5:10,0])
         if initial_z:
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
@@ -211,7 +210,6 @@ class HAN_VAE(nn.Module):
             perform_style_vector = perform_style_encoded[:, -1, :]  # need check
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
-            print('Perform latent vecotr: ', perform_var[0,0:3])
 
         # perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
