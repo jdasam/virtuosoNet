@@ -700,7 +700,7 @@ def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, b
         trill_loss = torch.zeros(1)
 
     # loss = criterion(outputs, batch_y)
-    tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
+    # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
     dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
 
@@ -708,18 +708,19 @@ def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, b
 
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
-    current_index = 0
     num_notes = pred_x.shape[1]
-    num_beats = note_locations[num_notes+start_index-1].beat - note_locations[start_index].beat + 1
+    start_beat = note_locations[start_index].beat
+    num_beats = note_locations[num_notes+start_index-1].beat - start_beat + 1
 
-    pred_beat_tempo = torch.Tensor(num_beats).to(device)
-    true_beat_tempo = torch.Tensor(num_beats).to(device)
+
+    pred_beat_tempo = torch.zeros([num_beats]).to(device)
+    true_beat_tempo = torch.zeros([num_beats]).to(device)
     for i in range(num_notes):
         current_beat = note_locations[i+start_index].beat
         if current_beat > previous_beat:
-            current_beat = previous_beat
-            pred_beat_tempo[current_index] = pred_x[0,i,QPM_INDEX]
-            true_beat_tempo[current_index] = true_x[0,i,QPM_INDEX]
+            previous_beat = current_beat
+            pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,QPM_INDEX]
+            true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX]
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
 
@@ -848,7 +849,7 @@ if args.sessMode == 'train':
             if args.trainTrill:
                 valid_loss = criterion(outputs[:,:,:-num_trill_param], batch_y[:,:,:-num_trill_param])
             else:
-                valid_loss = criterion(outputs, batch_y)
+                valid_loss = criterion(outputs[:,:,1:], batch_y[:,:,1:])
             tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
             vel_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
             second_loss = criterion(outputs[:,:,2],
@@ -863,6 +864,7 @@ if args.sessMode == 'train':
 
         mean_valid_loss = np.mean(valid_loss_total)
         mean_tempo_loss = np.mean(tempo_loss_total)
+        mean_valid_loss = (mean.valid_loss + mean_tempo_loss * 0.5) / 1.5
         mean_vel_loss =  np.mean(vel_loss_total)
         mean_second_loss = np.mean(second_loss_total)
         mean_trill_loss = np.mean(trill_loss_total)
