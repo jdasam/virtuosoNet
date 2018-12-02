@@ -864,7 +864,7 @@ if args.sessMode == 'train':
 
         mean_valid_loss = np.mean(valid_loss_total)
         mean_tempo_loss = np.mean(tempo_loss_total)
-        mean_valid_loss = (mean.valid_loss + mean_tempo_loss * 0.5) / 1.5
+        mean_valid_loss = (mean_valid_loss + mean_tempo_loss * 0.5) / 1.5
         mean_vel_loss =  np.mean(vel_loss_total)
         mean_second_loss = np.mean(second_loss_total)
         mean_trill_loss = np.mean(trill_loss_total)
