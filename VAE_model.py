@@ -455,6 +455,8 @@ class HAN_VAE(nn.Module):
         node_size = beat_out.shape[2]
         for i in range(num_notes):
             beat_index = beat_number[start_index+i] - start_beat
+            if beat_index >= num_beat:
+                beat_index = num_beat-1
             span_mat[0,i,beat_index] = 1
         span_mat = span_mat.to(device)
 
