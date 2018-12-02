@@ -32,6 +32,7 @@ parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="netwo
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='na_onset', help="code name for saving the model")
+parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 
 
 args = parser.parse_args()
@@ -198,7 +199,7 @@ class HAN_VAE(nn.Module):
         onset_out_spanned = self.span_beat_to_note_num(onset_out, onset_numbers, num_notes, start_index)
         beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-
+        print('beat out: ', beat_hidden_out[0,5:10,0])
         if initial_z:
             perform_z = torch.Tensor(initial_z).to(device).view(1,-1)
             perform_mu = 0
@@ -211,15 +212,11 @@ class HAN_VAE(nn.Module):
             perform_style_vector = perform_style_encoded[:, -1, :]  # need check
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+            print('Perform latent vecotr: ', perform_var[0,0:3])
 
         # perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
-        # if not step_by_step:
-        #     beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
-        #     measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
-
-            # print('note hidden time: ', time2-time1, ', attention time: ',time3-time2)
 
         tempo_hidden = self.init_beat_tempo_forward(x.size(0))
         final_hidden = self.init_final_layer(x.size(0))
@@ -1016,8 +1013,9 @@ elif args.sessMode=='test':
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
     path_name = args.testPath
+    composer_name = args.composer
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
-    test_x, xml_notes, xml_doc, note_locations = xml_matching.read_xml_to_array(path_name, means, stds, args.startTempo, vel_pair)
+    test_x, xml_notes, xml_doc, note_locations = xml_matching.read_xml_to_array(path_name, means, stds, args.startTempo, composer_name, vel_pair)
     batch_x = torch.Tensor(test_x).to(device)
     batch_x = batch_x.view(1, -1, SCORE_INPUT)
 

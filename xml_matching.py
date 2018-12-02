@@ -2328,7 +2328,7 @@ def check_overlapped_notes(xml_notes):
     return xml_notes
 
 
-def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
+def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
     xml_name = path_name + 'musicxml_cleaned.musicxml'
     midi_name = path_name + 'midi_cleaned.mid'
 
@@ -2346,6 +2346,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
     measure_positions = extract_measure_position(xml_object)
     features = extract_score_features(xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
     features = make_index_continuous(features, score=True)
+    composer_vec = composer_name_to_vec(composer_name)
 
     for i in range(len(stds[0])):
         if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
@@ -2384,9 +2385,10 @@ def read_xml_to_array(path_name, means, stds, start_tempo, vel_standard):
                       (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
                    (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
                     (feat.distance_from_abs_dynamic - means[0][7]) / stds[0][7],
+                  (feat.distance_from_recent_tempo - means[0][8]) / stds[0][8] ,
                     feat.xml_position, feat.grace_order,
                     feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
-                   + feat.pitch + feat.tempo + feat.dynamic + feat.notation + feat.tempo_primo
+                   + feat.pitch + feat.tempo + feat.dynamic + composer_vec + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
         note_locations.append(feat.note_location)
