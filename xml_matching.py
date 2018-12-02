@@ -17,7 +17,7 @@ import evaluation
 
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
-                            'presto', 'prestissimo', 'maestoso', 'lullaby',
+                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento',
                             'Freely, with expression', "d'un rythme souple", 'agitato',
                             'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft',
                             'lent', 'large', 'vif', 'animé']
@@ -1036,6 +1036,8 @@ def cal_beat_importance(beat_position, numerator):
         beat_importance = 1
     elif (beat_position * 12) % 1 == 0 and numerator in [3, 6, 12]:
         beat_importance = 0.5
+    else:
+        beat_importance = 0
     return beat_importance
 
 
@@ -1143,12 +1145,17 @@ def load_pairs_from_folder(path):
             xml_perform_match = match_score_pair2perform(score_pairs, perf_midi_notes, corresp)
             perform_pairs = make_xml_midi_pair(xml_notes, perf_midi_notes, xml_perform_match)
             print("performance name is " + perf_name)
-            check_pairs(perform_pairs)
+            num_align_error = check_pairs(perform_pairs)
+            if num_align_error > 1000:
+                print('Too many align error in the performance')
+                continue
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
             perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec}
 
             perform_features_piece.append(perform_feat_score)
 
+    if perform_features_piece == []:
+        return None
     return perform_features_piece
 
 
@@ -2778,6 +2785,7 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('presto', 0, 0.8))
     embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
 
+    embed_table.append(EmbeddingKey('doppio movimento', 0, 0.6))
     embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
     embed_table.append(EmbeddingKey('allegro molto', 0, 0.85))
     embed_table.append(EmbeddingKey('più presto possibile', 0, 1))
