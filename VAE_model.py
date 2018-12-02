@@ -34,7 +34,6 @@ parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device n
 parser.add_argument("-code", "--modelCode", type=str, default='na_onset', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 
-
 args = parser.parse_args()
 
 
@@ -79,7 +78,7 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 500
+time_steps = 300
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
