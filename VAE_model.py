@@ -24,14 +24,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/schumann/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="composer_test_mozart", help="dat file name")
-parser.add_argument("--resume", type=str, default="non_reg_tempo_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="na_onset_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='non_reg_tempo', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='na_onset', help="code name for saving the model")
 
 
 args = parser.parse_args()
@@ -155,6 +155,7 @@ class HAN_VAE(nn.Module):
         self.encoder_layer_num = network_parameters.encoder.layer
 
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.onset_encoder = nn.LSTM(self.input_size, self.hidden_size * 2, self.num_layers, batch_first=True, bidirectional=False, dropout=DROP_OUT)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
         self.beat_hidden = nn.LSTM(self.hidden_size*2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
@@ -184,9 +185,10 @@ class HAN_VAE(nn.Module):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
+        onset_numbers = [x.onset for x in note_locations]
         num_notes = x.size(1)
         hidden_out, beat_hidden_out, measure_hidden_out, voice_out = \
-            self.run_offline_score_model(x, beat_numbers, measure_numbers, voice_numbers, start_index)
+            self.run_offline_score_model(x, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index)
         beat_hidden_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
 
@@ -270,23 +272,50 @@ class HAN_VAE(nn.Module):
         beat_hidden = self.init_beat_layer(x.size(0))
         measure_hidden = self.init_measure_layer(x.size(0))
 
+        temp_voice_numbers = voice_numbers[start_index:start_index + x.size(1)]
+        if temp_voice_numbers == []:
+            temp_voice_numbers = voice_numbers[start_index:]
+        max_voice = max(temp_voice_numbers)
+        voice_hidden = self.init_voice_layer(1, max_voice)
+        voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
+
         hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         beat_nodes = self.make_beat_node(hidden_out, beat_numbers, start_index)
         beat_hidden_out, beat_hidden = self.beat_hidden(beat_nodes, beat_hidden)
         measure_nodes = self.make_measure_node(beat_hidden_out, measure_numbers, beat_numbers, start_index)
         measure_hidden_out, measure_hidden = self.measure_hidden(measure_nodes, measure_hidden)
 
-        if args.voiceNet:
-            temp_voice_numbers = voice_numbers[start_index:start_index + x.size(1)]
-            if temp_voice_numbers == []:
-                temp_voice_numbers = voice_numbers[start_index:]
-            max_voice = max(temp_voice_numbers)
-            voice_hidden = self.init_voice_layer(1, max_voice)
-            voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
-        else:
-            voice_out = 0
-
         return hidden_out, beat_hidden_out, measure_hidden_out, voice_out
+
+    def run_onset_rnn(self, input_notes, onset_numbers, start_index):
+        onset_nodes = []
+        prev_onset = -1
+        onset_notes_start = 0
+        beat_notes_end = 0
+        num_notes = input_notes.shape[1]
+        for note_index in range(num_notes):
+            abs_index = start_index + note_index
+            if onset_numbers[abs_index] > prev_onset:
+                # new beat start
+                onset_notes_end = note_index
+                corresp_notes= input_notes[0, onset_notes_start:onset_notes_end, :]
+                note_hidden = self.init_hidden(1)
+                notes_output = self.onset_encoder(corresp_notes, note_hidden)
+                beat = self.sum_with_attention(corresp_hidden, self.beat_attention)
+                beat_nodes.append(beat)
+
+                onset_notes_start = note_index
+                prev_beat = beat_number[actual_index]
+
+        last_hidden = hidden_out[0, beat_notes_end:, :]
+        beat = self.sum_with_attention(last_hidden, self.beat_attention)
+        beat_nodes.append(beat)
+
+        beat_nodes = torch.stack(beat_nodes).view(1, -1, self.hidden_size * 2)
+        # beat_nodes = torch.Tensor(beat_nodes)
+
+        return beat_nodes
+
 
     def encode_with_net(self, score_input, mean_net, var_net):
         mu = mean_net(score_input)
