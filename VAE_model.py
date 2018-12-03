@@ -935,10 +935,7 @@ if args.sessMode == 'train':
             #     outputs = torch.Tensor(outputs).view((1, -1, output_size))
             # else:
             #     outputs = torch.Tensor(outputs).view((1, -1, output_size - num_trill_param))
-            if args.trainTrill:
-                valid_loss = criterion(outputs[:,:,:-num_trill_param], batch_y[:,:,:-num_trill_param])
-            else:
-                valid_loss = criterion(outputs[:,:,1:], batch_y[:,:,1:])
+            valid_loss = criterion(outputs[:,:,1:-num_trill_param], batch_y[:,:,1:-num_trill_param])
             tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
             vel_loss = criterion(outputs[:,:,1], batch_y[:,:,1])
             second_loss = criterion(outputs[:,:,2],
