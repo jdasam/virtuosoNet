@@ -1866,13 +1866,13 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
         pedals.sort(key=lambda x:x.time)
         previous_off_time = 0
         for pedal in pedals:
-            if pedal.time <0.3:
+            if pedal.time <0.2:
                 continue
             if pedal.value < 40:
                 previous_off_time = pedal.time
             else:
                 time_passed = pedal.time - previous_off_time
-                if time_passed < 0.25:
+                if time_passed < 0.15:
                     pedals.remove(pedal)
         piano_midi.instruments[0].control_changes = pedals
     piano_midi.write(output_name)
