@@ -14,6 +14,7 @@ from musicxml_parser.mxp import MusicXMLDocument
 import midi_utils.midi_utils as midi_utils
 import copy
 import evaluation
+import score_as_graph as score_graph
 
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
@@ -1128,6 +1129,7 @@ def load_pairs_from_folder(path):
     perform_features_piece = []
     directions, time_signatures = extract_directions(XMLDocument)
     xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
+    # notes_graph = score_graph.make_edge(xml_notes)
 
     for file in filenames:
         if file[-18:] == '_infer_corresp.txt':
@@ -1150,6 +1152,7 @@ def load_pairs_from_folder(path):
                 print('Too many align error in the performance')
                 continue
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
+            # perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec, 'graph': notes_graph}
             perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec}
 
             perform_features_piece.append(perform_feat_score)
@@ -2406,13 +2409,21 @@ def cal_beat_positions_of_piece(xml_doc):
     time_signatures = xml_doc.get_time_signatures()
     time_sig_position = [time.xml_position for time in time_signatures]
     beat_piece = []
+    prev_measure_start = 0
     for i in range(num_measure):
         measure = piano.measures[i]
         measure_start = measure.start_xml_position
+        prev_measure_start = measure_start
         corresp_time_sig_idx = binaryIndex(time_sig_position, measure_start)
         corresp_time_sig = time_signatures[corresp_time_sig_idx]
         # corresp_time_sig = measure.time_signature
-        measure_length = corresp_time_sig.state.divisions * corresp_time_sig.numerator / corresp_time_sig.denominator * 4
+        full_measure_length = corresp_time_sig.state.divisions * corresp_time_sig.numerator / corresp_time_sig.denominator * 4
+        if i < num_measure -1:
+            actual_measure_length = piano.measures[i+1].start_xml_position - measure_start
+        else:
+            actual_measure_length = full_measure_length
+
+
         # if i +1 < num_measure:
         #     measure_length = piano.measures[i+1].start_xml_position - measure_start
         # else:
@@ -2426,15 +2437,19 @@ def cal_beat_positions_of_piece(xml_doc):
         elif num_beat_in_measure == 12:
             num_beat_in_measure = 4
 
-        inter_beat_interval = measure_length / num_beat_in_measure
+        inter_beat_interval = full_measure_length / num_beat_in_measure
+        if actual_measure_length != full_measure_length:
+            measure.implicit = True
+
         if measure.implicit:
             current_measure_length = piano.measures[i + 1].start_xml_position - measure_start
-            length_ratio = current_measure_length / measure_length
+            length_ratio = current_measure_length / full_measure_length
             minimum_beat = 1 / corresp_time_sig.numerator
             num_beat_in_measure = int(math.ceil(length_ratio / minimum_beat))
             for j in range(-num_beat_in_measure, 0):
                 beat = piano.measures[i + 1].start_xml_position + j * inter_beat_interval
-                beat_piece.append(beat)
+                if len(beat_piece) > 0 and beat > beat_piece[-1]:
+                    beat_piece.append(beat)
         else:
             for j in range(num_beat_in_measure):
                 beat = measure_start + j * inter_beat_interval
@@ -2916,6 +2931,26 @@ def omit_trill_notes(xml_notes):
             wavy_line.xml_position = note.note_duration.xml_position
             wavy_line.pitch = note.pitch
             wavy_lines.append(wavy_line)
+        if note.note_notations.is_trill:
+            onset_notes = []
+            current_position = note.note_duration.xml_position
+
+            search_index = i
+            while search_index +1 < num_notes and xml_notes[search_index+1].note_duration.xml_position == current_position:
+                search_index += 1
+                onset_notes.append(xml_notes[search_index])
+            search_index = i
+
+            while search_index - 1 >= 0 and xml_notes[search_index-1].note_duration.xml_position == current_position:
+                search_index -= 1
+                onset_notes.append(xml_notes[search_index])
+
+            for other_note in onset_notes:
+                highest_note = note
+                if other_note.voice == note.voice and other_note.pitch[1] > highest_note.pitch[1]:
+                    highest_note.note_notations.is_trill = False
+                    other_note.note_notations.is_trill = True
+
     wavy_lines = combine_wavy_lines(wavy_lines)
 
     for index in reversed(omit_index):
@@ -3050,6 +3085,8 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
 
     if num_trills == 0:
         return trills_vec, 0
+    elif num_trills == 1:
+        return trills_vec, 1
     elif num_trills > 2 and trills[-1].pitch == trills[-2].pitch:
         del trills[-1]
         num_trills -= 1
@@ -3082,6 +3119,11 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
             if not pair ==[] and pair['midi'] == trills[0]:
                 pair = []
         pairs[index] = {'xml': note, 'midi': trills[0]}
+
+    for num in trills_vec:
+        if math.isnan(num):
+            print('trill vec is nan')
+            num = 0
 
     return trills_vec, trill_length
 
