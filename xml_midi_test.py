@@ -5,6 +5,7 @@ from musicxml_parser.mxp import MusicXMLDocument
 import midi_utils.midi_utils as midi_utils
 import xml_matching
 import pickle
+import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
@@ -28,6 +29,8 @@ perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
 perform_midi = midi_utils.add_pedal_inf_to_notes(perform_midi)
 score_midi_notes = score_midi.instruments[0].notes
 score_midi_notes.sort(key=lambda note: note.start)
+
+notes_graph = score_graph.make_edge(melody_notes)
 
 # for part in XMLDocument.parts:
 #     for measure in part.measures:

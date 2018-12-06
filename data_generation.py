@@ -31,7 +31,7 @@ def save_features_as_vector(dataset, num_train, save_name):
             features = perform['features']
             score = perform['score']
             composer_vec = perform['composer']
-            # score_graph = perform['graph']
+            score_graph = perform['graph']
 
             for feature in features:
                 total_notes += 1
@@ -90,8 +90,7 @@ def save_features_as_vector(dataset, num_train, save_name):
                     # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
-            complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score])
-            # complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score_graph, score])
+            complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score_graph, score])
 
             # key_changed_num = []
             # for i in range(3):
@@ -218,5 +217,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'composer_entire_fixed   ')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'graph_mozart')

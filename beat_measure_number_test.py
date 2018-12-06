@@ -85,7 +85,7 @@ def load_pairs_from_folder(path):
         if num_generated_beat != num_required_beat:
             print('num gen beat', num_generated_beat, num_required_beat)
         if num_generated_measure != num_required_measure:
-            print('num gen measure', num_generated_measure, num_required_measure)
+            print('num gen measure', num_generated_measure, num_required_measure, start_index, measure_numbers[start_index], measure_numbers[start_index+299])
 
 
     return perform_features_piece
@@ -143,4 +143,4 @@ def mimic_making_onset_node(input_notes, onset_numbers, start_index):
     return onset_nodes
 
 # load_entire_subfolder('chopin_cleaned/')
-load_entire_subfolder('chopin_cleaned/Liszt/')
+load_entire_subfolder('chopin_cleaned/Schumann/Kreisleriana/')
