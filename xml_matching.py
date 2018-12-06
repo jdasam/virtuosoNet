@@ -301,29 +301,45 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
 def apply_rest_to_note(xml_notes, rests):
     xml_positions = [note.note_duration.xml_position for note in xml_notes]
     # concat continuous rests
-    previous_rest = rests[0]
     new_rests = []
-    for rest in rests:
-        previous_end = previous_rest.note_duration.xml_position + previous_rest.note_duration.duration
-        if previous_rest.voice == rest.voice and\
-                previous_end == rest.note_duration.xml_position:
-            previous_rest.note_duration.duration += rest.note_duration.duration
-        else:
+    num_rests = len(rests)
+    for i in range(num_rests):
+        rest = rests[i]
+        j = 1
+        current_end = rest.note_duration.xml_position + rest.note_duration.duration
+        current_voice = rest.voice
+        while i + j < num_rests -1:
+            next_rest = rests[i+j]
+            if next_rest.note_duration.duration == 0:
+                break
+            if next_rest.note_duration.xml_position == current_end and next_rest.voice == current_voice:
+                rest.note_duration.duration += next_rest.note_duration.duration
+                next_rest.note_duration.duration = 0
+                current_end = rest.note_duration.xml_position + rest.note_duration.duration
+            elif next_rest.note_duration.xml_position > current_end:
+                break
+            j += 1
+
+        if not rest.note_duration.duration == 0:
             new_rests.append(rest)
-            previous_rest = rest
 
     rests = new_rests
 
     for rest in rests:
         rest_position = rest.note_duration.xml_position
         closest_note_index = binaryIndex(xml_positions, rest_position)
-        search_index = 1
+        search_index = 0
         while closest_note_index - search_index >= 0:
             prev_note = xml_notes[closest_note_index - search_index]
-            prev_note_end = prev_note.note_duration.xml_position + prev_note.note_duration.duration
-            if prev_note_end == rest_position and prev_note.voice == rest.voice:
-                prev_note.following_rest_duration = rest.note_duration.duration
-                break
+            if prev_note.voice == rest.voice:
+                prev_note_end = prev_note.note_duration.xml_position + prev_note.note_duration.duration
+                prev_note_with_rest = prev_note_end + prev_note.following_rest_duration
+                if prev_note_end == rest_position:
+                    prev_note.following_rest_duration = rest.note_duration.duration
+                elif prev_note_end < rest_position:
+                    break
+            # elif prev_note_with_rest == rest_position and prev_note.voice == rest.voice:
+            #     prev_note.following_rest_duration += rest.note_duration.duration
             search_index += 1
 
     return xml_notes
@@ -453,6 +469,8 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
     onset_positions = list(set([note.note_duration.xml_position for note in xml_notes]))
     onset_positions.sort()
+
+
 
     for i in range(xml_length):
         note = xml_notes[i]
@@ -1129,7 +1147,7 @@ def load_pairs_from_folder(path):
     perform_features_piece = []
     directions, time_signatures = extract_directions(XMLDocument)
     xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
-    # notes_graph = score_graph.make_edge(xml_notes)
+    notes_graph = score_graph.make_edge(xml_notes)
 
     for file in filenames:
         if file[-18:] == '_infer_corresp.txt':
@@ -1152,8 +1170,7 @@ def load_pairs_from_folder(path):
                 print('Too many align error in the performance')
                 continue
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
-            # perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec, 'graph': notes_graph}
-            perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec}
+            perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec, 'graph': notes_graph}
 
             perform_features_piece.append(perform_feat_score)
 
@@ -2436,7 +2453,6 @@ def cal_beat_positions_of_piece(xml_doc):
             num_beat_in_measure = 3
         elif num_beat_in_measure == 12:
             num_beat_in_measure = 4
-
         inter_beat_interval = full_measure_length / num_beat_in_measure
         if actual_measure_length != full_measure_length:
             measure.implicit = True
@@ -2444,12 +2460,20 @@ def cal_beat_positions_of_piece(xml_doc):
         if measure.implicit:
             current_measure_length = piano.measures[i + 1].start_xml_position - measure_start
             length_ratio = current_measure_length / full_measure_length
-            minimum_beat = 1 / corresp_time_sig.numerator
+            minimum_beat = 1 / num_beat_in_measure
             num_beat_in_measure = int(math.ceil(length_ratio / minimum_beat))
-            for j in range(-num_beat_in_measure, 0):
-                beat = piano.measures[i + 1].start_xml_position + j * inter_beat_interval
-                if len(beat_piece) > 0 and beat > beat_piece[-1]:
-                    beat_piece.append(beat)
+            if i == 0:
+                for j in range(-num_beat_in_measure, 0):
+                    beat = piano.measures[i + 1].start_xml_position + j * inter_beat_interval
+                    if len(beat_piece) > 0 and beat > beat_piece[-1]:
+                        beat_piece.append(beat)
+                    elif len(beat_piece) == 0:
+                        beat_piece.append(beat)
+            else:
+                for j in range(0, num_beat_in_measure):
+                    beat = piano.measures[i].start_xml_position + j * inter_beat_interval
+                    if beat > beat_piece[-1]:
+                        beat_piece.append(beat)
         else:
             for j in range(num_beat_in_measure):
                 beat = measure_start + j * inter_beat_interval
