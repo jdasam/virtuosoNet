@@ -91,7 +91,6 @@ def save_features_as_vector(dataset, num_train, save_name):
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
             complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score_graph, score])
-
             # key_changed_num = []
             # for i in range(3):
             #     key_change = 0
@@ -165,6 +164,8 @@ def save_features_as_vector(dataset, num_train, save_name):
                 complete_xy_normalized[-1][index1].append(new_sample)
         complete_xy_normalized[-1].append(performance[3])
         complete_xy_normalized[-1].append(performance[4])
+        complete_xy_normalized[-1].append(performance[5])
+
 
         # complete_xy_normalized[-1].append(performance[5])
     complete_xy_orig = complete_xy
@@ -217,5 +218,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/')
 save_features_as_vector(chopin_pairs, num_train_pairs, 'graph_mozart')
