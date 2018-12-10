@@ -23,7 +23,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="composer_test_mozart", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="graph_mozart", help="dat file name")
 parser.add_argument("--resume", type=str, default="gcn_alpha_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -137,6 +137,21 @@ TrillNET_Param.note.size = 32
 TrillNET_Param.note.layer = 3
 
 ### Model
+class GatedGraph(nn.Module):
+    def __init__(self, size):
+        super(GatedGraph, self).__init__()
+        self.wz = torch.nn.Parameter(torch.Tensor(size, size))
+        self.uz = torch.nn.Parameter(torch.Tensor(size, size))
+        self.bz = torch.nn.Parameter(torch.Tensor(size))
+        self.wr = torch.nn.Parameter(torch.Tensor(size, size))
+        self.ur = torch.nn.Parameter(torch.Tensor(size, size))
+        self.bz = torch.nn.Parameter(torch.Tensor(size))
+        self.wh = torch.nn.Parameter(torch.Tensor(size, size))
+        self.uh = torch.nn.Parameter(torch.Tensor(size, size))
+        self.bz = torch.nn.Parameter(torch.Tensor(size))
+
+    def forward(self, input):
+        pass
 
 class HAN_VAE(nn.Module):
     def __init__(self, network_parameters, num_trill_param=5):
@@ -159,9 +174,6 @@ class HAN_VAE(nn.Module):
         self.onset_hidden_size = network_parameters.onset.size
         self.num_onset_layers = network_parameters.onset.layer
 
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
-        self.onset_encoder = nn.LSTM( (self.hidden_size + self.voice_hidden_size)*2, self.onset_hidden_size, 1, batch_first=True, bidirectional=False)
-        self.onset_rnn = nn.LSTM(self.onset_hidden_size, self.onset_hidden_size, self.num_onset_layers, batch_first=True, bidirectional=True)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
         self.beat_rnn = nn.LSTM(self.hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
@@ -180,21 +192,38 @@ class HAN_VAE(nn.Module):
         else:
             self.fc = nn.Linear(self.final_hidden_size , self.output_size)
 
+        self.note_fc = nn.Sequential(
+            nn.Linear(self.input_size, 64),
+            nn.ReLU(),
+            # nn.BatchNorm1d(64),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            # nn.BatchNorm1d(64),
+            nn.Linear(64, 128),
+            nn.ReLU()
+        )
+
+        self.forward_graph = GatedGraph(128)
+
         self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
 
-    def forward(self, x, y, note_locations, start_index, step_by_step = False, initial_z=False, rand_threshold=0.7):
+
+
+    def forward(self, x, y, edges, note_locations, start_index, step_by_step = False, initial_z=False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
         onset_numbers = [x.onset for x in note_locations]
         num_notes = x.size(1)
+
         note_out, onset_out, beat_hidden_out, measure_hidden_out, voice_out = \
-            self.run_offline_score_model(x, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index)
+            self.run_offline_score_model(x, edges, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index)
         onset_out_spanned = self.span_beat_to_note_num(onset_out, onset_numbers, num_notes, start_index)
         beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
         measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes, start_index)
@@ -262,7 +291,7 @@ class HAN_VAE(nn.Module):
 
         return out, perform_mu, perform_var
 
-    def run_offline_score_model(self, x, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index):
+    def run_offline_score_model(self, x, edges, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(x.size(0))
         beat_hidden = self.init_beat_layer(x.size(0))
         measure_hidden = self.init_measure_layer(x.size(0))
@@ -274,7 +303,8 @@ class HAN_VAE(nn.Module):
         voice_hidden = self.init_voice_layer(1, max_voice)
         voice_out, voice_hidden = self.run_voice_net(x, voice_hidden, temp_voice_numbers, max_voice)
 
-        note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
+        note_out, onset_out = self.run_graph_network(x, edges, start_index)
+        # note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
         # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         beat_nodes = self.make_higher_node(onset_out, self.beat_attention, onset_numbers, beat_numbers, start_index)
         # beat_nodes = self.make_beat_node(onset_out, beat_numbers, start_index)
@@ -284,6 +314,40 @@ class HAN_VAE(nn.Module):
         measure_hidden_out, measure_hidden = self.measure_rnn(measure_nodes, measure_hidden)
 
         return note_out, onset_out, beat_hidden_out, measure_hidden_out, voice_out
+
+    def run_graph_network(self, nodes, edges, start_index):
+        # 1. Run feed-forward network by note level
+
+        notes_hidden = self.note_fc(nodes)
+        num_notes = notes_hidden.size(1)
+        print('nodes size', nodes.shape, notes_hidden.shape)
+
+        graph_matrix = self.edges_to_matrix(edges, start_index, num_notes)
+
+        activation = torch.matmul(graph_matrix.transpose(0,1), notes_hidden)
+        next_z = self.sigmoid(torch.matmul(self.forward_graph.wz, activation) + torch.matmul(self.forward_graph.uz, notes_hidden) + self.forward_graph.bz)
+        next_r = self.sigmoid(torch.matmul(self.forward_graph.wr, activation) + torch.matmul(self.forward_graph.ur, notes_hidden) + self.forward_graph.br)
+        temp_hidden = self.tanh(torch.matmul(self.forward_graph.wh, activation) + torch.matmul(self.forward_graph.uh, next_r*notes_hidden) + self.forward_graph.bh)
+
+        notes_hidden = (1-next_z) * notes_hidden + next_r * temp_hidden
+
+        return notes_hidden, notes_hidden
+
+    def edges_to_matrix(self, edges, start_index, time_steps):
+        matrix = np.zeros((time_steps, time_steps))
+        selected_edge = edges['forward']
+        for i in range(time_steps):
+            abs_index = start_index + i
+            for edge_index in selected_edge[abs_index]:
+                if 0 <= edge_index - start_index < time_steps:
+                    matrix[i, edge_index-start_index] = 1
+
+        matrix = torch.Tensor(matrix).to(device)
+        return matrix
+
+
+
+
 
     def run_onset_rnn(self, input_notes, voice_outputs, onset_numbers, start_index):
         note_nodes = []
@@ -703,7 +767,7 @@ def perform_xml(input, input_y, note_locations, tempo_stats, valid_y = None, ini
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
+def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -734,7 +798,7 @@ def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, b
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var \
-        = model_train(prime_batch_x, prime_batch_y, note_locations, batch_start, step_by_step=False)
+        = model_train(prime_batch_x, prime_batch_y, edges, note_locations, batch_start, step_by_step=False)
     prime_outputs *= align_matched
 
     tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
@@ -745,35 +809,6 @@ def batch_time_step_run(x,y,prev_feature, note_locations, align_matched, step, b
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
     optimizer.step()
-
-    # async def train_second(batch_x, batch_y, input_y, model):
-    # with torch.cuda.device(1):
-    # second_batch_x = torch.cat((batch_x, batch_y[:, :, 0:num_prime_param]), 2)
-    # second_batch_y = batch_y[:, :, num_prime_param:num_prime_param + num_second_param]
-    # second_input_y = input_y[:, :, num_prime_param:num_prime_param + num_second_param]
-    # model_train = second_model.train()
-    # second_output = model_train(second_batch_x, second_input_y, note_locations, batch_start, step_by_step=True)
-    # second_output = second_output.view(batch_size, time_steps, model_train.output_size)
-    # second_loss = criterion(second_output, second_batch_y)
-    # second_optimizer.zero_grad()
-    # second_loss.backward()
-    # torch.nn.utils.clip_grad_norm_(second_model.parameters(), 0.25)
-    # second_optimizer.step()
-
-
-    # with torch.cuda.device(1):
-    #     second_model = second_model.to(device)
-    #     second_batch_x = torch.cat((batch_x, batch_y[:,:,0:num_prime_param]), 2).to(device)
-    #     second_batch_y = batch_y[:,:,num_prime_param:num_prime_param+num_second_param].to(device)
-    #     second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].to(device)
-    #     model_train = second_model.train()
-    #     second_output = model_train(second_batch_x, second_input_y, note_locations, batch_start, step_by_step=True )
-    #     second_output = second_output.view(batch_size, time_steps, model_train.output_size)
-    #     second_loss = criterion(second_output, second_batch_y)
-    #     second_optimizer.zero_grad()
-    #     second_loss.backward()
-    #     torch.nn.utils.clip_grad_norm_(second_model.parameters(), 0.25)
-    #     second_optimizer.step()
 
     if torch.sum(batch_x[:,:,is_trill_index_score]) > 0:
         trill_batch_x = torch.cat((batch_x, batch_y[:,:,0:num_prime_param+num_second_param]), 2)
@@ -863,6 +898,7 @@ if args.sessMode == 'train':
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
             align_matched = xy_tuple[4]
+            edges = xy_tuple[5]
 
             data_size = len(train_x)
             total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
@@ -880,7 +916,7 @@ if args.sessMode == 'train':
 
                 for step in range(total_batch_num):
                     tempo_loss, vel_loss, second_loss, trill_loss, kld = \
-                        batch_time_step_run(temp_train_x, train_y, prev_feature, note_locations, align_matched, step)
+                        batch_time_step_run(temp_train_x, train_y, prev_feature, edges, note_locations, align_matched, step)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
