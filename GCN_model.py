@@ -78,7 +78,7 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 300
+time_steps = 100
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
@@ -106,6 +106,8 @@ TEMPO_IDX = 27
 PITCH_IDX = 14
 qpm_primo_index = 5
 tempo_primo_index = -2
+GRAPH_KEYS = ['forward', 'backward', 'onset', 'melisma', 'pedal_tone', 'rest_forward', 'rest_backward', 'voice_forward',
+              'voice_backward', 'boundary_forward', 'boundary_backward', 'closest_forward', 'closest_backward']
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
 
@@ -138,20 +140,59 @@ TrillNET_Param.note.layer = 3
 
 ### Model
 class GatedGraph(nn.Module):
-    def __init__(self, size):
-        super(GatedGraph, self).__init__()
-        self.wz = torch.nn.Parameter(torch.Tensor(size, size))
-        self.uz = torch.nn.Parameter(torch.Tensor(size, size))
-        self.bz = torch.nn.Parameter(torch.Tensor(size))
-        self.wr = torch.nn.Parameter(torch.Tensor(size, size))
-        self.ur = torch.nn.Parameter(torch.Tensor(size, size))
-        self.bz = torch.nn.Parameter(torch.Tensor(size))
-        self.wh = torch.nn.Parameter(torch.Tensor(size, size))
-        self.uh = torch.nn.Parameter(torch.Tensor(size, size))
-        self.bz = torch.nn.Parameter(torch.Tensor(size))
+    class subGraph():
+        def __init__(self, size):
+            self.wz = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+            self.wr = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+            self.wh = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+            nn.init.xavier_normal_(self.wz)
+            nn.init.xavier_normal_(self.wr)
+            nn.init.xavier_normal_(self.wh)
 
-    def forward(self, input):
-        pass
+    def __init__(self, size, num_edge_style):
+        super(GatedGraph, self).__init__()
+        self.sub = []
+        for i in range(num_edge_style):
+            subgraph = self.subGraph(size)
+            self.sub.append(subgraph)
+
+        self.uz = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+        self.bz = torch.nn.Parameter(torch.Tensor(size)).to(device)
+        self.ur = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+        self.br = torch.nn.Parameter(torch.Tensor(size)).to(device)
+        self.uh = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
+        self.bh = torch.nn.Parameter(torch.Tensor(size)).to(device)
+
+        nn.init.xavier_normal_(self.uz)
+        nn.init.xavier_normal_(self.ur)
+        nn.init.xavier_normal_(self.uh)
+
+        self.sigmoid = torch.nn.Sigmoid()
+        self.tanh = torch.nn.Tanh()
+
+    def forward(self, input, edge_matrix, iteration=5):
+        num_edge_type = edge_matrix.shape[0]
+        num_notes = edge_matrix.shape[1]
+        num_features = input.shape[2]
+        for i in range(iteration):
+            temp_z = torch.Tensor((1, num_notes, num_features)).to(device)
+            temp_r = torch.Tensor((1, num_notes, num_features)).to(device)
+            temp_h = torch.Tensor((1, num_notes, num_features)).to(device)
+            for j in range(num_edge_type):
+                activation = torch.matmul(edge_matrix[j,:,:].transpose(0, 1), input)
+                temp_z += torch.matmul(activation, self.sub[j].wz)
+                temp_r = temp_r + torch.matmul(activation, self.sub[j].wr)
+                temp_h = temp_h + torch.matmul(activation, self.sub[j].wh)
+            next_z = self.sigmoid(temp_z + torch.matmul(input, self.uz) + self.bz)
+            next_r = self.sigmoid(temp_r + torch.matmul(input, self.ur) + self.br)
+            temp_hidden = self.tanh(temp_h + torch.matmul(next_r * input, self.uh) + self.bh)
+
+            input = (1 - next_z) * input + next_r * temp_hidden
+
+        return input
+
+
+
 
 class HAN_VAE(nn.Module):
     def __init__(self, network_parameters, num_trill_param=5):
@@ -203,7 +244,7 @@ class HAN_VAE(nn.Module):
             nn.ReLU()
         )
 
-        self.forward_graph = GatedGraph(128)
+        self.forward_graph = GatedGraph(128, len(GRAPH_KEYS))
 
         self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
@@ -306,8 +347,8 @@ class HAN_VAE(nn.Module):
         note_out, onset_out = self.run_graph_network(x, edges, start_index)
         # note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
         # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
-        beat_nodes = self.make_higher_node(onset_out, self.beat_attention, onset_numbers, beat_numbers, start_index)
-        # beat_nodes = self.make_beat_node(onset_out, beat_numbers, start_index)
+        # beat_nodes = self.make_higher_node(onset_out, self.beat_attention, onset_numbers, beat_numbers, start_index)
+        beat_nodes = self.make_beat_node(note_out, beat_numbers, start_index)
         beat_hidden_out, beat_hidden = self.beat_rnn(beat_nodes, beat_hidden)
         measure_nodes = self.make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers, start_index)
         # measure_nodes = self.make_measure_node(beat_hidden_out, measure_numbers, beat_numbers, start_index)
@@ -320,27 +361,24 @@ class HAN_VAE(nn.Module):
 
         notes_hidden = self.note_fc(nodes)
         num_notes = notes_hidden.size(1)
-        print('nodes size', nodes.shape, notes_hidden.shape)
 
         graph_matrix = self.edges_to_matrix(edges, start_index, num_notes)
-
-        activation = torch.matmul(graph_matrix.transpose(0,1), notes_hidden)
-        next_z = self.sigmoid(torch.matmul(self.forward_graph.wz, activation) + torch.matmul(self.forward_graph.uz, notes_hidden) + self.forward_graph.bz)
-        next_r = self.sigmoid(torch.matmul(self.forward_graph.wr, activation) + torch.matmul(self.forward_graph.ur, notes_hidden) + self.forward_graph.br)
-        temp_hidden = self.tanh(torch.matmul(self.forward_graph.wh, activation) + torch.matmul(self.forward_graph.uh, next_r*notes_hidden) + self.forward_graph.bh)
-
-        notes_hidden = (1-next_z) * notes_hidden + next_r * temp_hidden
+        notes_hidden = self.forward_graph(notes_hidden, graph_matrix)
 
         return notes_hidden, notes_hidden
 
     def edges_to_matrix(self, edges, start_index, time_steps):
-        matrix = np.zeros((time_steps, time_steps))
-        selected_edge = edges['forward']
-        for i in range(time_steps):
-            abs_index = start_index + i
-            for edge_index in selected_edge[abs_index]:
-                if 0 <= edge_index - start_index < time_steps:
-                    matrix[i, edge_index-start_index] = 1
+        num_keywords = len(GRAPH_KEYS)
+        matrix = np.zeros((num_keywords, time_steps, time_steps))
+
+        for k in range(num_keywords):
+            selected_key = GRAPH_KEYS[k]
+            selected_edge = edges[selected_key]
+            for i in range(time_steps):
+                abs_index = start_index + i
+                for edge_index in selected_edge[abs_index]:
+                    if 0 <= edge_index - start_index < time_steps:
+                        matrix[k, i, edge_index-start_index] = 1
 
         matrix = torch.Tensor(matrix).to(device)
         return matrix
@@ -746,12 +784,12 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-def perform_xml(input, input_y, note_locations, tempo_stats, valid_y = None, initial_z = False):
+def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
     # time1= time.time()
     with torch.no_grad():  # no need to track history in sampling
         model_eval = model.eval()
         prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs, _, _ = model_eval(input, prime_input_y, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+        prime_outputs, _, _ = model_eval(input, prime_input_y, edges, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
         # second_inputs = torch.cat((input,prime_outputs), 2)
         # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
         # model_eval = second_model.eval()
@@ -944,6 +982,7 @@ if args.sessMode == 'train':
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
             align_matched = xy_tuple[4]
+            edges = xy_tuple[5]
 
             batch_x = torch.Tensor(test_x).view((1, -1, SCORE_INPUT)).to(device)
             batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(device)
@@ -961,7 +1000,7 @@ if args.sessMode == 'train':
 
             # batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
             #
-            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats, valid_y=batch_y)
+            outputs = perform_xml(batch_x, input_y, edges, note_locations, tempo_stats, valid_y=batch_y)
 
             outputs *= align_matched
             batch_y *= align_matched

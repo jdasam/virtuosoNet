@@ -42,7 +42,7 @@ def make_edge(xml_notes):
                 melisma_note_matrix[i].append(i+j)
                 pedal_tone_matrix[i+j].append(i)
             elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
-                if current_voice == note.voice:
+                if next_voice == current_voice:
                     voice_forward_matrix[i].append(i+j)
                     voice_backward_matrix[i+j].append(i)
                 else:
@@ -114,7 +114,8 @@ def make_edge(xml_notes):
     total_edges = {'forward': forward_edge_matrix, 'backward': backward_edge_matrix, 'onset': same_onset_matrix,
                    'melisma': melisma_note_matrix, 'pedal_tone': pedal_tone_matrix, 'rest_backward': rest_backward_matrix,
                    'rest_forward': rest_forward_matrix, 'closest_forward': closest_pitch_backward, 'closest_backward': closest_pitch_backward,
-                   'boundary_forward': boundary_pitch_forward, 'boundary_backward': boundary_pitch_backward}
+                   'boundary_forward': boundary_pitch_forward, 'boundary_backward': boundary_pitch_backward,
+                   'voice_forward': voice_forward_matrix, 'voice_backward':voice_backward_matrix}
 
     return total_edges
 
