@@ -1170,7 +1170,7 @@ def load_pairs_from_folder(path):
                 print('Too many align error in the performance')
                 continue
             perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
-            perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer':composer_name_vec, 'graph': notes_graph}
+            perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer': composer_name_vec, 'graph': notes_graph}
 
             perform_features_piece.append(perform_feat_score)
 
