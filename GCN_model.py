@@ -231,20 +231,21 @@ class HAN_VAE(nn.Module):
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
-            nn.ReLU(),
             nn.BatchNorm1d(self.note_hidden_size),
-            nn.Linear(self.note_hidden_size, self.note_hidden_size),
             nn.ReLU(),
-            nn.BatchNorm1d(self.note_hidden_size),
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            nn.ReLU()
+            nn.BatchNorm1d(self.note_hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.note_hidden_size, self.note_hidden_size),
+            nn.BatchNorm1d(self.note_hidden_size),
+            nn.ReLU(),
         )
 
         self.graph_1st = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            nn.ReLU(),
-            nn.BatchNorm1d(self.note_hidden_size)
+            nn.BatchNorm1d(self.note_hidden_size),
+            nn.ReLU()
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
 
