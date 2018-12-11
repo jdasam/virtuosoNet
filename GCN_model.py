@@ -78,7 +78,7 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 100
+time_steps = 500
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 2
@@ -175,14 +175,14 @@ class GatedGraph(nn.Module):
         num_notes = edge_matrix.shape[1]
         num_features = input.shape[2]
         for i in range(iteration):
-            temp_z = torch.Tensor((1, num_notes, num_features)).to(device)
-            temp_r = torch.Tensor((1, num_notes, num_features)).to(device)
-            temp_h = torch.Tensor((1, num_notes, num_features)).to(device)
+            temp_z = torch.Tensor(np.zeros((1, num_notes, num_features))).to(device)
+            temp_r = torch.Tensor(np.zeros((1, num_notes, num_features))).to(device)
+            temp_h = torch.Tensor(np.zeros((1, num_notes, num_features))).to(device)
             for j in range(num_edge_type):
                 activation = torch.matmul(edge_matrix[j,:,:].transpose(0, 1), input)
                 temp_z += torch.matmul(activation, self.sub[j].wz)
-                temp_r = temp_r + torch.matmul(activation, self.sub[j].wr)
-                temp_h = temp_h + torch.matmul(activation, self.sub[j].wh)
+                temp_r += torch.matmul(activation, self.sub[j].wr)
+                temp_h += torch.matmul(activation, self.sub[j].wh)
             next_z = self.sigmoid(temp_z + torch.matmul(input, self.uz) + self.bz)
             next_r = self.sigmoid(temp_r + torch.matmul(input, self.ur) + self.br)
             temp_hidden = self.tanh(temp_h + torch.matmul(next_r * input, self.uh) + self.bh)
@@ -865,7 +865,7 @@ def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, 
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
     vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
     dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
-
+    print('tempo loss is ', tempo_loss)
     return tempo_loss, vel_loss, dev_loss, trill_loss, perform_kld
 
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
