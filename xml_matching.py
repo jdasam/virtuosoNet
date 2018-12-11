@@ -2417,7 +2417,9 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
         #                     (feat['beat_position']-means[0][4])/stds[0][4]]
         #                    + feat['tempo'] + feat['dynamic'] + feat['notation'] )
 
-    return test_x, xml_notes, xml_object, note_locations
+    edges = score_graph.make_edge(xml_notes)
+
+    return test_x, xml_notes, xml_object, edges, note_locations
 
 
 def cal_beat_positions_of_piece(xml_doc):

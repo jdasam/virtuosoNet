@@ -6,6 +6,7 @@ import numpy as np
 
 def make_edge(xml_notes):
     num_notes = len(xml_notes)
+    edge_list =[]
     forward_edge_matrix = [ [] for i in range(num_notes) ]
     backward_edge_matrix =[ [] for i in range(num_notes) ]
     voice_forward_matrix = [ [] for i in range(num_notes) ]
@@ -36,23 +37,28 @@ def make_edge(xml_notes):
             next_note_start = next_note.note_duration.xml_position
             next_voice = next_note.voice
             if next_note_start == note_position:  #same onset
-                same_onset_matrix[i].append(i+j)
-                same_onset_matrix[i+j].append(i)
+                edge_list.append((i, i + j, 'onset'))
+                # same_onset_matrix[i].append(i+j)
+                # same_onset_matrix[i+j].append(i)
             elif next_note_start < note_end_position:
-                melisma_note_matrix[i].append(i+j)
-                pedal_tone_matrix[i+j].append(i)
+                edge_list.append((i, i + j, 'melisma'))
+                # melisma_note_matrix[i].append(i+j)
+                # pedal_tone_matrix[i+j].append(i)
             elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
                 if next_voice == current_voice:
-                    voice_forward_matrix[i].append(i+j)
-                    voice_backward_matrix[i+j].append(i)
+                    edge_list.append((i, i + j, 'voice'))
+                    # voice_forward_matrix[i].append(i+j)
+                    # voice_backward_matrix[i+j].append(i)
                 else:
-                    forward_edge_matrix[i].append(i+j)
-                    backward_edge_matrix[i+j].append(i)
+                    edge_list.append((i, i + j, 'forward'))
+                    # forward_edge_matrix[i].append(i+j)
+                    # backward_edge_matrix[i+j].append(i)
             elif next_note_start < note_end_include_rest:
                 continue
             elif next_note_start == note_end_include_rest:
-                rest_forward_matrix[i].append(i+j)
-                rest_backward_matrix[i+j].append(i)
+                edge_list.append((i, i + j, 'rest'))
+                # rest_forward_matrix[i].append(i+j)
+                # rest_backward_matrix[i+j].append(i)
             else:
                 break
 
@@ -81,12 +87,14 @@ def make_edge(xml_notes):
 
             if current_pitch_index == 0: #lowest note
                 next_pitch_index = next_pitch_list[0]['index']
-                boundary_pitch_forward[i].append(next_pitch_index)
-                boundary_pitch_backward[next_pitch_index].append(i)
+                edge_list.append((i, next_pitch_index, 'boundary'))
+                # boundary_pitch_forward[i].append(next_pitch_index)
+                # boundary_pitch_backward[next_pitch_index].append(i)
             elif current_pitch_index == len(next_pitch_list)-1: #higest note
                 next_pitch_index = next_pitch_list[-1]['index']
-                boundary_pitch_forward[i].append(next_pitch_index)
-                boundary_pitch_backward[next_pitch_index].append(i)
+                edge_list.append((i, next_pitch_index, 'boundary'))
+                # boundary_pitch_forward[i].append(next_pitch_index)
+                # boundary_pitch_backward[next_pitch_index].append(i)
 
             pitch_diff = [abs(current_pitch-next_pitch_list[k]['pitch']) for k in range(num_next_pitch)]
             min_pitch_diff = min(pitch_diff)
@@ -97,25 +105,27 @@ def make_edge(xml_notes):
             while search_index > 0:
                 search_index -= 1
                 if pitch_diff[search_index] == min_pitch_diff:
-                    closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
-                    closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+                    edge_list.append((i, min_diff_index, 'closest'))
+                    # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
+                    # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
                 else:
                     break
             search_index = min_diff_index
             while search_index < num_next_pitch -1:
                 search_index += 1
                 if pitch_diff[search_index] == min_pitch_diff:
-                    closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
-                    closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+                    edge_list.append((i, min_diff_index, 'closest'))
+                    # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
+                    # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
                 else:
                     break
 
 
-    total_edges = {'forward': forward_edge_matrix, 'backward': backward_edge_matrix, 'onset': same_onset_matrix,
-                   'melisma': melisma_note_matrix, 'pedal_tone': pedal_tone_matrix, 'rest_backward': rest_backward_matrix,
-                   'rest_forward': rest_forward_matrix, 'closest_forward': closest_pitch_backward, 'closest_backward': closest_pitch_backward,
-                   'boundary_forward': boundary_pitch_forward, 'boundary_backward': boundary_pitch_backward,
-                   'voice_forward': voice_forward_matrix, 'voice_backward':voice_backward_matrix}
+    # total_edges = {'forward': forward_edge_matrix, 'backward': backward_edge_matrix, 'onset': same_onset_matrix,
+    #                'melisma': melisma_note_matrix, 'pedal_tone': pedal_tone_matrix, 'rest_backward': rest_backward_matrix,
+    #                'rest_forward': rest_forward_matrix, 'closest_forward': closest_pitch_backward, 'closest_backward': closest_pitch_backward,
+    #                'boundary_forward': boundary_pitch_forward, 'boundary_backward': boundary_pitch_backward,
+    #                'voice_forward': voice_forward_matrix, 'voice_backward':voice_backward_matrix}
 
-    return total_edges
+    return edge_list
 
