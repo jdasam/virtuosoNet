@@ -76,10 +76,10 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 500
+time_steps = 200
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
-num_key_augmentation = 2
+num_key_augmentation = 1
 
 SCORE_INPUT = 57 #score information only
 TOTAL_OUTPUT = 16
