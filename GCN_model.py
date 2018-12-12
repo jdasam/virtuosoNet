@@ -754,9 +754,10 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
         # model_eval = second_model.eval()
         # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
         if torch.sum(input[:,:,is_trill_index_score])> 0:
-            trill_inputs = torch.cat((note_hidden_out,prime_outputs), 2)
+            trill_inputs = torch.cat((input, prime_outputs), 2)
+            notes_hidden_cat = torch.cat((note_hidden_out,prime_outputs), 2)
             model_eval = trill_model.eval()
-            trill_outputs = model_eval(trill_inputs)
+            trill_outputs = model_eval(trill_inputs, notes_hidden_cat)
         else:
             trill_outputs = torch.zeros(1, input.size(1), num_trill_param).to(device)
 
