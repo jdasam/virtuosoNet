@@ -76,7 +76,7 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 200
+time_steps = 500
 print('Learning Rate and Time Steps are ', learning_rate, time_steps)
 num_epochs = 150
 num_key_augmentation = 1
@@ -740,7 +740,7 @@ def edges_to_matrix(edges, num_notes):
     #             if 0 <= edge_index - start_index < time_steps:
     #                 matrix[k, i, edge_index-start_index] = 1
 
-    matrix = torch.Tensor(matrix).to(device)
+    matrix = torch.sparse.FloatTensor(matrix).to(device)
     return matrix
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
