@@ -675,13 +675,13 @@ def vae_loss(recon_x, x, mu, logvar):
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-model = HAN_VAE(NET_PARAM).to(device)
+MODEL = HAN_VAE(NET_PARAM).to(device)
 # second_model = ExtraHAN(NET_PARAM).to(device)
 trill_model =TrillRNN(TrillNET_Param).to(device)
 
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
@@ -728,6 +728,8 @@ def edges_to_matrix(edges, num_notes):
         matrix[edge_type, edg[0], edg[1]] = 1
         if edge_type != 0:
             matrix[edge_type+num_keywords, edg[1], edg[0]] = 1
+        else:
+            matrix[edge_type, edg[1], edg[0]] = 1
 
     matrix[num_keywords, :,:] = np.identity(num_notes)
 
@@ -740,32 +742,68 @@ def edges_to_matrix(edges, num_notes):
     #             if 0 <= edge_index - start_index < time_steps:
     #                 matrix[k, i, edge_index-start_index] = 1
 
-    matrix = torch.sparse.FloatTensor(matrix).to(device)
+    matrix = torch.Tensor(matrix)
     return matrix
 
-def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
-    # time1= time.time()
-    with torch.no_grad():  # no need to track history in sampling
-        model_eval = model.eval()
-        prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, edges, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
-        # second_inputs = torch.cat((input,prime_outputs), 2)
-        # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
-        # model_eval = second_model.eval()
-        # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-        if torch.sum(input[:,:,is_trill_index_score])> 0:
-            trill_inputs = torch.cat((input, prime_outputs), 2)
-            notes_hidden_cat = torch.cat((note_hidden_out,prime_outputs), 2)
-            model_eval = trill_model.eval()
-            trill_outputs = model_eval(trill_inputs, notes_hidden_cat)
-        else:
-            trill_outputs = torch.zeros(1, input.size(1), num_trill_param).to(device)
+def edges_to_sparse_tensor(edges):
+    num_keywords = len(GRAPH_KEYS)
+    edge_list = []
+    edge_type_list = []
 
-        outputs = torch.cat((prime_outputs, trill_outputs),2)
+    for edg in edges:
+        edge_type = GRAPH_KEYS.index(edg[2])
+        edge_list.append(edg[0:2])
+        edge_list.append([edg[1], edg[0]])
+        edge_type_list.append(edge_type)
+        if edge_type != 0:
+            edge_type_list.append(edge_type+num_keywords)
+        else:
+            edge_type_list.append(edge_type)
+
+        edge_list = torch.LongTensor(edge_list)
+    edge_type_list = torch.FloatTensor(edge_type_list)
+
+    matrix = torch.sparse.FloatTensor(edge_list.t(), edge_type_list)
+
+    return matrix
+
+
+def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
+    num_notes = input.shape[1]
+    total_valid_batch = int(math.ceil(num_notes / time_steps))
+    with torch.no_grad():  # no need to track history in validation
+        model_eval = MODEL.eval()
+        trill_model_eval = trill_model.eval()
+
+        total_output = []
+        for i in range(total_valid_batch):
+            batch_start = i*time_steps
+            if i == total_valid_batch-1:
+                batch_end = num_notes
+            else:
+                batch_end = (i+1)*time_steps
+            prime_input_y = input_y[:,batch_start:batch_end,0:num_prime_param].view(1,-1,num_prime_param)
+            batch_input = input[:,batch_start:batch_end,:]
+            batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(device)
+            prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+            # second_inputs = torch.cat((input,prime_outputs), 2)
+            # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
+            # model_eval = second_model.eval()
+            # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
+            if torch.sum(input[:,batch_start:batch_end,is_trill_index_score])> 0:
+                trill_inputs = torch.cat((batch_input, prime_outputs), 2)
+                notes_hidden_cat = torch.cat((note_hidden_out,prime_outputs), 2)
+                trill_outputs = trill_model_eval(trill_inputs, notes_hidden_cat)
+            else:
+                trill_outputs = torch.zeros(1, batch_end-batch_start, num_trill_param).to(device)
+
+            temp_outputs = torch.cat((prime_outputs, trill_outputs),2)
+            total_output.append(temp_outputs)
+        outputs = torch.cat(total_output, 1)
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=MODEL, trill_model=trill_model):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -794,7 +832,8 @@ def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, 
     prime_batch_y = batch_y[:,:,0:num_prime_param]
     prime_batch_y *= align_matched
 
-    batch_graph = edges[:,batch_start:batch_start+time_steps, batch_start:batch_start+time_steps]
+
+    batch_graph = edges[:,batch_start:batch_start+time_steps, batch_start:batch_start+time_steps].to(device)
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var, note_out \
@@ -847,14 +886,13 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
             true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX]
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
-
     return tempo_loss
 
 
 ### training
 
 if args.sessMode == 'train':
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of Network Parameters is ', params)
 
@@ -902,6 +940,7 @@ if args.sessMode == 'train':
 
             data_size = len(train_x)
             graphs = edges_to_matrix(edges, data_size)
+            # graphs = edges_to_sparse_tensor(edges)
             total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
 
             key_lists = [0]
@@ -1009,7 +1048,7 @@ if args.sessMode == 'train':
 
         save_checkpoint({
             'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
+            'state_dict': MODEL.state_dict(),
             'best_valid_loss': best_prime_loss,
             'optimizer': optimizer.state_dict(),
         }, is_best, model_name='prime')
@@ -1040,7 +1079,7 @@ elif args.sessMode=='test':
             # args.start_epoch = checkpoint['epoch']
             # best_valid_loss = checkpoint['best_valid_loss']
             if i == 0:
-                model.load_state_dict(checkpoint['state_dict'])
+                MODEL.load_state_dict(checkpoint['state_dict'])
             elif i==1:
                 trill_model.load_state_dict(checkpoint['state_dict'])
             # optimizer.load_state_dict(checkpoint['optimizer'])
@@ -1173,7 +1212,7 @@ elif args.sessMode=='plot':
         checkpoint = torch.load(args.resume)
         # args.start_epoch = checkpoint['epoch']
         best_valid_loss = checkpoint['best_valid_loss']
-        model.load_state_dict(checkpoint['state_dict'])
+        MODEL.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(args.resume, checkpoint['epoch']))
