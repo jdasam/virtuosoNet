@@ -249,8 +249,16 @@ class GGNN_HAN(nn.Module):
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
 
+        self.performance_graph_encoder = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
+        self.performance_measure_attention =  nn.Linear(self.encoder_size, self.encoder_size)
 
-        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
+        self.performance_contractor = nn.Sequential(
+            nn.Linear(self.encoder_input_size, self.encoder_size),
+            nn.BatchNorm1d(self.encoder_size),
+            nn.ReLU()
+        )
+
+        self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
@@ -276,8 +284,13 @@ class GGNN_HAN(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2)
-            perform_style_encoded, _ = self.performance_encoder(perform_concat)
+            perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2).view(-1, self.encoder_input_size)
+            perform_style_contracted = self.performance_contractor(perform_concat).view(1, num_notes, -1)
+            perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
+            performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
+                                                  measure_numbers, start_index, lower_is_note=True)
+            perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
             perform_style_vector = perform_style_encoded[:, -1, :]  # need check
@@ -398,7 +411,7 @@ class GGNN_HAN(nn.Module):
 
         return upper_node_sum
 
-    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index):
+    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index, lower_is_note=False):
         higher_nodes = []
         prev_higher_index = higher_indexes[start_index]
         lower_node_start = 0
@@ -408,7 +421,10 @@ class GGNN_HAN(nn.Module):
         lower_hidden_size = lower_out.shape[2]
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
-            current_note_index = lower_indexes.index(absolute_low_index)
+            if lower_is_note:
+                current_note_index = absolute_low_index
+            else:
+                current_note_index = lower_indexes.index(absolute_low_index)
 
             if higher_indexes[current_note_index] > prev_higher_index:
                 # new beat start
@@ -782,8 +798,10 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
 
         total_output = []
         if num_notes < 4500:
-            print(num_notes)
-            prime_input_y = input_y[:,:, 0:num_prime_param].view(1, 1, num_prime_param)
+            if input_y.shape[1] > 1:
+                prime_input_y = input_y[:, :, 0:num_prime_param].view(1, -1, num_prime_param)
+            else:
+                prime_input_y = input_y[:, :, 0:num_prime_param].view(1, 1, num_prime_param)
             batch_graph = edges.to(device)
             prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
                                                               note_locations=note_locations, start_index=0,
