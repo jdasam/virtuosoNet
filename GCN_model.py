@@ -24,14 +24,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="graph_mozart", help="dat file name")
-parser.add_argument("--resume", type=str, default="gcn_alpha_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="gcn_large_eoncder_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='gcn_alpha', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_eoncder', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 
 args = parser.parse_args()
@@ -76,8 +76,9 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 500
-print('Learning Rate and Time Steps are ', learning_rate, time_steps)
+TIME_STEPS = 500
+VALID_STEPS = 4500
+print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
@@ -789,9 +790,9 @@ def edges_to_sparse_tensor(edges):
     return matrix
 
 
-def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
+def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
     num_notes = input.shape[1]
-    total_valid_batch = int(math.ceil(num_notes / time_steps))
+    total_valid_batch = int(math.ceil(num_notes / TIME_STEPS))
     with torch.no_grad():  # no need to track history in validation
         model_eval = MODEL.eval()
         trill_model_eval = trill_model.eval()
@@ -820,11 +821,11 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
             outputs = torch.cat((prime_outputs, trill_outputs), 2)
         else:
             for i in range(total_valid_batch):
-                batch_start = i*time_steps
+                batch_start = i * VALID_STEPS
                 if i == total_valid_batch-1:
                     batch_end = num_notes
                 else:
-                    batch_end = (i+1)*time_steps
+                    batch_end = (i+1) * VALID_STEPS
                 if input_y.shape[1] > 1:
                     prime_input_y = input_y[:,batch_start:batch_end,0:num_prime_param].view(1,-1,num_prime_param)
                 else:
@@ -849,7 +850,7 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
         return outputs
 
 
-def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=MODEL, trill_model=trill_model):
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=TIME_STEPS, model=MODEL, trill_model=trill_model):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -987,7 +988,7 @@ if args.sessMode == 'train':
             data_size = len(train_x)
             graphs = edges_to_matrix(edges, data_size)
             # graphs = edges_to_sparse_tensor(edges)
-            total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+            total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
 
             key_lists = [0]
             key = 0
@@ -1294,11 +1295,11 @@ elif args.sessMode=='plot':
         note_locations = xy_tuple[3]
 
         data_size = len(train_x)
-        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+        total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
         batch_size=1
         for step in range(total_batch_num - 1):
-            batch_start = step * batch_size * time_steps
-            batch_end = (step + 1) * batch_size * time_steps
+            batch_start = step * batch_size * TIME_STEPS
+            batch_end = (step + 1) * batch_size * TIME_STEPS
             batch_x = Variable(
                 torch.Tensor(train_x[batch_start:batch_end]))
             batch_y = train_y[batch_start:batch_end]
@@ -1306,7 +1307,7 @@ elif args.sessMode=='plot':
             # input_y = Variable(
             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-            batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(device)
+            batch_x = batch_x.view((batch_size, TIME_STEPS, SCORE_INPUT)).to(device)
             # is_beat_batch = is_beat_list[batch_start:batch_end]
             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
