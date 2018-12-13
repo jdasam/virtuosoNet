@@ -24,14 +24,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="graph_mozart", help="dat file name")
-parser.add_argument("--resume", type=str, default="gcn_alpha_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="gcn_large_eoncder_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='gcn_alpha', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_eoncder', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 
 args = parser.parse_args()
@@ -76,8 +76,9 @@ NET_PARAM.encoder.size = 64
 NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
-time_steps = 500
-print('Learning Rate and Time Steps are ', learning_rate, time_steps)
+TIME_STEPS = 500
+VALID_STEPS = 4500
+print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
@@ -177,7 +178,7 @@ class GatedGraph(nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, input, edge_matrix, iteration=5):
+    def forward(self, input, edge_matrix, iteration=10):
 
         for i in range(iteration):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)
@@ -192,9 +193,9 @@ class GatedGraph(nn.Module):
 
 
 
-class HAN_VAE(nn.Module):
+class GGNN_HAN(nn.Module):
     def __init__(self, network_parameters, num_trill_param=5):
-        super(HAN_VAE, self).__init__()
+        super(GGNN_HAN, self).__init__()
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
         self.num_layers = network_parameters.note.layer
@@ -249,8 +250,16 @@ class HAN_VAE(nn.Module):
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
 
+        self.performance_graph_encoder = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
+        self.performance_measure_attention =  nn.Linear(self.encoder_size, self.encoder_size)
 
-        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
+        self.performance_contractor = nn.Sequential(
+            nn.Linear(self.encoder_input_size, self.encoder_size),
+            nn.BatchNorm1d(self.encoder_size),
+            nn.ReLU()
+        )
+
+        self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
@@ -276,8 +285,13 @@ class HAN_VAE(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2)
-            perform_style_encoded, _ = self.performance_encoder(perform_concat)
+            perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2).view(-1, self.encoder_input_size)
+            perform_style_contracted = self.performance_contractor(perform_concat).view(1, num_notes, -1)
+            perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
+            performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
+                                                  measure_numbers, start_index, lower_is_note=True)
+            perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
             perform_style_vector = perform_style_encoded[:, -1, :]  # need check
@@ -398,7 +412,7 @@ class HAN_VAE(nn.Module):
 
         return upper_node_sum
 
-    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index):
+    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index, lower_is_note=False):
         higher_nodes = []
         prev_higher_index = higher_indexes[start_index]
         lower_node_start = 0
@@ -408,7 +422,10 @@ class HAN_VAE(nn.Module):
         lower_hidden_size = lower_out.shape[2]
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
-            current_note_index = lower_indexes.index(absolute_low_index)
+            if lower_is_note:
+                current_note_index = absolute_low_index
+            else:
+                current_note_index = lower_indexes.index(absolute_low_index)
 
             if higher_indexes[current_note_index] > prev_higher_index:
                 # new beat start
@@ -579,7 +596,12 @@ class HAN_VAE(nn.Module):
         return (h0, h0)
 
 
-class ExtraHANVAE(HAN_VAE):
+# class PerformanceEncoder(GGNN_HAN):
+#     def __init__(self, network_parameters):
+#         super(perfor)
+
+
+class ExtraHANVAE(GGNN_HAN):
     def __init__(self, network_parameters):
         super(ExtraHANVAE, self).__init__(network_parameters)
         self.fc = nn.Linear(self.final_hidden_size, self.output_size)
@@ -675,13 +697,13 @@ def vae_loss(recon_x, x, mu, logvar):
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-model = HAN_VAE(NET_PARAM).to(device)
+MODEL = GGNN_HAN(NET_PARAM).to(device)
 # second_model = ExtraHAN(NET_PARAM).to(device)
 trill_model =TrillRNN(TrillNET_Param).to(device)
 
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
@@ -728,6 +750,8 @@ def edges_to_matrix(edges, num_notes):
         matrix[edge_type, edg[0], edg[1]] = 1
         if edge_type != 0:
             matrix[edge_type+num_keywords, edg[1], edg[0]] = 1
+        else:
+            matrix[edge_type, edg[1], edg[0]] = 1
 
     matrix[num_keywords, :,:] = np.identity(num_notes)
 
@@ -740,31 +764,93 @@ def edges_to_matrix(edges, num_notes):
     #             if 0 <= edge_index - start_index < time_steps:
     #                 matrix[k, i, edge_index-start_index] = 1
 
-    matrix = torch.sparse.FloatTensor(matrix).to(device)
+    matrix = torch.Tensor(matrix)
     return matrix
 
-def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z = False):
-    # time1= time.time()
-    with torch.no_grad():  # no need to track history in sampling
-        model_eval = model.eval()
-        prime_input_y = input_y[:,:,0:num_prime_param].view(1,-1,num_prime_param)
-        prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, edges, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
-        # second_inputs = torch.cat((input,prime_outputs), 2)
-        # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
-        # model_eval = second_model.eval()
-        # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-        if torch.sum(input[:,:,is_trill_index_score])> 0:
-            trill_inputs = torch.cat((note_hidden_out,prime_outputs), 2)
-            model_eval = trill_model.eval()
-            trill_outputs = model_eval(trill_inputs)
-        else:
-            trill_outputs = torch.zeros(1, input.size(1), num_trill_param).to(device)
+def edges_to_sparse_tensor(edges):
+    num_keywords = len(GRAPH_KEYS)
+    edge_list = []
+    edge_type_list = []
 
-        outputs = torch.cat((prime_outputs, trill_outputs),2)
+    for edg in edges:
+        edge_type = GRAPH_KEYS.index(edg[2])
+        edge_list.append(edg[0:2])
+        edge_list.append([edg[1], edg[0]])
+        edge_type_list.append(edge_type)
+        if edge_type != 0:
+            edge_type_list.append(edge_type+num_keywords)
+        else:
+            edge_type_list.append(edge_type)
+
+        edge_list = torch.LongTensor(edge_list)
+    edge_type_list = torch.FloatTensor(edge_type_list)
+
+    matrix = torch.sparse.FloatTensor(edge_list.t(), edge_type_list)
+
+    return matrix
+
+
+def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
+    num_notes = input.shape[1]
+    total_valid_batch = int(math.ceil(num_notes / TIME_STEPS))
+    with torch.no_grad():  # no need to track history in validation
+        model_eval = MODEL.eval()
+        trill_model_eval = trill_model.eval()
+
+        total_output = []
+        if num_notes < 4500:
+            if input_y.shape[1] > 1:
+                prime_input_y = input_y[:, :, 0:num_prime_param].view(1, -1, num_prime_param)
+            else:
+                prime_input_y = input_y[:, :, 0:num_prime_param].view(1, 1, num_prime_param)
+            batch_graph = edges.to(device)
+            prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
+                                                              note_locations=note_locations, start_index=0,
+                                                              step_by_step=False, initial_z=initial_z)
+            # second_inputs = torch.cat((input,prime_outputs), 2)
+            # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
+            # model_eval = second_model.eval()
+            # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
+            if torch.sum(input[:, :, is_trill_index_score]) > 0:
+                trill_inputs = torch.cat((input, prime_outputs), 2)
+                notes_hidden_cat = torch.cat((note_hidden_out, prime_outputs), 2)
+                trill_outputs = trill_model_eval(trill_inputs, notes_hidden_cat)
+            else:
+                trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(device)
+
+            outputs = torch.cat((prime_outputs, trill_outputs), 2)
+        else:
+            for i in range(total_valid_batch):
+                batch_start = i * VALID_STEPS
+                if i == total_valid_batch-1:
+                    batch_end = num_notes
+                else:
+                    batch_end = (i+1) * VALID_STEPS
+                if input_y.shape[1] > 1:
+                    prime_input_y = input_y[:,batch_start:batch_end,0:num_prime_param].view(1,-1,num_prime_param)
+                else:
+                    prime_input_y = input_y[:, :, 0:num_prime_param].view(1, 1, num_prime_param)
+                batch_input = input[:,batch_start:batch_end,:]
+                batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(device)
+                prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+                # second_inputs = torch.cat((input,prime_outputs), 2)
+                # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
+                # model_eval = second_model.eval()
+                # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
+                if torch.sum(input[:,batch_start:batch_end,is_trill_index_score])> 0:
+                    trill_inputs = torch.cat((batch_input, prime_outputs), 2)
+                    notes_hidden_cat = torch.cat((note_hidden_out,prime_outputs), 2)
+                    trill_outputs = trill_model_eval(trill_inputs, notes_hidden_cat)
+                else:
+                    trill_outputs = torch.zeros(1, batch_end-batch_start, num_trill_param).to(device)
+
+                temp_outputs = torch.cat((prime_outputs, trill_outputs),2)
+                total_output.append(temp_outputs)
+            outputs = torch.cat(total_output, 1)
         return outputs
 
 
-def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=time_steps, model=model, trill_model=trill_model):
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=TIME_STEPS, model=MODEL, trill_model=trill_model):
     num_total_notes = len(x)
     if step < total_batch_num - 1:
         batch_start = step * batch_size * time_steps
@@ -793,7 +879,8 @@ def batch_time_step_run(x,y,prev_feature, edges, note_locations, align_matched, 
     prime_batch_y = batch_y[:,:,0:num_prime_param]
     prime_batch_y *= align_matched
 
-    batch_graph = edges[:,batch_start:batch_start+time_steps, batch_start:batch_start+time_steps]
+
+    batch_graph = edges[:,batch_start:batch_start+time_steps, batch_start:batch_start+time_steps].to(device)
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var, note_out \
@@ -846,14 +933,13 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
             true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX]
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
-
     return tempo_loss
 
 
 ### training
 
 if args.sessMode == 'train':
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of Network Parameters is ', params)
 
@@ -901,7 +987,8 @@ if args.sessMode == 'train':
 
             data_size = len(train_x)
             graphs = edges_to_matrix(edges, data_size)
-            total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+            # graphs = edges_to_sparse_tensor(edges)
+            total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
 
             key_lists = [0]
             key = 0
@@ -1008,7 +1095,7 @@ if args.sessMode == 'train':
 
         save_checkpoint({
             'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
+            'state_dict': MODEL.state_dict(),
             'best_valid_loss': best_prime_loss,
             'optimizer': optimizer.state_dict(),
         }, is_best, model_name='prime')
@@ -1039,7 +1126,7 @@ elif args.sessMode=='test':
             # args.start_epoch = checkpoint['epoch']
             # best_valid_loss = checkpoint['best_valid_loss']
             if i == 0:
-                model.load_state_dict(checkpoint['state_dict'])
+                MODEL.load_state_dict(checkpoint['state_dict'])
             elif i==1:
                 trill_model.load_state_dict(checkpoint['state_dict'])
             # optimizer.load_state_dict(checkpoint['optimizer'])
@@ -1092,8 +1179,8 @@ elif args.sessMode=='test':
     tempo_stats = [means[1][0], stds[1][0]]
 
     initial_z = [0] * NET_PARAM.encoder.size
-
-    prediction = perform_xml(batch_x, input_y, edges, note_locations, tempo_stats, initial_z=initial_z)
+    graph = edges_to_matrix(edges, batch_x.shape[1])
+    prediction = perform_xml(batch_x, input_y, graph, note_locations, tempo_stats, initial_z=initial_z)
 
     # outputs = outputs.view(-1, num_output)
     prediction = np.squeeze(np.asarray(prediction))
@@ -1172,7 +1259,7 @@ elif args.sessMode=='plot':
         checkpoint = torch.load(args.resume)
         # args.start_epoch = checkpoint['epoch']
         best_valid_loss = checkpoint['best_valid_loss']
-        model.load_state_dict(checkpoint['state_dict'])
+        MODEL.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(args.resume, checkpoint['epoch']))
@@ -1208,11 +1295,11 @@ elif args.sessMode=='plot':
         note_locations = xy_tuple[3]
 
         data_size = len(train_x)
-        total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+        total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
         batch_size=1
         for step in range(total_batch_num - 1):
-            batch_start = step * batch_size * time_steps
-            batch_end = (step + 1) * batch_size * time_steps
+            batch_start = step * batch_size * TIME_STEPS
+            batch_end = (step + 1) * batch_size * TIME_STEPS
             batch_x = Variable(
                 torch.Tensor(train_x[batch_start:batch_end]))
             batch_y = train_y[batch_start:batch_end]
@@ -1220,7 +1307,7 @@ elif args.sessMode=='plot':
             # input_y = Variable(
             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-            batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(device)
+            batch_x = batch_x.view((batch_size, TIME_STEPS, SCORE_INPUT)).to(device)
             # is_beat_batch = is_beat_list[batch_start:batch_end]
             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
