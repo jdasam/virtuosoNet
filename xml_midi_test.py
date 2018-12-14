@@ -9,9 +9,9 @@ import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Mozart/Piano_Sonatas/12-3/'
+folderDir = 'chopin_cleaned/Chopin/Chopin_Etude_op_10/3/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'MunA05'
+artistName = 'SunMeiting08'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -20,9 +20,12 @@ midiname= 'midi_cleaned.mid'
 XMLDocument = MusicXMLDocument(folderDir + xmlname)
 melody_notes = xml_matching.extract_notes(XMLDocument, melody_only=False, grace_note=True)
 melody_notes.sort(key=lambda x: x.note_duration.time_position)
+
 for note in melody_notes:
-    if note.note_duration.duration < 0:
-        print(note)
+    slurs = note.note_notations.slurs
+    if note.note_notations.slurs:
+        for slur in slurs:
+            print('slur info', slur.xml_position, slur.end_xml_position, slur.index, note.pitch, note.note_duration.xml_position)
 score_midi = midi_utils.to_midi_zero(folderDir + midiname)
 perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
 # perform_midi = midi_utils.elongate_offset_by_pedal(perform_midi)
@@ -151,12 +154,12 @@ new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, f
 # new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = 0.518162)
 # new_xml = xml_matching.apply_time_position_features(melody_notes, features, start_time = perform_midi_notes[0].start)
 
-new_midi = xml_matching.xml_notes_to_midi(new_xml)
+# new_midi = xml_matching.xml_notes_to_midi(new_xml)
 #
 # for note in new_midi:
 #     print(note)
 #
-xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
+# xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
 
 
 # load and save data
