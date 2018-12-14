@@ -24,14 +24,14 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="graph_mozart", help="dat file name")
-parser.add_argument("--resume", type=str, default="gcn_large_eoncder_best.pth.tar", help="best model path")
+parser.add_argument("--resume", type=str, default="gcn_large_encoder_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_eoncder', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_encoder', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 
 args = parser.parse_args()
@@ -232,20 +232,24 @@ class GGNN_HAN(nn.Module):
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
-            nn.BatchNorm1d(self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
             nn.ReLU(),
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            nn.BatchNorm1d(self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
             nn.ReLU(),
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            nn.BatchNorm1d(self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
             nn.ReLU(),
         )
 
         self.graph_1st = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE)
@@ -255,7 +259,8 @@ class GGNN_HAN(nn.Module):
 
         self.performance_contractor = nn.Sequential(
             nn.Linear(self.encoder_input_size, self.encoder_size),
-            nn.BatchNorm1d(self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
         )
 
@@ -792,7 +797,7 @@ def edges_to_sparse_tensor(edges):
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
     num_notes = input.shape[1]
-    total_valid_batch = int(math.ceil(num_notes / TIME_STEPS))
+    total_valid_batch = int(math.ceil(num_notes / VALID_STEPS))
     with torch.no_grad():  # no need to track history in validation
         model_eval = MODEL.eval()
         trill_model_eval = trill_model.eval()
