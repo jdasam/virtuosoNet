@@ -3363,10 +3363,10 @@ def extract_and_apply_slurs(xml_notes):
     for note in xml_notes:
         slurs = note.note_notations.slurs
         if slurs:
-            for slur in slurs:
+            for slur in reversed(slurs):
                 slur.xml_position = note.note_duration.xml_position
                 slur.voice = note.voice
-                type= slur.type
+                type = slur.type
                 if type == 'start':
                     slur.index = slur_index
                     unresolved_slurs.append(slur)
