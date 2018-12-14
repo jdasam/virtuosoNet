@@ -792,7 +792,7 @@ def edges_to_sparse_tensor(edges):
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
     num_notes = input.shape[1]
-    total_valid_batch = int(math.ceil(num_notes / TIME_STEPS))
+    total_valid_batch = int(math.ceil(num_notes / VALID_STEPS))
     with torch.no_grad():  # no need to track history in validation
         model_eval = MODEL.eval()
         trill_model_eval = trill_model.eval()
