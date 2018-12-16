@@ -33,6 +33,8 @@ parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean 
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_encoder', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
+parser.add_argument("--latent", type=float, default=0, help='initial_z value')
+
 
 args = parser.parse_args()
 
@@ -1183,7 +1185,7 @@ elif args.sessMode=='test':
     input_y = input_y.to(device)
     tempo_stats = [means[1][0], stds[1][0]]
 
-    initial_z = [0] * NET_PARAM.encoder.size
+    initial_z = [args.latent] * NET_PARAM.encoder.size
     graph = edges_to_matrix(edges, batch_x.shape[1])
     prediction = perform_xml(batch_x, input_y, graph, note_locations, tempo_stats, initial_z=initial_z)
 
