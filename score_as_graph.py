@@ -32,32 +32,39 @@ def make_edge(xml_notes):
         note_end_include_rest = note_end_position + note.following_rest_duration
         current_voice = note.voice
         current_pitch = note.pitch[1]
+        slurs = note.note_notations.slurs
+        current_slur_indexes = [slur.index for slur in slurs]
         for j in range(1,num_notes-i):
             next_note = xml_notes[i+j]
             next_note_start = next_note.note_duration.xml_position
             next_voice = next_note.voice
+            next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
             if next_note_start == note_position:  #same onset
                 edge_list.append((i, i + j, 'onset'))
-                # same_onset_matrix[i].append(i+j)
-                # same_onset_matrix[i+j].append(i)
+                same_onset_matrix[i].append(i+j)
+                same_onset_matrix[i+j].append(i)
             elif next_note_start < note_end_position:
                 edge_list.append((i, i + j, 'melisma'))
                 # melisma_note_matrix[i].append(i+j)
-                # pedal_tone_matrix[i+j].append(i)
+                pedal_tone_matrix[i+j].append(i)
             elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
                 if next_voice == current_voice:
-                    edge_list.append((i, i + j, 'voice'))
-                    # voice_forward_matrix[i].append(i+j)
+                    in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
+                    if in_same_slur:
+                        edge_list.append((i, i + j, 'slur'))
+                    else:
+                        edge_list.append((i, i + j, 'voice'))
+                    voice_forward_matrix[i].append(i+j)
                     # voice_backward_matrix[i+j].append(i)
                 else:
                     edge_list.append((i, i + j, 'forward'))
-                    # forward_edge_matrix[i].append(i+j)
+                    forward_edge_matrix[i].append(i+j)
                     # backward_edge_matrix[i+j].append(i)
             elif next_note_start < note_end_include_rest:
                 continue
             elif next_note_start == note_end_include_rest:
                 edge_list.append((i, i + j, 'rest'))
-                # rest_forward_matrix[i].append(i+j)
+                rest_forward_matrix[i].append(i+j)
                 # rest_backward_matrix[i+j].append(i)
             else:
                 break
@@ -101,11 +108,12 @@ def make_edge(xml_notes):
             min_diff_index = pitch_diff.index(min_pitch_diff)
             closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
             closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+            edge_list.append((i, next_pitch_list[min_diff_index]['index'], 'closest'))
             search_index = min_diff_index
             while search_index > 0:
                 search_index -= 1
                 if pitch_diff[search_index] == min_pitch_diff:
-                    edge_list.append((i, min_diff_index, 'closest'))
+                    edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
                     # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
                     # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
                 else:
@@ -114,7 +122,7 @@ def make_edge(xml_notes):
             while search_index < num_next_pitch -1:
                 search_index += 1
                 if pitch_diff[search_index] == min_pitch_diff:
-                    edge_list.append((i, min_diff_index, 'closest'))
+                    edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
                     # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
                     # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
                 else:
@@ -129,3 +137,10 @@ def make_edge(xml_notes):
 
     return edge_list
 
+
+def check_in_same_slur(slursA, slursB):
+    for slur in slursA:
+        if slur in slursB:
+            return True
+
+    return False

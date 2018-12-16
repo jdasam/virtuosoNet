@@ -22,10 +22,7 @@ melody_notes = xml_matching.extract_notes(XMLDocument, melody_only=False, grace_
 melody_notes.sort(key=lambda x: x.note_duration.time_position)
 
 for note in melody_notes:
-    slurs = note.note_notations.slurs
-    if note.note_notations.slurs:
-        for slur in slurs:
-            print('slur info', slur.xml_position, slur.end_xml_position, slur.index, note.pitch, note.note_duration.xml_position)
+    print(note.note_notations.is_beam_start, note.note_duration.xml_position, note.pitch)
 score_midi = midi_utils.to_midi_zero(folderDir + midiname)
 perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
 # perform_midi = midi_utils.elongate_offset_by_pedal(perform_midi)
@@ -110,7 +107,7 @@ for note in melody_notes:
 #         # print(dir)
 #         pass
 
-# words = xml_matching.get_all_words_from_folders('chopin_cleaned/Liszt/')
+# words = xml_matching.get_all_words_from_folders('chopin_cleaned/Beethoven/')
 # for wrd in words:
 #     print (wrd)
 

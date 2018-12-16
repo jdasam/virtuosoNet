@@ -21,7 +21,7 @@ absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'a
                             'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento',
                             'Freely, with expression', "d'un rythme souple", 'agitato',
                             'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft',
-                            'lent', 'large', 'vif', 'animé']
+                            'lent', 'large', 'vif', 'animé', 'scherzo', 'menuetto', 'minuetto']
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto', 'string',
                             'a tempo', 'stretto', 'slentando', 'meno mosso', 'meno vivo', 'più mosso', 'allargando', 'smorzando', 'appassionato', 'perdendo',
@@ -2194,10 +2194,12 @@ def get_all_words_from_folders(path):
         directions, _ = extract_directions(xml_doc)
 
         words = [dir for dir in directions if dir.type['type'] == 'words']
-
-        for wrd in words:
-            entire_words.append(wrd.type['content'])
+        time_signatures = xml_doc.get_time_signatures()
+        # for wrd in words:
+        #     entire_words.append(wrd.type['content'])
             # print(wrd.type['content'], wrd.state.qpm)
+
+        print(words[0].type['content'], words[0].state.qpm, time_signatures[0])
 
     entire_words = list(set(entire_words))
     return entire_words
@@ -2803,7 +2805,12 @@ def define_dyanmic_embedding_table():
 def define_tempo_embedding_table():
     # [abs tempo, abs_tempo_added, tempo increase or decrease, sudden change]
     embed_table = EmbeddingTable()
-    embed_table.append(EmbeddingKey('freely, with expression', 0, 0.2))
+    embed_table.append(EmbeddingKey('scherzo', 1, 0.5))
+    embed_table.append(EmbeddingKey('menuetto', 1, -0.2))
+    embed_table.append(EmbeddingKey('minuetto', 1, -0.2))
+
+
+
     embed_table.append(EmbeddingKey('lento', 0, -0.9))
     embed_table.append(EmbeddingKey('grave', 0, -0.9))
     embed_table.append(EmbeddingKey('largo', 0, -0.7))
@@ -2816,7 +2823,7 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('andantino', 0, -0.3))
     embed_table.append(EmbeddingKey('mesto', 0, -0.3))
     embed_table.append(EmbeddingKey('andantino molto', 0, -0.4))
-    embed_table.append(EmbeddingKey('maestoso', 0, -0.3))
+    embed_table.append(EmbeddingKey('maestoso', 0, -0.2))
     embed_table.append(EmbeddingKey('accarezzevole', 0, -0.4))
     embed_table.append(EmbeddingKey('moderato', 0, 0))
     embed_table.append(EmbeddingKey('tempo giusto', 0, 0.1))
@@ -2825,6 +2832,8 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('allegro assai', 0, 0.6))
     embed_table.append(EmbeddingKey('vivace', 0, 0.6))
     embed_table.append(EmbeddingKey('vivacissimo', 0, 0.8))
+    embed_table.append(EmbeddingKey('molto vivace', 0, 0.7))
+    embed_table.append(EmbeddingKey('vivace assai', 0, 0.7))
     embed_table.append(EmbeddingKey('presto', 0, 0.8))
     embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
 
@@ -2832,6 +2841,10 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
     embed_table.append(EmbeddingKey('allegro molto', 0, 0.85))
     embed_table.append(EmbeddingKey('più presto possibile', 0, 1))
+
+    embed_table.append(EmbeddingKey('as a lullaby', 0, -0.6))
+    embed_table.append(EmbeddingKey('freely, with expression', 0, 0.2))
+
 
 
     embed_table.append(EmbeddingKey('a tempo', 1, 0))
@@ -3371,7 +3384,9 @@ def extract_and_apply_slurs(xml_notes):
                     slur.index = slur_index
                     unresolved_slurs.append(slur)
                     slur_index += 1
+                    note.note_notations.is_slur_start = True
                 elif type == 'stop':
+                    note.note_notations.is_slur_stop = True
                     for prev_slur in unresolved_slurs:
                         if prev_slur.number == slur.number and prev_slur.voice == slur.voice:
                             prev_slur.end_xml_position = slur.xml_position
@@ -3383,10 +3398,17 @@ def extract_and_apply_slurs(xml_notes):
 
     for note in xml_notes:
         slurs = note.note_notations.slurs
+        note_position = note.note_duration.xml_position
         if not slurs:
             for prev_slur in resolved_slurs:
-                if prev_slur.voice == note.voice and prev_slur.xml_position < note.note_duration.xml_position <= prev_slur.end_xml_position:
+                if prev_slur.voice == note.voice and prev_slur.xml_position <= note_position <= prev_slur.end_xml_position:
                     note.note_notations.slurs.append(prev_slur)
+                    if prev_slur.xml_position == note_position:
+                        note.note_notations.is_slur_start = True
+                    elif prev_slur.end_xml_position == note_position:
+                        note.note_notations.is_slur_stop = True
+                    else:
+                        note.note_notations.is_slur_continue = True
 
     return xml_notes
 

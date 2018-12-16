@@ -34,6 +34,7 @@ parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device n
 parser.add_argument("-code", "--modelCode", type=str, default='gcn_large_encoder', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
+parser.add_argument("-bp", "--boolPedal", type=bool, default=False, help='initial_z value')
 
 
 args = parser.parse_args()
@@ -1256,7 +1257,7 @@ elif args.sessMode=='test':
 
     output_midi = xml_matching.xml_notes_to_midi(output_xml)
 
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=False, disklavier=True)
+    xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=args.boolPedal, disklavier=True)
 
 
 
