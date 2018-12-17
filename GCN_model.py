@@ -181,7 +181,7 @@ class GatedGraph(nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, input, edge_matrix, iteration=10):
+    def forward(self, input, edge_matrix, iteration=20):
 
         for i in range(iteration):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)
@@ -325,6 +325,7 @@ class GGNN_HAN(nn.Module):
             beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
             beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
             beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
+            # measure_out_in_beat
             if 'beat_hidden_out' not in locals():
                 beat_hidden_out = beat_out_spanned
             num_beats = beat_hidden_out.size(1)
@@ -542,6 +543,9 @@ class GGNN_HAN(nn.Module):
         num_beats = len(beat_tempos)
         beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
         return beat_tempos
+
+    def measure_to_beat_span(self, measure_out, measure_numbers, beat_numbers, start_index):
+        pass
 
 
     def run_voice_net(self, batch_x, voice_hidden, voice_numbers, max_voice):
