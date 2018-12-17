@@ -278,6 +278,7 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
                     note.note_duration.after_grace_note = True
                     grc.note_duration.grace_order = grace_order
                     grc.following_note = note
+                    note.preceded_by_grace_note = True
                     if grc.chord_index == 0:
                         grace_order -= 1
                     added_grc.append(grc)
@@ -417,6 +418,8 @@ class MusicFeature():
         self.distance_from_abs_dynamic = None
         self.slur_index = None
         self.slur_beam_vec = None
+        self.is_grace_note = True
+        self.preceded_by_grace_note = True
 
         self.align_matched = 0
         self.dynamic = None
@@ -506,6 +509,8 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.note_location.onset = binaryIndex(onset_positions, note_position)
         feature.xml_position = note.note_duration.xml_position / total_length
         feature.grace_order = note.note_duration.grace_order
+        feature.is_grace_note = int(note.note_duration.is_grace_note)
+        feature.preceded_by_grace_note = int(note.note_duration.after_grace_note)
         feature.melody = int(note in melody_notes)
 
         feature.slur_beam_vec = [int(note.note_notations.is_slur_start), int(note.note_notations.is_slur_continue),
@@ -1000,10 +1005,10 @@ def find_corresp_tempo(note, tempos):
 
 def cal_articulation_with_tempo(pairs, i, tempo, trill_length):
     note = pairs[i]['xml']
-    if note.note_duration.is_grace_note:
-        return 0
     midi = pairs[i]['midi']
     xml_duration = note.note_duration.duration
+    if xml_duration == 0:
+        return 0
     duration_as_quarter = xml_duration / note.state_fixed.divisions
     second_in_tempo = duration_as_quarter / tempo * 60
     if trill_length:
@@ -1291,6 +1296,7 @@ def applyIOI(xml_notes, midi_notes, features, feature_list):
         note = make_new_note(note, tempo_mapping_list[0], tempo_mapping_list[1], articulation, loudness, default_velocity)
     return midi_notes
 
+
 def apply_perform_features(xml_notes, features):
     melody_notes = extract_melody_only_from_notes(xml_notes)
     default_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
@@ -1299,8 +1305,6 @@ def apply_perform_features(xml_notes, features):
     between_notes = find_notes_between_melody_notes(xml_notes, melody_notes)
     num_melody_notes = len(melody_notes)
     prev_vel = 64
-
-
 
     for i in range(num_melody_notes):
         note = melody_notes[i]
@@ -1598,6 +1602,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
     xml_notes = xml_notes + ornaments
     xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
     return xml_notes
+
 
 def apply_time_position_features(xml_notes, features, start_time=0, include_unmatched=True):
     num_notes = len(xml_notes)
@@ -2268,7 +2273,7 @@ def find_index_list_of_list(element, in_list):
 
 def note_notation_to_vector(note):
     # trill, tenuto, accent, staccato, fermata
-    keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata', 'is_arpeggiate', 'is_strong_accent', 'is_cue']
+    keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata', 'is_arpeggiate', 'is_strong_accent', 'is_cue', 'is_slash']
     # keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata']
 
     notation_vec = [0] * len(keywords)
@@ -3456,8 +3461,8 @@ def pedal_sigmoid(pedal_value, k=8):
 
 
 def composer_name_to_vec(composer_name):
-    composer_name_list = ['Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Haydn',
-                          'Liszt', 'Mozart', 'Rachmaninoff', 'Ravel', 'Schumann', 'Scriabin']
+    composer_name_list = ['Bach','Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Haydn',
+                          'Liszt', 'Mozart', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
 
     index = composer_name_list.index(composer_name)
     one_hot_vec = [0] * len(composer_name_list)

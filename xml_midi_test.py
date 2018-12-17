@@ -147,16 +147,16 @@ features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perf
 
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)
 
-new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = perform_midi_notes[0].start)
+# new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = perform_midi_notes[0].start)
 # new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = 0.518162)
 # new_xml = xml_matching.apply_time_position_features(melody_notes, features, start_time = perform_midi_notes[0].start)
 
-# new_midi = xml_matching.xml_notes_to_midi(new_xml)
+new_midi = xml_matching.xml_notes_to_midi(melody_notes)
 #
 # for note in new_midi:
 #     print(note)
 #
-# xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
+xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
 
 
 # load and save data

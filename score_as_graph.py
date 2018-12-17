@@ -23,8 +23,6 @@ def make_edge(xml_notes):
     boundary_pitch_forward = [ [] for i in range(num_notes) ]
     boundary_pitch_backward = [ [] for i in range(num_notes) ]
 
-
-
     for i in range(num_notes):
         note = xml_notes[i]
         note_position = note.note_duration.xml_position
@@ -34,40 +32,68 @@ def make_edge(xml_notes):
         current_pitch = note.pitch[1]
         slurs = note.note_notations.slurs
         current_slur_indexes = [slur.index for slur in slurs]
-        for j in range(1,num_notes-i):
-            next_note = xml_notes[i+j]
-            next_note_start = next_note.note_duration.xml_position
-            next_voice = next_note.voice
-            next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
-            if next_note_start == note_position:  #same onset
-                edge_list.append((i, i + j, 'onset'))
-                same_onset_matrix[i].append(i+j)
-                same_onset_matrix[i+j].append(i)
-            elif next_note_start < note_end_position:
-                edge_list.append((i, i + j, 'melisma'))
-                # melisma_note_matrix[i].append(i+j)
-                pedal_tone_matrix[i+j].append(i)
-            elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
-                if next_voice == current_voice:
-                    in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
-                    if in_same_slur:
-                        edge_list.append((i, i + j, 'slur'))
+        if note.note_duration.duration == 0:  # grace note without tie
+            current_grace_order = note.note_duration.grace_order
+            for j in range(1, num_notes - i):
+                next_note = xml_notes[i + j]
+                next_note_start = next_note.note_duration.xml_position
+                next_voice = next_note.voice
+                next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
+                next_note_grace_order = next_note.note_duration.grace_order
+
+                if next_note_start == note_position:
+                    if current_grace_order == next_note_grace_order:  #same onset grace notes
+                        edge_list.append((i, i + j, 'onset'))
+                        same_onset_matrix[i].append(i+j)
+                        same_onset_matrix[i+j].append(i)
+                    elif current_voice == next_voice and current_grace_order+1 == next_note_grace_order:
+                        in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
+                        if in_same_slur:
+                            edge_list.append((i, i + j, 'slur'))
+                        else:
+                            edge_list.append((i, i + j, 'voice'))
+                        voice_forward_matrix[i].append(i + j)
+
+                if next_note_start > note_position:
+                    break
+
+        else:
+            for j in range(1,num_notes-i):
+                next_note = xml_notes[i+j]
+                next_note_start = next_note.note_duration.xml_position
+                next_voice = next_note.voice
+                next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
+                if next_note.note_duration.is_grace_note:
+                    continue
+                if next_note_start == note_position:  #same onset
+                    edge_list.append((i, i + j, 'onset'))
+                    same_onset_matrix[i].append(i+j)
+                    same_onset_matrix[i+j].append(i)
+                elif next_note_start < note_end_position:
+                    edge_list.append((i, i + j, 'melisma'))
+                    # melisma_note_matrix[i].append(i+j)
+                    pedal_tone_matrix[i+j].append(i)
+                elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
+                    if next_voice == current_voice:
+                        in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
+                        if in_same_slur:
+                            edge_list.append((i, i + j, 'slur'))
+                        else:
+                            edge_list.append((i, i + j, 'voice'))
+                        voice_forward_matrix[i].append(i+j)
+                        # voice_backward_matrix[i+j].append(i)
                     else:
-                        edge_list.append((i, i + j, 'voice'))
-                    voice_forward_matrix[i].append(i+j)
-                    # voice_backward_matrix[i+j].append(i)
+                        edge_list.append((i, i + j, 'forward'))
+                        forward_edge_matrix[i].append(i+j)
+                        # backward_edge_matrix[i+j].append(i)
+                elif next_note_start < note_end_include_rest:
+                    continue
+                elif next_note_start == note_end_include_rest:
+                    edge_list.append((i, i + j, 'rest'))
+                    rest_forward_matrix[i].append(i+j)
+                    # rest_backward_matrix[i+j].append(i)
                 else:
-                    edge_list.append((i, i + j, 'forward'))
-                    forward_edge_matrix[i].append(i+j)
-                    # backward_edge_matrix[i+j].append(i)
-            elif next_note_start < note_end_include_rest:
-                continue
-            elif next_note_start == note_end_include_rest:
-                edge_list.append((i, i + j, 'rest'))
-                rest_forward_matrix[i].append(i+j)
-                # rest_backward_matrix[i+j].append(i)
-            else:
-                break
+                    break
 
         num_onset = len(same_onset_matrix[i])
         onset_pitch_list = [xml_notes[same_onset_matrix[i][k]].pitch[1]for k in range(num_onset)]

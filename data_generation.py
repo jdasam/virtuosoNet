@@ -56,7 +56,7 @@ def save_features_as_vector(dataset, num_train, save_name):
                              feature.duration_ratio, feature.beat_position, feature.measure_length,
                              feature.qpm_primo, feature.following_rest,  feature.distance_from_abs_dynamic,
                              feature.distance_from_recent_tempo,
-                             feature.xml_position, feature.grace_order, feature.no_following_note]  # 17
+                             feature.xml_position, feature.grace_order, feature.is_grace_note, feature.preceded_by_grace_note, feature.no_following_note]
                             + feature.pitch + feature.tempo + feature.dynamic + feature.time_sig_vec + feature.slur_beam_vec +  composer_vec + feature.notation + feature.tempo_primo)
                     # train_x.append(
                     #     [feature.pitch_interval, feature.duration,
@@ -217,5 +217,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_mozart')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Schubert')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_bach')

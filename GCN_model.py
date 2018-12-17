@@ -86,7 +86,7 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 71 #score information only
+SCORE_INPUT = 74 #score information only
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -98,15 +98,15 @@ num_trill_param = 5
 num_voice_feed_param = 0 # velocity, onset deviation
 num_tempo_info = 0
 num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
-is_trill_index_score = -10
-is_trill_index_concated = -10 - (num_prime_param + num_second_param)
+is_trill_index_score = -11
+is_trill_index_concated = -11 - (num_prime_param + num_second_param)
 NET_PARAM.output_size = num_prime_param
 
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 25
-PITCH_IDX = 12
+TEMPO_IDX = 27
+PITCH_IDX = 14
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
