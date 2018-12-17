@@ -15,6 +15,7 @@ import midi_utils.midi_utils as midi_utils
 import copy
 import evaluation
 import score_as_graph as score_graph
+import numpy as np
 
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
@@ -404,6 +405,7 @@ class MusicFeature():
         self.melody = None
         self.time_sig_num = None
         self.time_sig_den = None
+        self.time_sig_vec = None
         self.is_beat = False
         self.following_rest = 0
         self.tempo_primo = None
@@ -414,9 +416,10 @@ class MusicFeature():
         self.note_location = self.NoteLocation(None,None,None,None)
         self.distance_from_abs_dynamic = None
         self.slur_index = None
+        self.slur_beam_vec = None
 
         self.align_matched = 0
-        self.dynamic  = None
+        self.dynamic = None
         self.tempo = None
         self.notation = None
         self.qpm = None
@@ -438,12 +441,11 @@ class MusicFeature():
         self.mean_forte_vel = None
         self.mean_forte_mark = None
 
-        self.midi_start  = None
+        self.midi_start = None
         self.passed_second = None
         self.duration_second = None
 
-
-    class NoteLocation():
+    class NoteLocation:
         def __init__(self, beat, measure, voice, onset):
             self.beat = beat
             self.measure = measure
@@ -470,15 +472,13 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
     onset_positions = list(set([note.note_duration.xml_position for note in xml_notes]))
     onset_positions.sort()
 
-
-
     for i in range(xml_length):
         note = xml_notes[i]
         feature = MusicFeature()
         note_position = note.note_duration.xml_position
         measure_index = binaryIndex(measure_positions, note_position)
         total_length = cal_total_xml_length(xml_notes)
-        if measure_index+1 <len(measure_positions):
+        if measure_index+1 < len(measure_positions):
             measure_length = measure_positions[measure_index+1] - measure_positions[measure_index]
             # measure_sec_length = measure_seocnds[measure_index+1] - measure_seocnds[measure_index]
         else:
@@ -507,8 +507,14 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.xml_position = note.note_duration.xml_position / total_length
         feature.grace_order = note.note_duration.grace_order
         feature.melody = int(note in melody_notes)
-        feature.time_sig_num = 1/note.tempo.time_numerator
-        feature.time_sig_den = 1/note.tempo.time_denominator
+
+        feature.slur_beam_vec = [int(note.note_notations.is_slur_start), int(note.note_notations.is_slur_continue),
+                                 int(note.note_notations.is_slur_stop), int(note.note_notations.is_beam_start),
+                                 int(note.note_notations.is_beam_continue), int(note.note_notations.is_beam_stop)]
+
+        # feature.time_sig_num = 1/note.tempo.time_numerator
+        # feature.time_sig_den = 1/note.tempo.time_denominator
+        feature.time_sig_vec = time_signatures_to_vector(note.tempo.time_signature)
         feature.following_rest = note.following_rest_duration / note.state_fixed.divisions
 
         dynamic_words = direction_words_flatten(note.dynamic)
@@ -1982,6 +1988,7 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
         time_index = binaryIndex(time_signatures_position, note_position)
         note.tempo.time_numerator = time_signatures[time_index].numerator
         note.tempo.time_denominator = time_signatures[time_index].denominator
+        note.tempo.time_signature = time_signatures[time_index]
 
         # have to improve algorithm
         for rel in relative_dynamics:
@@ -2273,15 +2280,45 @@ def note_notation_to_vector(note):
 
     return notation_vec
 
-def apply_repetition(xml_notes, xml_doc):
-    pass
 
-# a. after applying_directions, apply repetition
-# b. apply repetition at parsing stage.
+def time_signatures_to_vector(time_signature):
+    numerator = time_signature.numerator
+    denominator = time_signature.denominator
 
+    denominator_list = [2,4,8,16]
+    numerator_vec = [0] * 6
+    denominator_vec = [0] * 4
 
-def read_repetition(xml_doc):
-    pass
+    denominator_type = denominator_list.index(denominator)
+    denominator_vec[denominator_type] = 1
+
+    if numerator == 2:
+        numerator_vec[0] = 1
+    elif numerator == 3:
+        numerator_vec[1] = 1
+    elif numerator == 4:
+        numerator_vec[0] = 1
+        numerator_vec[2] = 1
+    elif numerator == 6:
+        numerator_vec[0] = 1
+        numerator_vec[3] = 1
+    elif numerator == 8:
+        denominator_vec[0] = 1
+        numerator_vec[2] = 1
+        numerator_vec[4] = 1
+    elif numerator == 9:
+        numerator_vec[1] = 1
+        numerator_vec[3] = 1
+    elif numerator == 12:
+        numerator_vec[0] = 1
+        numerator_vec[2] = 1
+        numerator_vec[3] = 1
+    else:
+        print('Unclassified numerator: ', numerator)
+        numerator_vec[5] = 1
+
+    return numerator_vec + denominator_vec
+
 
 def xml_notes_to_midi(xml_notes):
     midi_notes = []

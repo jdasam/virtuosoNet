@@ -24,7 +24,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="graph_mozart", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="slur_mozart", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -86,7 +86,7 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 57 #score information only
+SCORE_INPUT = 71 #score information only
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -105,11 +105,11 @@ NET_PARAM.output_size = num_prime_param
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 27
-PITCH_IDX = 14
-qpm_primo_index = 5
-tempo_primo_index = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest']
+TEMPO_IDX = 25
+PITCH_IDX = 12
+QPM_PRIMO_IDX = 5
+TEMPO_PRIMO_IDX = -2
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33

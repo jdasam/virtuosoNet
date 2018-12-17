@@ -8,11 +8,12 @@ from torch.autograd import Variable
 DROP_OUT = 0.25
 
 QPM_INDEX = 0
-TEMPO_IDX = 27
-PITCH_IDX = 14
+# VOICE_IDX = 11
+TEMPO_IDX = 25
+PITCH_IDX = 12
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 
 
