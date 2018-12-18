@@ -326,6 +326,11 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
         align_matched = torch.Tensor(align_matched[batch_start:batch_end])
         # input_y = torch.Tensor(prev_feature[batch_start:batch_end])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+    elif num_total_notes < time_steps:
+        batch_x = torch.Tensor(x)
+        batch_y = torch.Tensor(y)
+        align_matched = torch.Tensor(align_matched)
+        batch_start = 0
     else:
         # num_left_data = data_size % batch_size*time_steps
         batch_start = num_total_notes-(batch_size * time_steps)
@@ -334,10 +339,9 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
         align_matched = torch.Tensor(align_matched[batch_start:])
         # input_y = torch.Tensor(prev_feature[batch_start:])
         # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-    batch_x = batch_x.view((batch_size, time_steps, SCORE_INPUT)).to(DEVICE)
-    batch_y = batch_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(DEVICE)
-    align_matched = align_matched.view((batch_size, time_steps, 1)).to(DEVICE)
-    align_matched = align_matched.repeat(1,1,num_prime_param)
+    batch_x = batch_x.view((batch_size, -1, SCORE_INPUT)).to(DEVICE)
+    batch_y = batch_y.view((batch_size, -1, TOTAL_OUTPUT)).to(DEVICE)
+    align_matched = align_matched.view((batch_size, -1, 1)).to(DEVICE)
     # input_y = input_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
 
     # async def train_prime(batch_x, batch_y, input_y, model):
