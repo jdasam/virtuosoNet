@@ -86,7 +86,7 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 74 #score information only
+SCORE_INPUT = 77 #score information only
 TOTAL_OUTPUT = 16
 NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
@@ -105,8 +105,8 @@ NET_PARAM.output_size = num_prime_param
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 27
-PITCH_IDX = 14
+TEMPO_IDX = 28
+PITCH_IDX = 15
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
@@ -182,6 +182,8 @@ def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime')
 
 def key_augmentation(data_x, key_change):
     # key_change = 0
+    if key_change == 0:
+        return data_x
     data_x_aug = copy.deepcopy(data_x)
     pitch_start_index = PITCH_IDX
     # while key_change == 0:
