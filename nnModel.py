@@ -58,7 +58,7 @@ class GatedGraph(nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, input, edge_matrix, iteration=20):
+    def forward(self, input, edge_matrix, iteration=10):
 
         for i in range(iteration):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)

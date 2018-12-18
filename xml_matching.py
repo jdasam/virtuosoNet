@@ -318,6 +318,8 @@ def apply_rest_to_note(xml_notes, rests):
                 rest.note_duration.duration += next_rest.note_duration.duration
                 next_rest.note_duration.duration = 0
                 current_end = rest.note_duration.xml_position + rest.note_duration.duration
+                if next_rest.note_notations.is_fermata:
+                    rest.note_notations.is_fermata = True
             elif next_rest.note_duration.xml_position > current_end:
                 break
             j += 1
@@ -330,6 +332,8 @@ def apply_rest_to_note(xml_notes, rests):
     for rest in rests:
         rest_position = rest.note_duration.xml_position
         closest_note_index = binaryIndex(xml_positions, rest_position)
+        rest_is_fermata = rest.note_notations.is_fermata
+
         search_index = 0
         while closest_note_index - search_index >= 0:
             prev_note = xml_notes[closest_note_index - search_index]
@@ -338,6 +342,8 @@ def apply_rest_to_note(xml_notes, rests):
                 prev_note_with_rest = prev_note_end + prev_note.following_rest_duration
                 if prev_note_end == rest_position:
                     prev_note.following_rest_duration = rest.note_duration.duration
+                    if rest_is_fermata:
+                        prev_note.followed_by_fermata_rest = True
                 elif prev_note_end < rest_position:
                     break
             # elif prev_note_with_rest == rest_position and prev_note.voice == rest.voice:
@@ -521,6 +527,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         # feature.time_sig_den = 1/note.tempo.time_denominator
         feature.time_sig_vec = time_signatures_to_vector(note.tempo.time_signature)
         feature.following_rest = note.following_rest_duration / note.state_fixed.divisions
+        feature.followed_by_fermata_rest = int(note.followed_by_fermata_rest)
 
         dynamic_words = direction_words_flatten(note.dynamic)
         tempo_words = direction_words_flatten(note.tempo)
