@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-data_name = 'tempo_primo'
+data_name = 'slur_entire'
 feature_index = [0, 0]
 save_name = 'feature_histogram.png'
 
@@ -17,11 +17,12 @@ with open(data_name + ".dat", "rb") as f:
     complete_xy = u.load()
 
 index1 = [0, 1]
-index2 = [[0,1,2,3,4,5,6,7], [0,1,2,3,4,5,6,7,8,9,10]]
+index2 = [[0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10]]
 
 
 for i in index1:
     for j in index2[i]:
+        print('index is ', i, j)
         target_features = []
         save_name = 'feature_' + str(i) + '_' + str(j) + '.png'
         for perf in complete_xy:
