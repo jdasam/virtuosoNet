@@ -53,10 +53,10 @@ def save_features_as_vector(dataset, num_train, save_name):
                     #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     train_x.append(
                             [feature.pitch_interval, feature.duration,
-                             feature.duration_ratio, feature.beat_position, feature.measure_length,
+                             feature.duration_ratio, feature.beat_importance, feature.measure_length,
                              feature.qpm_primo, feature.following_rest,  feature.distance_from_abs_dynamic,
                              feature.distance_from_recent_tempo,
-                             feature.xml_position, feature.grace_order, feature.is_grace_note,
+                             feature.beat_position, feature.xml_position, feature.grace_order, feature.is_grace_note,
                              feature.followed_by_fermata_rest, feature.preceded_by_grace_note, feature.no_following_note]
                             + feature.pitch + feature.tempo + feature.dynamic + feature.time_sig_vec + feature.slur_beam_vec +  composer_vec + feature.notation + feature.tempo_primo)
                     # train_x.append(

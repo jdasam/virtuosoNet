@@ -51,7 +51,9 @@ dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'],
                         'sotto voce', 'mezza voce', ['sf', 'fz', 'sfz', 'sffz'] ]
 
 
-VALID_LIST =['Chopin/Chopin_Etude_op_10/1/',
+VALID_LIST =['Bach/Prelude_and_Fugue/bwv_865/',
+             'Bach/Prelude_and_Fugue/bwv_865/'
+             'Chopin/Chopin_Etude_op_10/1/',
              'Chopin/Chopin_Etude_op_10/10/',
              'Chopin/Chopin_Etude_op_10/12/',
              'Chopin/Chopin_Etude_op_25/4/',
@@ -405,6 +407,7 @@ class MusicFeature():
         self.duration = None
         self.duration_ratio = None
         self.beat_position = None
+        self.beat_importance = 0
         self.measure_length = None
         self.voice = None
         self.xml_position = None
@@ -509,7 +512,8 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
             feature.no_following_note = 0
 
         beat_position = (note_position - measure_positions[measure_index]) / measure_length
-        feature.beat_position = cal_beat_importance(beat_position, note.tempo.time_numerator)
+        feature.beat_position = beat_position
+        feature.beat_importance = cal_beat_importance(beat_position, note.tempo.time_numerator)
         feature.measure_length = measure_length / note.state_fixed.divisions
         feature.note_location.voice = note.voice
         feature.note_location.onset = binaryIndex(onset_positions, note_position)
@@ -525,7 +529,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
         # feature.time_sig_num = 1/note.tempo.time_numerator
         # feature.time_sig_den = 1/note.tempo.time_denominator
-        feature.time_sig_vec = time_signatures_to_vector(note.tempo.time_signature)
+        feature.time_sig_vec = time_signature_to_vector(note.tempo.time_signature)
         feature.following_rest = note.following_rest_duration / note.state_fixed.divisions
         feature.followed_by_fermata_rest = int(note.followed_by_fermata_rest)
 
@@ -1110,6 +1114,8 @@ def load_entire_subfolder(path):
     midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
               f == 'midi_cleaned.mid']
     for midifile in midi_list:
+        if 'Prelude_and_Fugue' in midifile:
+            continue
         foldername = os.path.split(midifile)[0] + '/'
         for valid_piece in VALID_LIST:
             if valid_piece in foldername:
@@ -2293,7 +2299,7 @@ def note_notation_to_vector(note):
     return notation_vec
 
 
-def time_signatures_to_vector(time_signature):
+def time_signature_to_vector(time_signature):
     numerator = time_signature.numerator
     denominator = time_signature.denominator
 
@@ -3468,8 +3474,8 @@ def pedal_sigmoid(pedal_value, k=8):
 
 
 def composer_name_to_vec(composer_name):
-    composer_name_list = ['Bach','Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Haydn',
-                          'Liszt', 'Mozart', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
+    composer_name_list = ['Bach','Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Glinka', 'Haydn',
+                          'Liszt', 'Mozart', 'Prokofiev', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
 
     index = composer_name_list.index(composer_name)
     one_hot_vec = [0] * len(composer_name_list)

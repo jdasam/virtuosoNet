@@ -61,23 +61,7 @@ class NetParams:
         self.output_size = 0
 
 ### parameters
-NET_PARAM = NetParams()
 
-NET_PARAM.note.layer = 2
-NET_PARAM.note.size = 64
-NET_PARAM.beat.layer = 2
-NET_PARAM.beat.size = 32
-NET_PARAM.measure.layer = 1
-NET_PARAM.measure.size = 16
-NET_PARAM.final.layer = 1
-NET_PARAM.final.size = 24
-NET_PARAM.voice.layer = 2
-NET_PARAM.voice.size = 0
-NET_PARAM.sum.layer = 2
-NET_PARAM.sum.size = 64
-
-NET_PARAM.encoder.size = 64
-NET_PARAM.encoder.layer = 2
 
 learning_rate = 0.0003
 TIME_STEPS = 500
@@ -86,9 +70,8 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 77 #score information only
+SCORE_INPUT = 80 #score information only
 TOTAL_OUTPUT = 16
-NET_PARAM.input_size = SCORE_INPUT
 training_ratio = 0.8
 DROP_OUT = 0.25
 
@@ -100,13 +83,12 @@ num_tempo_info = 0
 num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
 is_trill_index_score = -11
 is_trill_index_concated = -11 - (num_prime_param + num_second_param)
-NET_PARAM.output_size = num_prime_param
 
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 28
-PITCH_IDX = 15
+TEMPO_IDX = 29
+PITCH_IDX = 16
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
@@ -119,17 +101,102 @@ batch_size = 1
 torch.cuda.set_device(args.device)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+NET_PARAM = NetParams()
+NET_PARAM.input_size = SCORE_INPUT
+NET_PARAM.output_size = num_prime_param
 
-NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                        NET_PARAM.measure.size ) * 2 + NET_PARAM.encoder.size + \
-                        num_tempo_info + num_dynamic_info
-NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                           NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
-                          + num_prime_param
-# if args.trainTrill is False:
-#     NET_PARAM.final.input -= num_trill_param
-if args.voiceNet:
-    NET_PARAM.final.input += NET_PARAM.voice.size * 2
+if 'ggnn' in args.modelCode:
+
+    NET_PARAM.note.layer = 2
+    NET_PARAM.note.size = 64
+    NET_PARAM.beat.layer = 2
+    NET_PARAM.beat.size = 32
+    NET_PARAM.measure.layer = 1
+    NET_PARAM.measure.size = 16
+    NET_PARAM.final.layer = 1
+    NET_PARAM.final.size = 24
+
+    NET_PARAM.encoder.size = 64
+    NET_PARAM.encoder.layer = 2
+
+    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
+                            num_tempo_info + num_dynamic_info
+    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                              + num_prime_param
+    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE).to(DEVICE)
+
+elif 'ggnn_ar' in args.modelCode:
+
+    NET_PARAM.note.layer = 2
+    NET_PARAM.note.size = 64
+    NET_PARAM.beat.layer = 2
+    NET_PARAM.beat.size = 32
+    NET_PARAM.measure.layer = 1
+    NET_PARAM.measure.size = 16
+    NET_PARAM.final.layer = 1
+    NET_PARAM.final.size = 64
+
+    NET_PARAM.encoder.size = 64
+    NET_PARAM.encoder.layer = 2
+
+    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
+                            num_tempo_info + num_dynamic_info
+    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                              + num_prime_param
+    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE).to(DEVICE)
+
+elif 'vae' in args.modelCode:
+    NET_PARAM.note.layer = 3
+    NET_PARAM.note.size = 64
+    NET_PARAM.beat.layer = 2
+    NET_PARAM.beat.size = 32
+    NET_PARAM.measure.layer = 1
+    NET_PARAM.measure.size = 16
+    NET_PARAM.final.layer = 1
+    NET_PARAM.final.size = 24
+    NET_PARAM.voice.layer = 2
+    NET_PARAM.voice.size = 64
+    NET_PARAM.sum.layer = 2
+    NET_PARAM.sum.size = 64
+
+    NET_PARAM.encoder.size = 64
+    NET_PARAM.encoder.layer = 2
+
+    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.voice.size + NET_PARAM.beat.size +
+                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
+                            num_tempo_info + num_dynamic_info
+    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                              + num_prime_param
+    MODEL = nnModel.HAN_VAE(NET_PARAM, DEVICE).to(DEVICE)
+elif 'han' in args.modelCode:
+    NET_PARAM.note.layer = 4
+    NET_PARAM.note.size = 64
+    NET_PARAM.beat.layer = 2
+    NET_PARAM.beat.size = 32
+    NET_PARAM.measure.layer = 1
+    NET_PARAM.measure.size = 16
+    NET_PARAM.final.layer = 1
+    NET_PARAM.final.size = 64
+    NET_PARAM.voice.layer = 2
+    NET_PARAM.voice.size = 64
+
+    num_voice_feed_param = 2  # velocity, onset deviation
+    num_tempo_info = 3
+    num_dynamic_info = 4
+    NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size * 2 + \
+                            NET_PARAM.measure.size * 2 + NET_PARAM.output_size + num_tempo_info + num_voice_feed_param + num_dynamic_info
+    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
+                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                              + num_prime_param
+    MODEL = nnModel.HAN(NET_PARAM, DEVICE).to(DEVICE)
+else:
+    print('Unclassified model code')
+
 
 Second_NET_PARAM = copy.deepcopy(NET_PARAM)
 Second_NET_PARAM.input_size = SCORE_INPUT + NET_PARAM.output_size
@@ -139,7 +206,7 @@ Second_NET_PARAM.final.input += Second_NET_PARAM.output_size - NET_PARAM.output_
 TrillNET_Param = copy.deepcopy(NET_PARAM)
 TrillNET_Param.input_size = SCORE_INPUT + NET_PARAM.output_size + Second_NET_PARAM.output_size
 TrillNET_Param.output_size = num_trill_param
-TrillNET_Param.note.size = NET_PARAM.note.size * 2 + NET_PARAM.output_size + Second_NET_PARAM.output_size
+TrillNET_Param.note.size = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 + NET_PARAM.output_size + Second_NET_PARAM.output_size
 TrillNET_Param.note.layer = 3
 
 ### Model
@@ -161,7 +228,6 @@ def vae_loss(recon_x, x, mu, logvar):
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE).to(DEVICE)
 # second_model = ExtraHAN(NET_PARAM).to(device)
 trill_model =nnModel.TrillRNN(TrillNET_Param, is_trill_index_concated).to(DEVICE)
 
