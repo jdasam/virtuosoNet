@@ -654,7 +654,7 @@ elif args.sessMode=='test':
         u.encoding = 'latin1'
         means, stds = u.load()
     if os.path.isfile('prime_' + args.modelCode + args.resume):
-        print("=> loading checkpoint '{}'".format(+ args.modelCode + args.resume))
+        print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
         model_codes = ['prime', 'trill']
         for i in range(2):
             filename = model_codes[i] + '_' + args.modelCode + args.resume
