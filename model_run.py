@@ -65,7 +65,7 @@ class NetParams:
 
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 4500
+VALID_STEPS = 3000
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
@@ -330,7 +330,7 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
         trill_model_eval = trill_model.eval()
 
         total_output = []
-        if num_notes < 4500:
+        if num_notes < VALID_STEPS:
             if input_y.shape[1] > 1:
                 prime_input_y = input_y[:, :, 0:num_prime_param].view(1, -1, num_prime_param)
             else:

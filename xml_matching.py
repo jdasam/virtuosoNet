@@ -2463,9 +2463,9 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
                    (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
                     (feat.distance_from_abs_dynamic - means[0][7]) / stds[0][7],
                   (feat.distance_from_recent_tempo - means[0][8]) / stds[0][8] ,
-                    feat.xml_position, feat.grace_order,
-                    feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
-                   + feat.pitch + feat.tempo + feat.dynamic + composer_vec + feat.notation + feat.tempo_primo
+                  feat.beat_position, feat.xml_position, feat.grace_order, feat.is_grace_note,
+                    feat.followed_by_fermata_rest, feat.preceded_by_grace_note, feat.no_following_note] \
+                   + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
         note_locations.append(feat.note_location)
