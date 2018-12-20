@@ -3,12 +3,14 @@ import pickle
 import random
 import xml_matching
 import copy
+import pandas
+import numpy as np
 
 NUM_TRILL_PARAM = 5
-
+NUM_NORMALIZE_FEATURE = [9, 15, 15]
 
 def save_features_as_vector(dataset, num_train, save_name):
-    num_normalize_feature = [9, 15, 15]
+
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -27,7 +29,7 @@ def save_features_as_vector(dataset, num_train, save_name):
             # measure_numbers = []
             # voice_numbers = []
             note_locations = []
-            prev_feat = [0] * (num_normalize_feature[1] + NUM_TRILL_PARAM)
+            prev_feat = [0] * (NUM_NORMALIZE_FEATURE[1] + NUM_TRILL_PARAM)
             features = perform['features']
             score = perform['score']
             composer_vec = perform['composer']
@@ -109,67 +111,14 @@ def save_features_as_vector(dataset, num_train, save_name):
     print(train_x[0])
     print(train_y[0])
 
-    def get_mean_and_sd(performances, target_data, target_dimension):
-        sum = 0
-        squared_sum = 0
-        count = 0
-        for perf in performances:
-            samples = perf[target_data]
-            for sample in samples:
-                value = sample[target_dimension]
-                if target_data == 1 and 10< target_dimension <15 and value == 0:
-                    continue
-                sum += value
-                squared_sum += value * value
-                count += 1
-        if count != 0:
-            data_mean = sum / count
-            data_std = (squared_sum / count - data_mean ** 2) ** 0.5
-        else:
-            data_mean = 0
-            data_std = 1
-        return data_mean, data_std
-
-    complete_xy_normalized = []
-    means = [[], [], [], []]
-    stds = [[], [], [], []]
-    for i1 in (0, 1):
-        for i2 in range(num_normalize_feature[i1]):
-            mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
-            means[i1].append(mean_value)
-            stds[i1].append(std_value)
-    print(means)
-    print(stds)
-    means[2] = means[1]
-    stds[2] = stds[1]
-
-    for performance in complete_xy:
-        complete_xy_normalized.append([])
-        for index1 in (0, 1, 2):
-            complete_xy_normalized[-1].append([])
-            for sample in performance[index1]:
-                new_sample = []
-                for index2 in range(num_normalize_feature[index1]):
-                    if not (stds[index1][index2] ==0 or isinstance(stds[index1][index2], complex)):
-                        if index1==1 and 10< index2 <15 and sample[index2] == 0:
-                            new_sample.append(0)
-                        else:
-                            new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
-                    else:
-                        new_sample.append(0)
-                if index1 == 0:
-                    new_sample[num_normalize_feature[index1]:num_input] = sample[num_normalize_feature[index1]:num_input]
-                else:
-                    new_sample[num_normalize_feature[index1]:num_output] = sample[num_normalize_feature[index1]:num_output]
-                complete_xy_normalized[-1][index1].append(new_sample)
-        complete_xy_normalized[-1].append(performance[3])
-        complete_xy_normalized[-1].append(performance[4])
-        complete_xy_normalized[-1].append(performance[5])
 
 
-        # complete_xy_normalized[-1].append(performance[5])
+    complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output)
     complete_xy_orig = complete_xy
     complete_xy = complete_xy_normalized
+
+    complete_xy, bins = output_to_categorical(complete_xy)
+
     complete_xy_train = complete_xy[0:num_train]
     complete_xy_valid = complete_xy[num_train:]
     random.shuffle(complete_xy_train)
@@ -190,6 +139,103 @@ def save_features_as_vector(dataset, num_train, save_name):
 
     print(num_input, num_output)
 
+
+def get_mean_and_sd(performances, target_data, target_dimension):
+    sum = 0
+    squared_sum = 0
+    count = 0
+    for perf in performances:
+        samples = perf[target_data]
+        for sample in samples:
+            value = sample[target_dimension]
+            if target_data == 1 and 10< target_dimension <15 and value == 0:
+                continue
+            sum += value
+            squared_sum += value * value
+            count += 1
+    if count != 0:
+        data_mean = sum / count
+        data_std = (squared_sum / count - data_mean ** 2) ** 0.5
+    else:
+        data_mean = 0
+        data_std = 1
+    return data_mean, data_std
+
+
+def normalize_features(complete_xy, num_input, num_output):
+    complete_xy_normalized = []
+    means = [[], [], [], []]
+    stds = [[], [], [], []]
+    for i1 in (0):#(0, 1):
+        for i2 in range(NUM_NORMALIZE_FEATURE[i1]):
+            mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
+            means[i1].append(mean_value)
+            stds[i1].append(std_value)
+    print(means)
+    print(stds)
+    # means[2] = means[1]
+    # stds[2] = stds[1]
+
+    for performance in complete_xy:
+        complete_xy_normalized.append([])
+        for index1 in (0):#, 1, 2):
+            complete_xy_normalized[-1].append([])
+            for sample in performance[index1]:
+                new_sample = []
+                for index2 in range(NUM_NORMALIZE_FEATURE[index1]):
+                    if not (stds[index1][index2] == 0 or isinstance(stds[index1][index2], complex)):
+                        if index1 == 1 and 10 < index2 < 15 and sample[index2] == 0:
+                            new_sample.append(0)
+                        else:
+                            new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
+                    else:
+                        new_sample.append(0)
+                if index1 == 0:
+                    new_sample[NUM_NORMALIZE_FEATURE[index1]:num_input] = sample[
+                                                                          NUM_NORMALIZE_FEATURE[index1]:num_input]
+                else:
+                    new_sample[NUM_NORMALIZE_FEATURE[index1]:num_output] = sample[
+                                                                           NUM_NORMALIZE_FEATURE[index1]:num_output]
+                complete_xy_normalized[-1][index1].append(new_sample)
+        complete_xy_normalized[-1].append(performance[3])
+        complete_xy_normalized[-1].append(performance[4])
+        complete_xy_normalized[-1].append(performance[5])
+
+    return complete_xy_normalized, means, stds
+
+
+def output_to_categorical(complete_xy):
+    num_bins_by_feature = [100, 30, 30, 20, 10, 10]
+    pedal_threshold = [0, 30, 60, 128]
+    xy_in_categorical = []
+    entire_y = [xy[1] for xy in complete_xy]
+    num_notes_of_perf = []
+    entire_y_flattened = []
+
+    bins = []
+
+    for perf in entire_y:
+        num_notes = len(perf)
+        num_notes_of_perf.append(num_notes)
+        if entire_y_flattened == []:
+            entire_y_flattened = perf
+        else:
+            entire_y_flattened += perf
+
+    y_as_mat = np.asarray(entire_y_flattened)
+
+    for i in range(6):
+        y_as_mat[:,i], temp_bin = pandas.qcut(y_as_mat[:,i], 20, lables=range(20) retbins=True)
+        bins.append(temp_bin)
+
+    for i in range(6,11):
+
+
+    num_perf = len(complete_xy)
+    for i in range(num_perf):
+        complete_xy[i][1] = y_as_mat[i,:]
+
+    return complete_xy, bins
 
 def key_augmentation(data_x, key_change):
     # key_change = 0
@@ -218,5 +264,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_entire')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Glinka')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'test')
