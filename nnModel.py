@@ -129,7 +129,7 @@ class GGNN_HAN(nn.Module):
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
 
-        self.performance_graph_encoder = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
         self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.performance_contractor = nn.Sequential(
@@ -531,7 +531,7 @@ class GGNN_Recursive(nn.Module):
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
 
-        self.performance_graph_encoder = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
         self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.performance_contractor = nn.Sequential(
@@ -633,7 +633,7 @@ class GGNN_Recursive(nn.Module):
         out_with_result = torch.cat(out, perform_z_batched, initial_output)
 
         for i in range(5):
-            out_with_result = self.final_graph(out_with_result, iteration=3)
+            out_with_result = self.final_graph(out_with_result, iteration=6)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                                   beat_numbers, start_index, lower_is_note=True)
             tempo_out = self.tempo_fc(out_beat)
@@ -957,14 +957,29 @@ class HAN_VAE(nn.Module):
         self.encoder_size = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.encoder_layer_num = network_parameters.encoder.layer
-        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.lstm = nn.LSTM(self.hidden_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.beat_attention = nn.Linear(self.hidden_size*2, self.hidden_size*2)
         self.beat_rnn = nn.LSTM(self.hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         self.measure_attention = nn.Linear(self.beat_hidden_size*2, self.beat_hidden_size*2)
         self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
-        self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        self.voice_net = nn.LSTM(self.hidden_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+
+        self.note_fc = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+        )
 
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.beat_tempo_fc = nn.Linear(self.beat_hidden_size,  1)
@@ -972,7 +987,16 @@ class HAN_VAE(nn.Module):
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
         self.fc = nn.Linear(self.final_hidden_size, self.output_size - 1)
 
-        self.performance_encoder = nn.LSTM(self.encoder_input_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
+        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size)
+        self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
+
+        self.performance_contractor = nn.Sequential(
+            nn.Linear(self.encoder_input_size, self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            # nn.BatchNorm1d(self.encoder_size),
+            nn.ReLU()
+        )
+        self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
@@ -995,7 +1019,12 @@ class HAN_VAE(nn.Module):
             perform_var = 0
         else:
             perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, voice_out, y), 2)
-            perform_style_encoded, _ = self.performance_encoder(perform_concat)
+            perform_contracted = self.performance_contractor(perform_concat)
+            perform_note_encoded, _ = self.performance_note_encoder(perform_contracted)
+
+            perform_measure = self.make_higher_node(perform_note_encoded, self.performance_measure_attention, beat_numbers,
+                                                    measure_numbers, start_index, lower_is_note=True)
+            perform_style_encoded, _ = self.performance_encoder(perform_measure)
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
             perform_style_vector = perform_style_encoded[:, -1, :]  # need check
@@ -1058,6 +1087,8 @@ class HAN_VAE(nn.Module):
         hidden = self.init_hidden(x.size(0))
         beat_hidden = self.init_beat_layer(x.size(0))
         measure_hidden = self.init_measure_layer(x.size(0))
+
+        x = self.note_fc(x)
 
         temp_voice_numbers = voice_numbers[start_index:start_index + x.size(1)]
         if temp_voice_numbers == []:
@@ -1153,7 +1184,7 @@ class HAN_VAE(nn.Module):
 
         return upper_node_sum
 
-    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index):
+    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index, lower_is_note=False):
         higher_nodes = []
         prev_higher_index = higher_indexes[start_index]
         lower_node_start = 0
@@ -1163,7 +1194,10 @@ class HAN_VAE(nn.Module):
         lower_hidden_size = lower_out.shape[2]
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
-            current_note_index = lower_indexes.index(absolute_low_index)
+            if lower_is_note:
+                current_note_index = absolute_low_index
+            else:
+                current_note_index = lower_indexes.index(absolute_low_index)
 
             if higher_indexes[current_note_index] > prev_higher_index:
                 # new beat start
@@ -1289,7 +1323,7 @@ class HAN_VAE(nn.Module):
                         span_mat[j, note_index_in_voice] = 1
                         note_index_in_voice += 1
                 span_mat = span_mat.view(1,num_notes,-1).to(self.device)
-                voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.input_size)
+                voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.hidden_size)
                 ith_hidden = voice_hidden[i-1]
 
                 ith_voice_out, ith_hidden = self.voice_net(voice_x, ith_hidden)

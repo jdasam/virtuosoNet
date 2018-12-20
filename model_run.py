@@ -150,14 +150,14 @@ elif 'ggnn_ar' in args.modelCode:
     MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE).to(DEVICE)
 
 elif 'vae' in args.modelCode:
-    NET_PARAM.note.layer = 4
+    NET_PARAM.note.layer = 2
     NET_PARAM.note.size = 64
     NET_PARAM.beat.layer = 2
     NET_PARAM.beat.size = 32
     NET_PARAM.measure.layer = 1
     NET_PARAM.measure.size = 16
     NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 32
+    NET_PARAM.final.size = 64
     NET_PARAM.voice.layer = 2
     NET_PARAM.voice.size = 64
     NET_PARAM.sum.layer = 2
