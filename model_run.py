@@ -36,6 +36,7 @@ parser.add_argument("-code", "--modelCode", type=str, default='ggnn_test', help=
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", type=bool, default=False, help='initial_z value')
+parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
 
 
 args = parser.parse_args()
@@ -71,9 +72,9 @@ num_epochs = 150
 num_key_augmentation = 1
 
 SCORE_INPUT = 80 #score information only
-TOTAL_OUTPUT = 16
-training_ratio = 0.8
 DROP_OUT = 0.25
+TOTAL_OUTPUT = 16
+
 
 num_prime_param = 11
 num_second_param = 0
