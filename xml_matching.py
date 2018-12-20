@@ -1030,7 +1030,7 @@ def cal_articulation_with_tempo(pairs, i, tempo, trill_length):
     articulation = actual_second / second_in_tempo
     if articulation > 6:
         print('check: articulation is ' + str(articulation))
-    articulation = math.log(articulation, 10)
+    # articulation = math.log(articulation, 10)
     return articulation
 
 
@@ -1830,7 +1830,8 @@ def find_notes_between_melody_notes(total_notes, melody_notes):
 def apply_feat_to_a_note(note, feat, prev_vel):
 
     if not feat.articulation == None:
-        note.note_duration.seconds *= 10 ** (feat.articulation)
+        # note.note_duration.seconds *= 10 ** (feat.articulation)
+        note.note_duration.seconds *= feat.articulation
     if not feat.velocity == None:
         note.velocity = feat.velocity
         prev_vel = note.velocity
