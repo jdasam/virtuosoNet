@@ -302,6 +302,7 @@ def edges_to_matrix(edges, num_notes):
     matrix = torch.Tensor(matrix)
     return matrix
 
+
 def edges_to_sparse_tensor(edges):
     num_keywords = len(GRAPH_KEYS)
     edge_list = []
@@ -323,6 +324,11 @@ def edges_to_sparse_tensor(edges):
     matrix = torch.sparse.FloatTensor(edge_list.t(), edge_type_list)
 
     return matrix
+
+
+def categorize_value_to_vector(y):
+
+    return
 
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):

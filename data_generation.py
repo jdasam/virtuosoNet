@@ -5,10 +5,17 @@ import xml_matching
 import copy
 import pandas
 import numpy as np
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--regression", type=bool, default=True, help="train or test")
+
+args = parser.parse_args()
+
 
 NUM_TRILL_PARAM = 5
 NUM_NORMALIZE_FEATURE = [9, 15, 15]
-REGRESSION = True
+REGRESSION = args.regression
 
 def save_features_as_vector(dataset, num_train, save_name):
 
@@ -114,11 +121,14 @@ def save_features_as_vector(dataset, num_train, save_name):
 
 
     if REGRESSION:
+        complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output, x_only=False)
+        complete_xy_orig = complete_xy
+        complete_xy = complete_xy_normalized
+    else:
         complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output, x_only=True)
         complete_xy_orig = complete_xy
         complete_xy = complete_xy_normalized
-
-    complete_xy, bins = output_to_categorical(complete_xy)
+        complete_xy, bins = output_to_categorical(complete_xy)
 
     complete_xy_train = complete_xy[0:num_train]
     complete_xy_valid = complete_xy[num_train:]
@@ -135,10 +145,15 @@ def save_features_as_vector(dataset, num_train, save_name):
 
     with open(save_name + ".dat", "wb") as f:
         pickle.dump({'train': complete_xy_train, 'valid': complete_xy_valid}, f, protocol=2)
-    with open(save_name + "_stat.dat", "wb") as f:
-        pickle.dump([means, stds, bins], f, protocol=2)
 
+    if REGRESSION:
+        with open(save_name + "_stat.dat", "wb") as f:
+            pickle.dump([means, stds], f, protocol=2)
+    else:
+        with open(save_name + "_stat.dat", "wb") as f:
+            pickle.dump([means, stds, bins], f, protocol=2)
 
+    num_output = len(complete_xy[0][1][0])
     print(num_input, num_output)
 
 
@@ -255,8 +270,10 @@ def output_to_categorical(complete_xy):
     for i in range(num_perf):
         num_notes = num_notes_of_perf[i]
         complete_xy[i][1] = y_as_mat[notes_range_index:notes_range_index+num_notes,:]
+        notes_range_index += num_notes
 
     return complete_xy, bins
+
 
 def key_augmentation(data_x, key_change):
     # key_change = 0
