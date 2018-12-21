@@ -92,7 +92,7 @@ TEMPO_IDX = 29
 PITCH_IDX = 16
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -133,9 +133,9 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.note.layer = 2
     NET_PARAM.note.size = 64
     NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 32
+    NET_PARAM.beat.size = 64
     NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 16
+    NET_PARAM.measure.size = 64
     NET_PARAM.final.layer = 1
     NET_PARAM.final.size = 64
 
@@ -279,6 +279,8 @@ def edges_to_matrix(edges, num_notes):
     matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
 
     for edg in edges:
+        if edg[2] not in GRAPH_KEYS:
+            continue
         edge_type = GRAPH_KEYS.index(edg[2])
         matrix[edge_type, edg[0], edg[1]] = 1
         if edge_type != 0:

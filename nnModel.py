@@ -633,7 +633,7 @@ class GGNN_Recursive(nn.Module):
         out_with_result = torch.cat(out, perform_z_batched, initial_output)
 
         for i in range(5):
-            out_with_result = self.final_graph(out_with_result, iteration=6)
+            out_with_result = self.final_graph(out_with_result, iteration=3)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                                   beat_numbers, start_index, lower_is_note=True)
             tempo_out = self.tempo_fc(out_beat)

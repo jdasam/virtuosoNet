@@ -8,6 +8,7 @@ import numpy as np
 
 NUM_TRILL_PARAM = 5
 NUM_NORMALIZE_FEATURE = [9, 15, 15]
+REGRESSION = True
 
 def save_features_as_vector(dataset, num_train, save_name):
 
@@ -112,10 +113,10 @@ def save_features_as_vector(dataset, num_train, save_name):
     print(train_y[0])
 
 
-
-    complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output)
-    complete_xy_orig = complete_xy
-    complete_xy = complete_xy_normalized
+    if REGRESSION:
+        complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output, x_only=True)
+        complete_xy_orig = complete_xy
+        complete_xy = complete_xy_normalized
 
     complete_xy, bins = output_to_categorical(complete_xy)
 
@@ -135,7 +136,8 @@ def save_features_as_vector(dataset, num_train, save_name):
     with open(save_name + ".dat", "wb") as f:
         pickle.dump({'train': complete_xy_train, 'valid': complete_xy_valid}, f, protocol=2)
     with open(save_name + "_stat.dat", "wb") as f:
-        pickle.dump([means, stds], f, protocol=2)
+        pickle.dump([means, stds, bins], f, protocol=2)
+
 
     print(num_input, num_output)
 
@@ -162,23 +164,30 @@ def get_mean_and_sd(performances, target_data, target_dimension):
     return data_mean, data_std
 
 
-def normalize_features(complete_xy, num_input, num_output):
+def normalize_features(complete_xy, num_input, num_output, x_only=False):
     complete_xy_normalized = []
     means = [[], [], [], []]
     stds = [[], [], [], []]
-    for i1 in (0):#(0, 1):
+    if x_only:
+        index_list = [0]
+    else:
+        index_list = [0,1,2]
+
+    for i1 in index_list:
         for i2 in range(NUM_NORMALIZE_FEATURE[i1]):
             mean_value, std_value = get_mean_and_sd(complete_xy, i1, i2)
             means[i1].append(mean_value)
             stds[i1].append(std_value)
     print(means)
     print(stds)
-    # means[2] = means[1]
-    # stds[2] = stds[1]
+
+    if not x_only:
+        means[2] = means[1]
+        stds[2] = stds[1]
 
     for performance in complete_xy:
         complete_xy_normalized.append([])
-        for index1 in (0):#, 1, 2):
+        for index1 in index_list:
             complete_xy_normalized[-1].append([])
             for sample in performance[index1]:
                 new_sample = []
@@ -197,6 +206,10 @@ def normalize_features(complete_xy, num_input, num_output):
                     new_sample[NUM_NORMALIZE_FEATURE[index1]:num_output] = sample[
                                                                            NUM_NORMALIZE_FEATURE[index1]:num_output]
                 complete_xy_normalized[-1][index1].append(new_sample)
+        if x_only:
+            complete_xy_normalized[-1].append(performance[1])
+            complete_xy_normalized[-1].append(performance[2])
+
         complete_xy_normalized[-1].append(performance[3])
         complete_xy_normalized[-1].append(performance[4])
         complete_xy_normalized[-1].append(performance[5])
@@ -223,17 +236,25 @@ def output_to_categorical(complete_xy):
             entire_y_flattened += perf
 
     y_as_mat = np.asarray(entire_y_flattened)
+    trill_bool = y_as_mat[:,11] != 0
 
     for i in range(6):
-        y_as_mat[:,i], temp_bin = pandas.qcut(y_as_mat[:,i], 20, lables=range(20) retbins=True)
+        y_as_mat[:,i], temp_bin = pandas.qcut(y_as_mat[:,i], 20, labels=False, retbins=True, duplicates='drop')
         bins.append(temp_bin)
 
     for i in range(6,11):
+        y_as_mat[:, i] = pandas.cut(y_as_mat[:, i], pedal_threshold, labels=False)
+        bins.append(pedal_threshold)
 
+    for i in range(11,15):
+        y_as_mat[trill_bool, i] = pandas.qcut(y_as_mat[trill_bool, i], 5, labels=False, duplicates='drop')
+        bins.append(pedal_threshold)
 
     num_perf = len(complete_xy)
+    notes_range_index = 0
     for i in range(num_perf):
-        complete_xy[i][1] = y_as_mat[i,:]
+        num_notes = num_notes_of_perf[i]
+        complete_xy[i][1] = y_as_mat[notes_range_index:notes_range_index+num_notes,:]
 
     return complete_xy, bins
 
@@ -264,5 +285,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Glinka')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/12-1/')
 save_features_as_vector(chopin_pairs, num_train_pairs, 'test')
