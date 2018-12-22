@@ -24,7 +24,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="slur_mozart", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="test", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
@@ -32,11 +32,11 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='ggnn_test', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='ggnn_non_ar_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", type=bool, default=False, help='initial_z value')
-parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
+parser.add_argument("-loss", "--trainingLoss", type=str, default='CE', help='type of training loss')
 
 
 args = parser.parse_args()
@@ -326,9 +326,17 @@ def edges_to_sparse_tensor(edges):
     return matrix
 
 
-def categorize_value_to_vector(y):
+def categorize_value_to_vector(y, bins):
+    vec_length = sum([len(x) for x in bins])
+    for note in y:
+        total_vec = []
+        for i in range(TOTAL_OUTPUT):
+            temp_vec = [0] * (len(bins[i]) -1)
+            temp_vec[int(note[i])] = 1
+            total_vec += temp_vec
+        note = total_vec
 
-    return
+    return y
 
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
@@ -501,10 +509,16 @@ if args.sessMode == 'train':
     with open(args.dataName + "_stat.dat", "rb") as f:
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
-        means, stds = u.load()
+        if args.trainingLoss == 'CE':
+            means, stds, bins = u.load()
+        else:
+            means, stds = u.load()
 
     # perform_num = len(complete_xy)
-    tempo_stats = [means[1][0], stds[1][0]]
+    if args.trainingLoss == 'MSE':
+        tempo_stats = [means[1][0], stds[1][0]]
+    else:
+        tempo_stats = [0,0]
 
     # train_perf_num = int(perform_num * training_ratio)
     train_xy = complete_xy['train']
@@ -525,6 +539,8 @@ if args.sessMode == 'train':
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
             train_y = xy_tuple[1]
+            if args.trainingLoss == 'CE':
+                train_y = categorize_value_to_vector(train_y, bins)
             prev_feature = xy_tuple[2]
             note_locations = xy_tuple[3]
             align_matched = xy_tuple[4]

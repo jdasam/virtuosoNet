@@ -13,7 +13,7 @@ TEMPO_IDX = 28
 PITCH_IDX = 15
 QPM_PRIMO_IDX = 5
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'closest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 NUM_VOICE_FEED_PARAM = 2
 

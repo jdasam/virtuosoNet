@@ -8,7 +8,7 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--regression", type=bool, default=True, help="train or test")
+parser.add_argument('--regression', default=False, type=lambda x: (str(x).lower() == 'true'))
 
 args = parser.parse_args()
 
@@ -16,6 +16,7 @@ args = parser.parse_args()
 NUM_TRILL_PARAM = 5
 NUM_NORMALIZE_FEATURE = [9, 15, 15]
 REGRESSION = args.regression
+print(args.regression)
 
 def save_features_as_vector(dataset, num_train, save_name):
 
@@ -254,7 +255,7 @@ def output_to_categorical(complete_xy):
     trill_bool = y_as_mat[:,11] != 0
 
     for i in range(6):
-        y_as_mat[:,i], temp_bin = pandas.qcut(y_as_mat[:,i], 20, labels=False, retbins=True, duplicates='drop')
+        y_as_mat[:,i], temp_bin = pandas.qcut(y_as_mat[:,i], num_bins_by_feature[i], labels=False, retbins=True, duplicates='drop')
         bins.append(temp_bin)
 
     for i in range(6,11):
@@ -302,5 +303,5 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/12-1/')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/')
 save_features_as_vector(chopin_pairs, num_train_pairs, 'test')
