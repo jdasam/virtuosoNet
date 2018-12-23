@@ -72,9 +72,12 @@ class GatedGraph(nn.Module):
 
 
 class GGNN_HAN(nn.Module):
-    def __init__(self, network_parameters, device, num_trill_param=5):
+    def __init__(self, network_parameters, device, LOSS_TYPE, tempo_length=1, num_trill_param=5):
         super(GGNN_HAN, self).__init__()
         self.device = device
+        self.loss_type = LOSS_TYPE
+        self.tempo_output_length = tempo_length
+
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
         self.num_layers = network_parameters.note.layer
@@ -100,10 +103,25 @@ class GGNN_HAN(nn.Module):
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
         self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.beat_tempo_fc = nn.Linear(self.beat_hidden_size,  1)
 
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.fc = nn.Linear(self.final_hidden_size, self.output_size - 1)
+
+        if self.loss_type == 'MSE':
+            self.fc = nn.Linear(self.final_hidden_size, self.output_size - 1)
+            self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
+        elif self.loss_type == 'CE':
+            self.fc = nn.Sequential(
+                nn.Linear(self.final_hidden_size, self.output_size),
+                nn.Sigmoid(),
+                nn.Softmax(dim=2)
+            )
+            self.beat_tempo_fc = nn.Sequential(
+                nn.Linear(self.beat_hidden_size, self.tempo_output_length),
+                nn.Sigmoid(),
+                nn.Softmax(dim=2)
+            )
+        else:
+            print('Error in Constructing Network: unclassified loss type', self.loss_type)
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
@@ -180,15 +198,13 @@ class GGNN_HAN(nn.Module):
         # perform_z = self.performance_decoder(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
+        num_beats = beat_hidden_out.size(1)
 
         tempo_hidden = self.init_beat_tempo_forward(x.size(0))
         final_hidden = self.init_final_layer(x.size(0))
 
-        num_notes = x.size(1)
-        num_beats = beat_hidden_out.size(1)
 
-        # non autoregressive
-
+        # Calculate tempo of the beats first
         qpm_primo = x[:,:, QPM_PRIMO_IDX].view(1, -1, 1)
         tempo_primo = x[:,:, TEMPO_PRIMO_IDX:].view(1, -1, 2)
         # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
@@ -198,16 +214,13 @@ class GGNN_HAN(nn.Module):
         # measure_out_in_beat
         if 'beat_hidden_out' not in locals():
             beat_hidden_out = beat_out_spanned
-        num_beats = beat_hidden_out.size(1)
         # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
         perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
         beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector, perform_z_beat_spanned), 2)
         beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
         tempos = self.beat_tempo_fc(beat_forward)
-        num_notes = note_out.size(1)
         tempos_spanned = self.span_beat_to_note_num(tempos, beat_numbers, num_notes, start_index)
         # y[0, :, 0] = tempos_spanned.view(-1)
-
 
 
         # mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
