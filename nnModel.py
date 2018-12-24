@@ -111,14 +111,14 @@ class GGNN_HAN(nn.Module):
             self.beat_tempo_fc = nn.Linear(self.beat_hidden_size, 1)
         elif self.loss_type == 'CE':
             self.fc = nn.Sequential(
-                nn.Linear(self.final_hidden_size, self.output_size),
+                nn.Linear(self.final_hidden_size, self.output_size - self.tempo_output_length),
                 nn.Sigmoid(),
-                nn.Softmax(dim=2)
+                # nn.Softmax(dim=2)
             )
             self.beat_tempo_fc = nn.Sequential(
                 nn.Linear(self.beat_hidden_size, self.tempo_output_length),
                 nn.Sigmoid(),
-                nn.Softmax(dim=2)
+                # nn.Softmax(dim=2)
             )
         else:
             print('Error in Constructing Network: unclassified loss type', self.loss_type)
@@ -910,8 +910,9 @@ class GGNN_Recursive(nn.Module):
 
 
 class TrillRNN(nn.Module):
-    def __init__(self, network_parameters, trill_index):
+    def __init__(self, network_parameters, trill_index, loss_type):
         super(TrillRNN, self).__init__()
+        self.loss_type = loss_type
         self.hidden_size = network_parameters.note.size
         self.num_layers = network_parameters.note.layer
         self.input_size = network_parameters.input_size
@@ -940,9 +941,12 @@ class TrillRNN(nn.Module):
         is_trill_mat = is_trill_mat.view(1,-1,1).repeat(1,1,self.output_size).view(1,-1,self.output_size)
         is_trill_mat = Variable(is_trill_mat, requires_grad=False)
         out = self.fc(score_hidden)
-        up_trill = self.sigmoid(out[:,:,-1])
-        out[:,:,-1] = up_trill
-        out = out * is_trill_mat
+        if self.loss_type == 'MSE':
+            up_trill = self.sigmoid(out[:,:,-1])
+            out[:,:,-1] = up_trill
+        else:
+            out = self.sigmoid(out)
+        # out = out * is_trill_mat
         return out
 
     def init_hidden(self, batch_size):
