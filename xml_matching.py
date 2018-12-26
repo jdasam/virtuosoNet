@@ -21,7 +21,7 @@ absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'a
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
                             'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento',
                             'Freely, with expression', "d'un rythme souple", 'agitato',
-                            'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft',
+                            'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft', 'geschwind',
                             'lent', 'large', 'vif', 'animé', 'scherzo', 'menuetto', 'minuetto']
 relative_tempos_keywords = ['animato', 'pesante', 'veloce',
                             'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto', 'string',
@@ -2967,6 +2967,10 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('sehr aufgeregt', 0, 0.6))
     embed_table.append(EmbeddingKey('sehr rasch', 0, 0.8))
     embed_table.append(EmbeddingKey('Sehr innig und nicht zu rasch', 0, -0.8))
+    embed_table.append(EmbeddingKey('lebhaftig', 0, 0.5))
+    embed_table.append(EmbeddingKey('nicht zu geschwind', 0, -0.3))
+
+
 
     embed_table.append(EmbeddingKey('langsamer', 1, -0.5))
     embed_table.append(EmbeddingKey('etwas langsamer', 1, -0.3))

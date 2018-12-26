@@ -234,7 +234,7 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
 
 
 def output_to_categorical(complete_xy):
-    num_bins_by_feature = [100, 30, 30, 20, 10, 10]
+    num_bins_by_feature = [100, 20, 20, 10, 10, 10]
     pedal_threshold = [-1, 30, 60, 128]
     xy_in_categorical = []
     entire_y = [xy[1] for xy in complete_xy]
@@ -303,6 +303,6 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'test')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_entire')
 

@@ -154,9 +154,9 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.note.layer = 2
     NET_PARAM.note.size = 64
     NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 64
+    NET_PARAM.beat.size = 32
     NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 64
+    NET_PARAM.measure.size = 32
     NET_PARAM.final.layer = 1
     NET_PARAM.final.size = 64
 
@@ -164,12 +164,11 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.encoder.layer = 2
 
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
-                            num_tempo_info + num_dynamic_info
+                             NET_PARAM.measure.size) * 2
     NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                                NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
                               + NUM_PRIME_PARAM
-    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE).to(DEVICE)
+    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
 
 elif 'vae' in args.modelCode:
     NET_PARAM.note.layer = 2
@@ -256,7 +255,14 @@ trill_model =nnModel.TrillRNN(TrillNET_Param, is_trill_index_concated, LOSS_TYPE
 
 if LOSS_TYPE == 'MSE':
     def criterion(pred, target, aligned_status=1):
-        return (target - pred) ** 2
+        if isinstance(aligned_status, int):
+            data_size = pred.shape[-2] * pred.shape[-1]
+        else:
+            data_size = torch.sum(aligned_status).item() * pred.shape[-1]
+            if data_size ==0:
+                data_size = 1
+                print('data size for loss calculation is zero')
+        return torch.sum( ((target - pred) ** 2) * aligned_status) / data_size
 elif LOSS_TYPE == 'CE':
     # criterion = nn.CrossEntropyLoss()
     def criterion(pred, target, aligned_status=1):
@@ -264,6 +270,9 @@ elif LOSS_TYPE == 'CE':
             data_size = pred.shape[-2] * pred.shape[-1]
         else:
             data_size = torch.sum(aligned_status).item() * pred.shape[-1]
+            if data_size ==0:
+                data_size = 1
+                print('data size for loss calculation is zero')
         return -1 * torch.sum((target * torch.log(pred)  + (1-target) * torch.log(1-pred)) * aligned_status) / data_size
 optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
@@ -486,13 +495,14 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
     optimizer.step()
 
-    if torch.sum(batch_x[:,:,is_trill_index_score]) > 0:
+    trill_bool = batch_x[:,:,is_trill_index_score:is_trill_index_score+1]
+    if torch.sum(trill_bool) > 0:
         trill_batch_x = torch.cat((batch_x, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
         note_out_cat = torch.cat((note_out, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
         trill_batch_y = batch_y[:,:,-num_trill_param:]
         model_train = trill_model.train()
         trill_output = model_train(trill_batch_x, note_out_cat)
-        trill_loss = criterion(trill_output, trill_batch_y, batch_x[:,:,is_trill_index_score:is_trill_index_score+1])
+        trill_loss = criterion(trill_output, trill_batch_y, trill_bool)
         trill_optimizer.zero_grad()
         trill_loss.backward()
         torch.nn.utils.clip_grad_norm_(trill_model.parameters(), 0.25)
@@ -798,6 +808,7 @@ elif args.sessMode=='test':
                 feature_class = np.argmax(prediction[i,bin_range_start:bin_range_start+feature_bin_size])
                 feature_value = (BINS[j][feature_class] + BINS[j][feature_class+1]) / 2
                 prediction_in_value[i,j] = feature_value
+                bin_range_start += feature_bin_size
             prediction_in_value[i,15] = prediction[i,-1]
         prediction = prediction_in_value
     # print(prediction)
