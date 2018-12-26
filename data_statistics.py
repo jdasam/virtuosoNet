@@ -4,13 +4,13 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-data_name = 'slur_entire'
+data_name = 'class_entire'
 feature_index = [0, 0]
 save_name = 'feature_histogram.png'
 
 
 with open(data_name + ".dat", "rb") as f:
-    u = pickle._Unpickler(f)
+    u = pickle._Unpickler   (f)
     u.encoding = 'latin1'
     # p = u.load()
     # complete_x()y = pickle.load(f)

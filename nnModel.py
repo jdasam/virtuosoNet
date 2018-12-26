@@ -1443,7 +1443,7 @@ class HAN(nn.Module):
         # self.voice_net = nn.LSTM(self.input_size, self.voice_hidden_size, self.num_voice_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
         # self.summarize_net = nn.LSTM(self.final_input, self.summarize_size, self.summarize_layers, batch_first=True, bidirectional=True)
 
-    def forward(self, x, y, edges, note_locations, start_index, step_by_step=True, true_tempo=False, initial_teaching=50):
+    def forward(self, x, y, edges, note_locations, start_index, step_by_step=True, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
@@ -1482,7 +1482,7 @@ class HAN(nn.Module):
             if current_beat > prev_beat:  # beat changed
                 # use true previous state by coin flip
                 # if has_ground_truth and random.random() > rand_threshold:
-                if has_ground_truth and i < initial_teaching:
+                if has_ground_truth and random.random() > rand_threshold:
                     # use true previous status
                     prev_tempos = true_prev_tempos[:, current_beat, QPM_INDEX]
                     number_of_prev_notes = len(prev_out_list)
@@ -1511,9 +1511,9 @@ class HAN(nn.Module):
 
             tmp_voice = voice_numbers[start_index + i] - 1
             # if has_ground_truth and random.random() > rand_threshold:
-            if has_ground_truth and i < initial_teaching:
+            if has_ground_truth and current_beat + 2 < true_prev_tempos.shape[1] and random.random() > rand_threshold:
                 prev_out = y[0, i, 1:]
-                true_current_tempo = true_tempo[0, i, :]
+                true_current_tempo = true_prev_tempos[0, current_beat+1, :]
                 prev_out = torch.cat( (true_current_tempo, prev_out))
 
             corresp_beat = beat_numbers[start_index+i] - beat_numbers[start_index]
@@ -1526,7 +1526,7 @@ class HAN(nn.Module):
                  prev_out, prev_voice_vel, qpm_primo, tempo_primo)).view(1,1,-1)
 
             out, final_hidden = self.output_lstm(out_combined, final_hidden)
-            out = torch.cat((out, out_combined), 2)
+            # out = torch.cat((out, out_combined), 2)
             out = out.view(-1)
             out = self.fc(out)
 
@@ -1538,7 +1538,8 @@ class HAN(nn.Module):
             out_total[i,:] = out
 
         out_total = out_total.view(1, num_notes, -1)
-        return out_total, hidden_out
+        hidden_total = torch.cat((hidden_out, beat_hidden_spanned, measure_hidden_spanned, voice_out),2)
+        return out_total, False, False, hidden_total
 
 
     def run_offline_score_model(self, x, beat_numbers, measure_numbers, voice_numbers, start_index):
@@ -1618,7 +1619,7 @@ class HAN(nn.Module):
                 measure_nodes.append(measure)
 
                 measure_beats_start = beat_index
-                prev_measure = measure_number[beat_index]
+                prev_measure = measure_number[current_note_index]
 
         last_hidden = beat_out[0, measure_beats_end:, :]
         measure = self.sum_with_attention(last_hidden, self.measure_attention)

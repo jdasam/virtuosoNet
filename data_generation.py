@@ -8,7 +8,7 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--regression', default=False, type=lambda x: (str(x).lower() == 'true'))
+parser.add_argument('--regression', default=True, type=lambda x: (str(x).lower() == 'true'))
 
 args = parser.parse_args()
 
@@ -16,7 +16,7 @@ args = parser.parse_args()
 NUM_TRILL_PARAM = 5
 NUM_NORMALIZE_FEATURE = [9, 15, 15]
 REGRESSION = args.regression
-print(args.regression)
+print('Data type is regression: ', args.regression)
 
 def save_features_as_vector(dataset, num_train, save_name):
 
@@ -303,6 +303,6 @@ def key_augmentation(data_x, key_change):
 
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_entire')
+chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/')
+save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_test')
 

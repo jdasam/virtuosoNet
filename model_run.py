@@ -32,7 +32,7 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='han_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
@@ -200,7 +200,7 @@ elif 'han' in args.modelCode:
     NET_PARAM.beat.layer = 2
     NET_PARAM.beat.size = 32
     NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 16
+    NET_PARAM.measure.size = 32
     NET_PARAM.final.layer = 1
     NET_PARAM.final.size = 64
     NET_PARAM.voice.layer = 2
@@ -208,12 +208,9 @@ elif 'han' in args.modelCode:
 
     num_voice_feed_param = 2  # velocity, onset deviation
     num_tempo_info = 3
-    num_dynamic_info = 4
-    NET_PARAM.final.input = NET_PARAM.note.size * 2 + NET_PARAM.beat.size * 2 + \
-                            NET_PARAM.measure.size * 2 + NET_PARAM.output_size + num_tempo_info + num_voice_feed_param + num_dynamic_info
-    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
-                              + NUM_PRIME_PARAM
+    num_dynamic_info = 0
+    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.voice.size + NET_PARAM.measure.size ) * 2 \
+                            + NET_PARAM.output_size + num_tempo_info + num_voice_feed_param + num_dynamic_info
     MODEL = nnModel.HAN(NET_PARAM, DEVICE).to(DEVICE)
 else:
     print('Unclassified model code')
@@ -488,8 +485,12 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
 
     tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
     other_loss = criterion(prime_outputs[:,:,NUM_TEMPO_PARAM:], prime_batch_y[:,:,NUM_TEMPO_PARAM:], align_matched)
-    perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-    prime_loss = torch.sum(tempo_loss) + torch.sum(other_loss) + perform_kld
+    if perform_mu:
+        perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+        prime_loss = tempo_loss + other_loss + perform_kld
+    else:
+        prime_loss = tempo_loss + other_loss
+        perform_kld = torch.zeros(1)
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
