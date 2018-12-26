@@ -31,8 +31,8 @@ parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
 parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='han_test', help="code name for saving the model")
+parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
+parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
@@ -156,11 +156,11 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.beat.layer = 2
     NET_PARAM.beat.size = 32
     NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 32
+    NET_PARAM.measure.size = 16
     NET_PARAM.final.layer = 1
     NET_PARAM.final.size = 64
 
-    NET_PARAM.encoder.size = 64
+    NET_PARAM.encoder.size = 32
     NET_PARAM.encoder.layer = 2
 
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
@@ -232,17 +232,6 @@ TrillNET_Param.note.layer = 3
 # class PerformanceEncoder(GGNN_HAN):
 #     def __init__(self, network_parameters):
 #         super(perfor)
-
-def vae_loss(recon_x, x, mu, logvar):
-    MSE = nn.MSELoss(recon_x, x.view(-1, 784), reduction='sum')
-
-    # see Appendix B from VAE paper:
-    # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-    # https://arxiv.org/abs/1312.6114
-    # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
-    return MSE + KLD
 
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
@@ -485,12 +474,12 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
 
     tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
     other_loss = criterion(prime_outputs[:,:,NUM_TEMPO_PARAM:], prime_batch_y[:,:,NUM_TEMPO_PARAM:], align_matched)
-    if perform_mu:
-        perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-        prime_loss = tempo_loss + other_loss + perform_kld
-    else:
+    if isinstance(perform_mu, bool):
         prime_loss = tempo_loss + other_loss
         perform_kld = torch.zeros(1)
+    else:
+        perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+        prime_loss = tempo_loss + other_loss + perform_kld
     optimizer.zero_grad()
     prime_loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)

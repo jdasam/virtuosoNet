@@ -576,7 +576,7 @@ class GGNN_Recursive(nn.Module):
             nn.ReLU()
         )
 
-        self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+        # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
 
         self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
         self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
@@ -635,19 +635,28 @@ class GGNN_Recursive(nn.Module):
         # out = self.final_contractor(out_combined)
         initial_output = self.initial_result_fc(out_combined)
         # initial_output = torch.zeros(1, num_notes, self.output_size).to(self.device)
-        style_to_measure_hidden = self.init_performance_encoder(x.shape[0])
-        perform_z_measure_spanned = perform_z.repeat(measure_hidden_out.shape[1], 1).view(1,measure_hidden_out.shape[1], -1)
-        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
-        measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat, style_to_measure_hidden)
-        measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
-        out_with_result = torch.cat((out_combined, measure_perform_style_spanned, initial_output), 2)
+        # style_to_measure_hidden = self.init_performance_encoder(x.shape[0])
+        # perform_z_measure_spanned = perform_z.repeat(measure_hidden_out.shape[1], 1).view(1,measure_hidden_out.shape[1], -1)
+        # perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
+        # measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat, style_to_measure_hidden)
+        # measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
+        out_with_result = torch.cat((out_combined, perform_z_batched, initial_output), 2)
         tempo_hidden = self.init_beat_tempo_forward(x.shape[0])
+
+        num_beats = beat_hidden_out.shape[1]
+        qpm_primo = x[:, :, QPM_PRIMO_IDX].view(1, -1, 1)
+        tempo_primo = x[:, :, TEMPO_PRIMO_IDX:].view(1, -1, 2)
+        # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+        beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_beats, 1))
+        beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
+        beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
 
         for i in range(5):
             out_with_result = self.final_graph(out_with_result, edges, iteration=10)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                              beat_numbers, start_index, lower_is_note=True)
             out_beat = self.beat_tempo_contractor(out_beat)
+            tempo_beat_cat = torch.cat((out_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector ),2)
             out_beat_rnn_result, _ = self.tempo_rnn(out_beat, tempo_hidden)
             tempo_out = self.tempo_fc(out_beat_rnn_result)
             other_out = self.fc(out_with_result)
