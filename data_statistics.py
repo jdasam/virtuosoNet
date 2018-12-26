@@ -25,10 +25,12 @@ for i in index1:
         print('index is ', i, j)
         target_features = []
         save_name = 'feature_' + str(i) + '_' + str(j) + '.png'
-        for perf in complete_xy:
-            features = perf[i]
-            for feat in features:
-                target_features.append(feat[j])
+        for key in ('train', 'valid'):
+            performs = complete_xy[key]
+            for perf in performs:
+                features = perf[i]
+                for feat in features:
+                    target_features.append(feat[j])
 
 
         plt.figure(figsize=(10, 7))

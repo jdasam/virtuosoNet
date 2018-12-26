@@ -626,7 +626,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
     qpm_primo = cal_qpm_primo(tempos)
     qpm_primo = math.log(qpm_primo, 10)
 
-    prev_articulation = 1
+    prev_articulation = 0
     prev_vel = 64
     prev_pedal = 0
     prev_soft_pedal = 0
@@ -1030,7 +1030,7 @@ def cal_articulation_with_tempo(pairs, i, tempo, trill_length):
     articulation = actual_second / second_in_tempo
     if articulation > 6:
         print('check: articulation is ' + str(articulation))
-    # articulation = math.log(articulation, 10)
+    articulation = math.log(articulation, 10)
     return articulation
 
 
@@ -1114,8 +1114,6 @@ def load_entire_subfolder(path):
     midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
               f == 'midi_cleaned.mid']
     for midifile in midi_list:
-        if 'Prelude_and_Fugue' in midifile:
-            continue
         foldername = os.path.split(midifile)[0] + '/'
         for valid_piece in VALID_LIST:
             if valid_piece in foldername:
@@ -1830,8 +1828,8 @@ def find_notes_between_melody_notes(total_notes, melody_notes):
 def apply_feat_to_a_note(note, feat, prev_vel):
 
     if not feat.articulation == None:
-        # note.note_duration.seconds *= 10 ** (feat.articulation)
-        note.note_duration.seconds *= feat.articulation
+        note.note_duration.seconds *= 10 ** (feat.articulation)
+        # note.note_duration.seconds *= feat.articulation
     if not feat.velocity == None:
         note.velocity = feat.velocity
         prev_vel = note.velocity

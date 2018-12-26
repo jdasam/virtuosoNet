@@ -24,19 +24,19 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="slur_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
-parser.add_argument("-trill", "--trainTrill", type=bool, default=False, help="train trill")
+parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
-parser.add_argument("-voice", "--voiceNet", type=bool, default=True, help="network in voice level")
+parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='ggnn_non_ar_test', help="code name for saving the model")
+parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
+parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
-parser.add_argument("-bp", "--boolPedal", type=bool, default=False, help='initial_z value')
-parser.add_argument("-loss", "--trainingLoss", type=str, default='CE', help='type of training loss')
+parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
+parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
 
 
 args = parser.parse_args()
@@ -145,7 +145,7 @@ if 'ggnn_non_ar' in args.modelCode:
                              NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
                             num_tempo_info + num_dynamic_info
     NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                               NET_PARAM.measure.size) * 2 \
                               + NUM_PRIME_PARAM
     MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE, LOSS_TYPE, NUM_TEMPO_PARAM).to(DEVICE)
 
@@ -166,7 +166,7 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                              NET_PARAM.measure.size) * 2
     NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
+                               NET_PARAM.measure.size) * 2 \
                               + NUM_PRIME_PARAM
     MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
 

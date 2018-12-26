@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import time
 from torch.autograd import Variable
-
+import random
 
 
 DROP_OUT = 0.25
@@ -28,22 +28,25 @@ class GatedGraph(nn.Module):
             nn.init.xavier_normal_(self.wr)
             nn.init.xavier_normal_(self.wh)
 
-    def  __init__(self, size, num_edge_style, device):
+    def  __init__(self, size, num_edge_style, device, secondary_size=0):
         super(GatedGraph, self).__init__()
-        self.sub = []
+        if secondary_size == 0:
+            secondary_size = size
         # for i in range(num_edge_style):
         #     subgraph = self.subGraph(size)
         #     self.sub.append(subgraph)
+        self.size = size
+        self.secondary_size = secondary_size
 
-        self.wz = torch.nn.Parameter(torch.Tensor(num_edge_style,size,size))
-        self.wr = torch.nn.Parameter(torch.Tensor(num_edge_style,size,size))
-        self.wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,size))
-        self.uz = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-        self.bz = torch.nn.Parameter(torch.Tensor(size)).to(device)
-        self.ur = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-        self.br = torch.nn.Parameter(torch.Tensor(size)).to(device)
-        self.uh = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-        self.bh = torch.nn.Parameter(torch.Tensor(size)).to(device)
+        self.wz = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
+        self.wr = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
+        self.wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
+        self.uz = torch.nn.Parameter(torch.Tensor(size, secondary_size)).to(device)
+        self.bz = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
+        self.ur = torch.nn.Parameter(torch.Tensor(size, secondary_size)).to(device)
+        self.br = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
+        self.uh = torch.nn.Parameter(torch.Tensor(secondary_size, secondary_size)).to(device)
+        self.bh = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
 
         nn.init.xavier_normal_(self.wz)
         nn.init.xavier_normal_(self.wr)
@@ -64,9 +67,16 @@ class GatedGraph(nn.Module):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)
             temp_z = self.sigmoid( torch.bmm(activation, self.wz).sum(0) + torch.matmul(input, self.uz) + self.bz)
             temp_r = self.sigmoid( torch.bmm(activation, self.wr).sum(0) + torch.matmul(input, self.ur) + self.br)
-            temp_hidden = self.tanh(torch.bmm(activation, self.wh).sum(0) + torch.matmul(temp_r * input, self.uh) + self.bh)
 
-            input = (1 - temp_z) * input + temp_r * temp_hidden
+            if self.secondary_size == self.size:
+                temp_hidden = self.tanh(
+                    torch.bmm(activation, self.wh).sum(0) + torch.matmul(temp_r * input, self.uh) + self.bh)
+                input = (1 - temp_z) * input + temp_r * temp_hidden
+            else:
+                temp_hidden = self.tanh(
+                    torch.bmm(activation, self.wh).sum(0) + torch.matmul(temp_r * input[:,:,-self.secondary_size:], self.uh) + self.bh)
+                temp_result = (1 - temp_z) * input[:,:,-self.secondary_size:] + temp_r * temp_hidden
+                input = torch.cat((input[:,:,:-self.secondary_size], temp_result), 2)
 
         return input
 
@@ -515,9 +525,9 @@ class GGNN_Recursive(nn.Module):
         self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
-        self.final_beat_attention = nn.Linear(self.final_hidden_size+self.encoder_size+self.output_size, self.final_hidden_size+self.encoder_size+self.output_size)
-        self.tempo_fc = nn.Linear(self.final_hidden_size + self.encoder_size + self.output_size, 1)
-        self.fc = nn.Linear(self.final_hidden_size + self.encoder_size+ self.output_size, self.output_size - 1)
+        self.final_beat_attention = nn.Linear(self.final_input+self.encoder_size+self.output_size, self.final_input+self.encoder_size+self.output_size)
+        self.tempo_fc = nn.Linear(self.beat_hidden_size * 2, 1)
+        self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
@@ -553,14 +563,24 @@ class GGNN_Recursive(nn.Module):
             nn.ReLU()
         )
 
-        self.final_contractor = nn.Sequential(
-            nn.Linear(self.final_input, self.final_hidden_size),
+        # self.final_contractor = nn.Sequential(
+        #     nn.Linear(self.final_input, self.final_hidden_size),
+        #     nn.Dropout(DROP_OUT),
+        #     # nn.BatchNorm1d(self.encoder_size),
+        #     nn.ReLU()
+        # )
+
+        self.beat_tempo_contractor = nn.Sequential(
+            nn.Linear(self.final_input + self.encoder_size + self.output_size, self.beat_hidden_size),
             nn.Dropout(DROP_OUT),
-            # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
         )
 
-        self.final_graph = GatedGraph(self.final_hidden_size + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device)
+        self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+
+        self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
+        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
+        self.tempo_rnn = nn.LSTM(self.beat_hidden_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=True)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
@@ -587,12 +607,13 @@ class GGNN_Recursive(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
+            encoder_hidden = self.init_performance_encoder(x.shape[0])
             perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2).view(-1, self.encoder_input_size)
             perform_style_contracted = self.performance_contractor(perform_concat).view(1, num_notes, -1)
             perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
             performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
                                                   measure_numbers, start_index, lower_is_note=True)
-            perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+            perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes, encoder_hidden)
 
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
@@ -601,8 +622,7 @@ class GGNN_Recursive(nn.Module):
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
 
         # perform_z = self.performance_decoder(perform_z)
-        perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
-        num_notes = x.size(1)
+        perform_z_batched = perform_z.repeat(num_notes, 1).view(1,num_notes, -1)
 
 
         # mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
@@ -612,15 +632,24 @@ class GGNN_Recursive(nn.Module):
         out_combined = torch.cat((
             note_out, beat_out_spanned, measure_out_spanned), 2)
 
-        out = self.final_contractor(out_combined)
-        initial_output = torch.zeros(1, num_notes, self.output_size).to(self.device)
-        out_with_result = torch.cat((out, perform_z_batched, initial_output), 2)
+        # out = self.final_contractor(out_combined)
+        initial_output = self.initial_result_fc(out_combined)
+        # initial_output = torch.zeros(1, num_notes, self.output_size).to(self.device)
+        style_to_measure_hidden = self.init_performance_encoder(x.shape[0])
+        perform_z_measure_spanned = perform_z.repeat(measure_hidden_out.shape[1], 1).view(1,measure_hidden_out.shape[1], -1)
+        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
+        measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat, style_to_measure_hidden)
+        measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
+        out_with_result = torch.cat((out_combined, measure_perform_style_spanned, initial_output), 2)
+        tempo_hidden = self.init_beat_tempo_forward(x.shape[0])
 
         for i in range(5):
-            out_with_result = self.final_graph(out_with_result, edges, iteration=3)
+            out_with_result = self.final_graph(out_with_result, edges, iteration=10)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                              beat_numbers, start_index, lower_is_note=True)
-            tempo_out = self.tempo_fc(out_beat)
+            out_beat = self.beat_tempo_contractor(out_beat)
+            out_beat_rnn_result, _ = self.tempo_rnn(out_beat, tempo_hidden)
+            tempo_out = self.tempo_fc(out_beat_rnn_result)
             other_out = self.fc(out_with_result)
             tempos_spanned = self.span_beat_to_note_num(tempo_out, beat_numbers, num_notes, start_index)
 
@@ -862,20 +891,12 @@ class GGNN_Recursive(nn.Module):
         return (h0, h0)
 
     def init_beat_tempo_forward(self, batch_size):
-        h0 = torch.zeros(1, batch_size, self.beat_hidden_size).to(self.device)
+        h0 = torch.zeros(1 * 2, batch_size, self.beat_hidden_size).to(self.device)
         return (h0, h0)
 
-    def init_voice_layer(self, batch_size, max_voice):
-        layers = []
-        for i in range(max_voice):
-            # h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(device)
-            h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.note_hidden_size).to(self.device)
-            layers.append((h0, h0))
-        return layers
+    def init_performance_encoder(self, batch_size):
+        h0 = torch.zeros(1, batch_size, self.encoder_size).to(self.device)
 
-    def init_onset_encoder(self, batch_size):
-        h0 = torch.zeros(1, batch_size, self.onset_hidden_size).to(self.device)
-        return (h0, h0)
 
 
 
@@ -1443,25 +1464,7 @@ class HAN(nn.Module):
         tempo_primo = x[0, 0, TEMPO_PRIMO_IDX:]
         max_voice = max(voice_numbers[start_index:start_index+num_notes])
         vel_by_voice = [torch.zeros(NUM_VOICE_FEED_PARAM).to(self.device)] * max_voice
-            # if args.beatTempo:
-            #     prev_tempo = y[:,0,QPM_INDEX]
-            #     tempos = torch.zeros(1, num_beats, 1).to(device)
-            #     is_valid = y.size(1) > 1
-            #     if is_valid:
-            #         true_prev_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
-            #     for i in range(num_beats):
-            #         if is_valid and i < 10:
-            #             prev_tempo = true_prev_tempos[:,i,QPM_INDEX]
-            #         else:
-            #             note_index = beat_numbers.index(i)
-            #             beat_tempo_vec = x[0, note_index, TEMPO_IDX:TEMPO_IDX + 3]
-            #             beat_tempo_cat = torch.cat((beat_hidden_out[0,i,:], prev_tempo,
-            #                                     qpm_primo, tempo_primo, beat_tempo_vec)).view(1,1,-1)
-            #             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-            #             tmp_tempos = self.beat_tempo_fc(beat_forward)
-            #             prev_tempo = tmp_tempos.view(1)
-            #         tempos[0, i, 0] = prev_tempo
-            #     tempos_spanned = self.span_beat_to_note_num(tempos,beat_numbers,num_notes ,0)
+
         prev_out = y[0, 0, :]
         prev_tempo = y[:, 0, QPM_INDEX]
         prev_beat = -1
