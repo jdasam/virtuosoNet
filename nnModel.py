@@ -313,7 +313,7 @@ class GGNN_HAN(nn.Module):
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
             if lower_is_note:
-                current_note_index = absolute_low_index
+                current_note_index = start_index + low_index
             else:
                 current_note_index = lower_indexes.index(absolute_low_index)
 
@@ -489,7 +489,6 @@ class GGNN_HAN(nn.Module):
         return (h0, h0)
 
 
-
 class GGNN_Recursive(nn.Module):
     def __init__(self, network_parameters, device, num_trill_param=5):
         super(GGNN_Recursive, self).__init__()
@@ -516,7 +515,7 @@ class GGNN_Recursive(nn.Module):
         self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
-        self.final_beat_attention = nn.Linear(self.final_hidden_size+self.output_size, self.final_hidden_size+self.output_size)
+        self.final_beat_attention = nn.Linear(self.final_hidden_size+self.encoder_size+self.output_size, self.final_hidden_size+self.encoder_size+self.output_size)
         self.tempo_fc = nn.Linear(self.final_hidden_size + self.encoder_size + self.output_size, 1)
         self.fc = nn.Linear(self.final_hidden_size + self.encoder_size+ self.output_size, self.output_size - 1)
 
@@ -605,34 +604,6 @@ class GGNN_Recursive(nn.Module):
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         num_notes = x.size(1)
 
-        tempo_hidden = self.init_beat_tempo_forward(x.size(0))
-        final_hidden = self.init_final_layer(x.size(0))
-
-        num_notes = x.size(1)
-        num_beats = beat_hidden_out.size(1)
-
-        # non autoregressive
-
-        qpm_primo = x[:,:, QPM_PRIMO_IDX].view(1, -1, 1)
-        tempo_primo = x[:,:, TEMPO_PRIMO_IDX:].view(1, -1, 2)
-
-
-        # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-        beat_qpm_primo = qpm_primo[0,0,0].repeat((1, num_beats, 1))
-        beat_tempo_primo = tempo_primo[0,0,:].repeat((1, num_beats, 1))
-        beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
-        # measure_out_in_beat
-        num_beats = beat_hidden_out.size(1)
-        # score_z_beat_spanned = score_z.repeat(num_beats,1).view(1,num_beats,-1)
-        perform_z_beat_spanned = perform_z.repeat(num_beats,1).view(1,num_beats,-1)
-        beat_tempo_cat = torch.cat((beat_hidden_out, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector, perform_z_beat_spanned), 2)
-        beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
-        tempos = self.beat_tempo_fc(beat_forward)
-        num_notes = note_out.size(1)
-        tempos_spanned = self.span_beat_to_note_num(tempos, beat_numbers, num_notes, start_index)
-        # y[0, :, 0] = tempos_spanned.view(-1)
-
-
 
         # mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
         # dynamic_info = torch.cat((x[:, :, mean_vel_start_index + 4].view(1,-1,1),
@@ -642,19 +613,19 @@ class GGNN_Recursive(nn.Module):
             note_out, beat_out_spanned, measure_out_spanned), 2)
 
         out = self.final_contractor(out_combined)
-        initial_output = torch.zeros(1, num_notes, self.output_size)
-        out_with_result = torch.cat(out, perform_z_batched, initial_output)
+        initial_output = torch.zeros(1, num_notes, self.output_size).to(self.device)
+        out_with_result = torch.cat((out, perform_z_batched, initial_output), 2)
 
         for i in range(5):
-            out_with_result = self.final_graph(out_with_result, iteration=3)
+            out_with_result = self.final_graph(out_with_result, edges, iteration=3)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
-                                                  beat_numbers, start_index, lower_is_note=True)
+                                             beat_numbers, start_index, lower_is_note=True)
             tempo_out = self.tempo_fc(out_beat)
             other_out = self.fc(out_with_result)
             tempos_spanned = self.span_beat_to_note_num(tempo_out, beat_numbers, num_notes, start_index)
 
             final_out = torch.cat((tempos_spanned, other_out),2)
-            out_with_result[:,:,-self.output_size:] = final_out
+            out_with_result = torch.cat((out_with_result[:,:,:-self.output_size], final_out),2)
             # out = torch.cat((out, trill_out), 2)
 
         return final_out, perform_mu, perform_var, out_combined
@@ -731,7 +702,7 @@ class GGNN_Recursive(nn.Module):
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
             if lower_is_note:
-                current_note_index = absolute_low_index
+                current_note_index = start_index + low_index
             else:
                 current_note_index = lower_indexes.index(absolute_low_index)
 
@@ -1212,7 +1183,7 @@ class HAN_VAE(nn.Module):
         for low_index in range(num_lower_nodes):
             absolute_low_index = start_lower_index + low_index
             if lower_is_note:
-                current_note_index = absolute_low_index
+                current_note_index = start_index + low_index
             else:
                 current_note_index = lower_indexes.index(absolute_low_index)
 
