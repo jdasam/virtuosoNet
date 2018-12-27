@@ -249,7 +249,7 @@ class GGNN_HAN(nn.Module):
 
         out = torch.cat((tempos_spanned, out), 2)
 
-        score_out_combined =  torch.cat((note_out, beat_out_spanned, measure_out_spanned),2)
+        score_out_combined = torch.cat((note_out, beat_out_spanned, measure_out_spanned),2)
         return out, perform_mu, perform_var, score_out_combined
 
     def run_offline_score_model(self, x, edges, onset_numbers, beat_numbers, measure_numbers, voice_numbers, start_index):
@@ -270,14 +270,11 @@ class GGNN_HAN(nn.Module):
 
         return note_out, beat_hidden_out, measure_hidden_out
 
-    def run_graph_network(self, nodes, graph_matrix, start_index):
+    def run_graph_network(self, nodes, graph_matrix):
         # 1. Run feed-forward network by note level
-
         notes_hidden = self.note_fc(nodes)
-        num_notes = notes_hidden.size(1)
 
         notes_hidden = self.graph_1st(notes_hidden, graph_matrix)
-        time3 = time.time()
 
         notes_between = self.graph_between(notes_hidden)
 
