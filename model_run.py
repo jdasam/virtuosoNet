@@ -32,7 +32,7 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='han_ar_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
@@ -72,7 +72,7 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 80 #score information only
+SCORE_INPUT = 75 #score information only
 DROP_OUT = 0.25
 TOTAL_OUTPUT = 16
 
@@ -109,9 +109,9 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 29
-PITCH_IDX = 16
-QPM_PRIMO_IDX = 5
+TEMPO_IDX = 25
+PITCH_IDX = 12
+QPM_PRIMO_IDX = 3
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
@@ -170,7 +170,7 @@ elif 'ggnn_ar' in args.modelCode:
                               + NUM_PRIME_PARAM
     MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
 
-elif 'vae' in args.modelCode:
+elif 'han' in args.modelCode:
     NET_PARAM.note.layer = 2
     NET_PARAM.note.size = 64
     NET_PARAM.beat.layer = 2
@@ -186,32 +186,22 @@ elif 'vae' in args.modelCode:
 
     NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
-
-    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.voice.size + NET_PARAM.beat.size +
-                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
-                            num_tempo_info + num_dynamic_info
     NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                                NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
                               + NUM_PRIME_PARAM
-    MODEL = nnModel.HAN_VAE(NET_PARAM, DEVICE).to(DEVICE)
-elif 'han' in args.modelCode:
-    NET_PARAM.note.layer = 4
-    NET_PARAM.note.size = 64
-    NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 32
-    NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 32
-    NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 64
-    NET_PARAM.voice.layer = 2
-    NET_PARAM.voice.size = 64
-
     num_voice_feed_param = 2  # velocity, onset deviation
     num_tempo_info = 3
     num_dynamic_info = 0
-    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.voice.size + NET_PARAM.measure.size ) * 2 \
-                            + NET_PARAM.output_size + num_tempo_info + num_voice_feed_param + num_dynamic_info
-    MODEL = nnModel.HAN(NET_PARAM, DEVICE).to(DEVICE)
+    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.voice.size + NET_PARAM.beat.size +
+                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
+                            num_tempo_info + num_dynamic_info
+    if 'ar' in args.modelCode:
+        step_by_step = True
+        NET_PARAM.final.input += NET_PARAM.output_size + num_voice_feed_param
+    else:
+        step_by_step = False
+
+    MODEL = nnModel.HAN_VAE(NET_PARAM, DEVICE, step_by_step).to(DEVICE)
 else:
     print('Unclassified model code')
 
@@ -387,7 +377,7 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
             batch_graph = edges.to(DEVICE)
             prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
                                                               note_locations=note_locations, start_index=0,
-                                                              step_by_step=False, initial_z=initial_z)
+                                                              initial_z=initial_z)
             # second_inputs = torch.cat((input,prime_outputs), 2)
             # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
             # model_eval = second_model.eval()
@@ -413,7 +403,7 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
                     prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
                 batch_input = input[:,batch_start:batch_end,:]
                 batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
-                prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, step_by_step=False, initial_z=initial_z)
+                prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, initial_z=initial_z)
                 # second_inputs = torch.cat((input,prime_outputs), 2)
                 # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
                 # model_eval = second_model.eval()
@@ -467,7 +457,7 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var, note_out \
-        = model_train(prime_batch_x, prime_batch_y, batch_graph, note_locations, batch_start, step_by_step=False)
+        = model_train(prime_batch_x, prime_batch_y, batch_graph, note_locations, batch_start)
 
     # prime_outputs *= align_matched
     # prime_batch_y *= align_matched

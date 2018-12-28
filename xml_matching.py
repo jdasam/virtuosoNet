@@ -51,8 +51,8 @@ dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'],
                         'sotto voce', 'mezza voce', ['sf', 'fz', 'sfz', 'sffz'] ]
 
 
-VALID_LIST =['Bach/Prelude_and_Fugue/bwv_865/',
-             'Bach/Prelude_and_Fugue/bwv_865/'
+VALID_LIST =['Bach/Prelude/bwv_865/',
+             'Bach/Fugue/bwv_865/'
              'Chopin/Chopin_Etude_op_10/1/',
              'Chopin/Chopin_Etude_op_10/10/',
              'Chopin/Chopin_Etude_op_10/12/',
@@ -73,6 +73,9 @@ VALID_LIST =['Bach/Prelude_and_Fugue/bwv_865/',
              'Liszt/Concert_Etude_S145/2'
              ]
 
+
+TEMP_WORDS = []
+
 def apply_tied_notes(xml_parsed_notes):
     tie_clean_list = []
     for i in range(len(xml_parsed_notes)):
@@ -80,10 +83,10 @@ def apply_tied_notes(xml_parsed_notes):
             tie_clean_list.append(xml_parsed_notes[i])
         else:
             for j in reversed(range(len(tie_clean_list))):
-                if tie_clean_list[j].note_notations.tied_start == True and tie_clean_list[j].pitch[1] == xml_parsed_notes[i].pitch[1]:
-                    tie_clean_list[j].note_duration.seconds +=  xml_parsed_notes[i].note_duration.seconds
-                    tie_clean_list[j].note_duration.duration +=  xml_parsed_notes[i].note_duration.duration
-                    tie_clean_list[j].note_duration.midi_ticks +=  xml_parsed_notes[i].note_duration.midi_ticks
+                if tie_clean_list[j].note_notations.tied_start and tie_clean_list[j].pitch[1] == xml_parsed_notes[i].pitch[1]:
+                    tie_clean_list[j].note_duration.seconds += xml_parsed_notes[i].note_duration.seconds
+                    tie_clean_list[j].note_duration.duration += xml_parsed_notes[i].note_duration.duration
+                    tie_clean_list[j].note_duration.midi_ticks += xml_parsed_notes[i].note_duration.midi_ticks
                     if xml_parsed_notes[i].note_notations.slurs:
                         for slur in  xml_parsed_notes[i].note_notations.slurs:
                             tie_clean_list[j].note_notations.slurs.append(slur)
@@ -402,6 +405,7 @@ def find(f, seq):
 
 class MusicFeature():
     def __init__(self):
+        self.midi_pitch = None
         self.pitch = None
         self.pitch_interval = None
         self.duration = None
@@ -496,7 +500,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         else:
             measure_length = measure_positions[measure_index] - measure_positions[measure_index-1]
             # measure_sec_length = measure_seocnds[measure_index] - measure_seocnds[measure_index-1]
-
+        feature.midi_pitch = note.pitch[1]
         feature.pitch = pitch_into_vector(note.pitch[1])
         # feature.pitch_interval = calculate_pitch_interval(xml_notes, i)
         # feature.duration = note.note_duration.duration / measure_length
@@ -539,7 +543,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         # feature.dynamic = keyword_into_onehot(dynamic_words, dynamics_merged_keys)
         feature.dynamic = dynamic_embedding(dynamic_words, dynamic_embed_table)
         if dynamic_words and feature.dynamic[0] == 0:
-            print(dynamic_words.encode('utf-8'))
+            print('dynamic vector zero index value is zero:',dynamic_words.encode('utf-8'))
         if feature.dynamic[1] != 0:
             for rel in note.dynamic.relative:
                 for word in cresc_words:
@@ -558,6 +562,12 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
             feature.cresciuto = 0
         feature.dynamic.append(feature.cresciuto)
         feature.tempo = dynamic_embedding(tempo_words, tempo_embed_table, len_vec=3)
+        # TEMP CODE for debugging
+        tempo_pair = (tempo_words, feature.tempo)
+        if tempo_pair not in TEMP_WORDS:
+            TEMP_WORDS.append(tempo_pair)
+            print('tempo pair: ', tempo_pair)
+
         # feature.tempo = keyword_into_onehot(note.tempo.absolute, tempos_merged_key)
         feature.notation = note_notation_to_vector(note)
         feature.qpm_primo = math.log(qpm_primo,10)
@@ -579,16 +589,16 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
                 feat.is_beat = True
                 num += 1
 
-    for i in range(xml_length):
-        note = xml_notes[i]
-        beat = binaryIndex(beats, note.note_duration.xml_position)
-        features[i].note_location.beat = beat
-        if vel_standard:
+        for i in range(xml_length):
+            note = xml_notes[i]
+            beat = binaryIndex(beats, note.note_duration.xml_position)
             features[i].note_location.beat = beat
-            features[i].mean_piano_mark = piano_mark
-            features[i].mean_forte_mark = forte_mark
-            features[i].mean_piano_vel = vel_standard[0]
-            features[i].mean_forte_vel = vel_standard[1]
+            if vel_standard:
+                features[i].note_location.beat = beat
+                features[i].mean_piano_mark = piano_mark
+                features[i].mean_forte_mark = forte_mark
+                features[i].mean_piano_vel = vel_standard[0]
+                features[i].mean_forte_vel = vel_standard[1]
 
     return features
 
@@ -2089,10 +2099,11 @@ def check_direction_by_keywords(dir, keywords):
     if dir.type['type'] in keywords:
         return True
     elif dir.type['type'] == 'words':
-        if dir.type['content'].replace(',', '').replace('.', '').lower() in keywords:
+        dir_word = dir.type['content'].replace(',', '').replace('.', '').replace('\n', ' ').lower()
+        if dir_word in keywords:
             return True
         else:
-            word_split = dir.type['content'].replace(',', ' ').replace('.', ' ').split(' ')
+            word_split = dir_word.split(' ')
             for w in word_split:
                 if w.lower() in keywords:
                     # dir.type[keywords[0]] = dir.type.pop('words')
@@ -2100,7 +2111,7 @@ def check_direction_by_keywords(dir, keywords):
                     return True
 
         for key in keywords: # words like 'sempre più mosso'
-            if len(key) > 2 and key in dir.type['content']:
+            if len(key) > 2 and key in dir_word:
                 return True
 
 
@@ -2176,7 +2187,6 @@ def get_dynamics(directions):
 
 
 def get_tempos(directions):
-
     absolute_tempos = extract_directions_by_keywords(directions, absolute_tempos_keywords)
     relative_tempos = extract_directions_by_keywords(directions, relative_tempos_keywords)
     relative_long_tempos = extract_directions_by_keywords(directions, relative_long_tempo_keywords)
@@ -2211,7 +2221,7 @@ def get_all_words_from_folders(path):
     entire_words = []
     xml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
               f == 'musicxml_cleaned.musicxml']
-
+    tempo_embed_table = define_tempo_embedding_table()
     for xmlfile in xml_list:
         print(xmlfile)
         xml_doc = MusicXMLDocument(xmlfile)
@@ -2222,11 +2232,33 @@ def get_all_words_from_folders(path):
         # for wrd in words:
         #     entire_words.append(wrd.type['content'])
             # print(wrd.type['content'], wrd.state.qpm)
-
-        print(words[0].type['content'], words[0].state.qpm, time_signatures[0])
+        for word in words:
+            dynamic_vec = dynamic_embedding(word.type['content'], tempo_embed_table, len_vec=3)
+            print(word.type['content'], dynamic_vec, word.state.qpm)
+        # print(words[0].type['content'], words[0].state.qpm, time_signatures[0], dynamic_vec)
 
     entire_words = list(set(entire_words))
     return entire_words
+
+
+def read_all_tempo_vector(path):
+    xml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
+                f == 'musicxml_cleaned.musicxml']
+    tempo_embed_table = define_tempo_embedding_table()
+    for xmlfile in xml_list:
+        print(xmlfile)
+        xml_doc = MusicXMLDocument(xmlfile)
+        composer_name = copy.copy(path).split('/')[1]
+        composer_name_vec = composer_name_to_vec(composer_name)
+
+        xml_notes = extract_notes(xml_doc, melody_only=False, grace_note=True)
+        measure_positions = extract_measure_position(xml_doc)
+        directions, time_signatures = extract_directions(xml_doc)
+        xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
+        features = extract_score_features(xml_notes, measure_positions)
+
+    for pair in TEMP_WORDS:
+        print(pair)
 
 def keyword_into_onehot(attribute, keywords):
     one_hot = [0] * len(keywords)
@@ -2303,7 +2335,7 @@ def time_signature_to_vector(time_signature):
     denominator = time_signature.denominator
 
     denominator_list = [2,4,8,16]
-    numerator_vec = [0] * 6
+    numerator_vec = [0] * 5
     denominator_vec = [0] * 4
 
     denominator_type = denominator_list.index(denominator)
@@ -2319,10 +2351,6 @@ def time_signature_to_vector(time_signature):
     elif numerator == 6:
         numerator_vec[0] = 1
         numerator_vec[3] = 1
-    elif numerator == 8:
-        denominator_vec[0] = 1
-        numerator_vec[2] = 1
-        numerator_vec[4] = 1
     elif numerator == 9:
         numerator_vec[1] = 1
         numerator_vec[3] = 1
@@ -2330,9 +2358,13 @@ def time_signature_to_vector(time_signature):
         numerator_vec[0] = 1
         numerator_vec[2] = 1
         numerator_vec[3] = 1
+    elif numerator == 24:
+        numerator_vec[0] = 1
+        numerator_vec[2] = 1
+        numerator_vec[3] = 1
     else:
         print('Unclassified numerator: ', numerator)
-        numerator_vec[5] = 1
+        numerator_vec[4] = 1
 
     return numerator_vec + denominator_vec
 
@@ -2423,6 +2455,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
     features = extract_score_features(xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
     features = make_index_continuous(features, score=True)
     composer_vec = composer_name_to_vec(composer_name)
+    edges = score_graph.make_edge(xml_notes)
 
     for i in range(len(stds[0])):
         if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
@@ -2473,7 +2506,6 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
         #                     (feat['beat_position']-means[0][4])/stds[0][4]]
         #                    + feat['tempo'] + feat['dynamic'] + feat['notation'] )
 
-    edges = score_graph.make_edge(xml_notes)
 
     return test_x, xml_notes, xml_object, edges, note_locations
 
@@ -2763,7 +2795,7 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
     dynamic_vector = [0] * len_vec
     # dynamic_vector[0] = 0.5
     keywords = embed_table.keywords
-
+    dynamic_word = dynamic_word.replace(',', ' ').replace('.', ' ').replace('\n', ' ').lower()
 
     if dynamic_word == None:
         return dynamic_vector
@@ -2772,24 +2804,25 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
         vec_idx = embed_table.embed_key[index].vector_index
         dynamic_vector[vec_idx] = embed_table.embed_key[index].value
 
-    # for i in range(len(keywords)):
-    #     keys = keywords[i]
-    #     if type(keys) is list:
-    #         for key in keys:
-    #             if len(key)>2 and (key.encode('utf-8') in
-    word_split = dynamic_word.replace(',', ' ').replace('.', ' ').split(' ')
-    for w in word_split:
-        index = find_index_list_of_list(w.lower(), keywords)
-        if index:
-            vec_idx = embed_table.embed_key[index].vector_index
-            dynamic_vector[vec_idx] = embed_table.embed_key[index].value
+    else:
+        # for i in range(len(keywords)):
+        #     keys = keywords[i]
+        #     if type(keys) is list:
+        #         for key in keys:
+        #             if len(key)>2 and (key.encode('utf-8') in
+        word_split = dynamic_word.split(' ')
+        for w in word_split:
+            index = find_index_list_of_list(w, keywords)
+            if index:
+                vec_idx = embed_table.embed_key[index].vector_index
+                dynamic_vector[vec_idx] = embed_table.embed_key[index].value
 
-    for key in keywords:
-        if isinstance(key, str) and len(key) > 2 and key in dynamic_word:
-            # if type(key) is st and len(key) > 2 and key in attribute:
-            index = keywords.index(key)
-            vec_idx = embed_table.embed_key[index].vector_index
-            dynamic_vector[vec_idx] = embed_table.embed_key[index].value
+        for key in keywords:
+            if isinstance(key, str) and len(key) > 3 and key in dynamic_word:
+                # if type(key) is st and len(key) > 2 and key in attribute:
+                index = keywords.index(key)
+                vec_idx = embed_table.embed_key[index].vector_index
+                dynamic_vector[vec_idx] = embed_table.embed_key[index].value
 
     return dynamic_vector
 
@@ -2864,7 +2897,12 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('minuetto', 1, -0.2))
 
 
+    #short words
+    embed_table.append(EmbeddingKey('rit', 2, -0.5))
+    embed_table.append(EmbeddingKey('acc', 2, 0.5))
 
+
+    embed_table.append(EmbeddingKey('lent', 0, -0.9))
     embed_table.append(EmbeddingKey('lento', 0, -0.9))
     embed_table.append(EmbeddingKey('grave', 0, -0.9))
     embed_table.append(EmbeddingKey('largo', 0, -0.7))
@@ -2892,9 +2930,11 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
 
     embed_table.append(EmbeddingKey('doppio movimento', 0, 0.6))
-    embed_table.append(EmbeddingKey('molto allegro', 0, 0.85))
-    embed_table.append(EmbeddingKey('allegro molto', 0, 0.85))
+    embed_table.append(EmbeddingKey('molto allegro', 0, 0.6))
+    embed_table.append(EmbeddingKey('allegro molto', 0, 0.6))
+    embed_table.append(EmbeddingKey('allegro ma non troppo', 0, 0.4))
     embed_table.append(EmbeddingKey('più presto possibile', 0, 1))
+    embed_table.append(EmbeddingKey('largo e mesto', 0, -0.8))
 
     embed_table.append(EmbeddingKey('as a lullaby', 0, -0.6))
     embed_table.append(EmbeddingKey('freely, with expression', 0, 0.2))
@@ -2925,10 +2965,9 @@ def define_tempo_embedding_table():
 
 
     # French
-    embed_table.append(EmbeddingKey('très grave', 0, -1.0))
-    embed_table.append(EmbeddingKey('très lent', 0, -0.9))
+    embed_table.append(EmbeddingKey('très grave', 0, -1))
+    embed_table.append(EmbeddingKey('très lent', 0, -1))
     # embed_table.append(EmbeddingKey('marche funèbre', 0, -0.8))
-    embed_table.append(EmbeddingKey('lent', 0, -0.7))
     embed_table.append(EmbeddingKey('large', 0, -0.7))
     embed_table.append(EmbeddingKey("Assez doux, mais d'une sonoritè large", 0, -0.6))
     embed_table.append(EmbeddingKey('assez vif', 0, 0.6))
@@ -2977,11 +3016,9 @@ def define_tempo_embedding_table():
 
     embed_table.append(EmbeddingKey('allargando', 2, -0.2))
     embed_table.append(EmbeddingKey('ritardando', 2, -0.5))
-    embed_table.append(EmbeddingKey('rit', 2, -0.5))
     embed_table.append(EmbeddingKey('rallentando', 2, -0.5))
     embed_table.append(EmbeddingKey('rall', 2, -0.5))
     embed_table.append(EmbeddingKey('slentando', 2, -0.3))
-    embed_table.append(EmbeddingKey('acc', 2, 0.5))
     embed_table.append(EmbeddingKey('accel', 2, 0.5))
     embed_table.append(EmbeddingKey('accelerando', 2, 0.5))
     embed_table.append(EmbeddingKey('smorz', 2, -0.5))
@@ -3160,7 +3197,8 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
             next_midi_note = midi_note
             break
         elif 0 < midi_note.pitch - trill_pitch < 4:
-            print('check trill pitch - detected pitch: ', midi_note.pitch, ' trill note pitch: ', trill_pitch, 'expected up trill pitch: ', up_pitch)
+            print('check trill pitch - detected pitch: ', midi_note.pitch, ' trill note pitch: ', trill_pitch,
+                  'expected up trill pitch: ', up_pitch, 'time:', midi_note.start, 'measure: ', note.measure_number)
 
     # while len(skipped_pitches_start) > 0:
     #     skipped_pitch = skipped_pitches_start[0]
@@ -3379,9 +3417,9 @@ def check_index_continuity(features):
 
     for feat in features:
         if feat.beat_index - prev_beat > 1:
-            print(feat.beat_index, prev_beat)
+            print('index_continuity', feat.beat_index, prev_beat)
         if feat.measure_index - prev_measure > 1:
-            print(feat.measure_index, prev_measure)
+            print('index_continuity', feat.measure_index, prev_measure)
 
         prev_beat = feat.beat_index
         prev_measure = feat.measure_index

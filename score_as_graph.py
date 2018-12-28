@@ -50,8 +50,10 @@ def make_edge(xml_notes):
                         in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
                         if in_same_slur:
                             edge_list.append((i, i + j, 'slur'))
+                            edge_list.append((i, i + j, 'forward'))
                         else:
-                            edge_list.append((i, i + j, 'voice'))
+                            # edge_list.append((i, i + j, 'voice'))
+                            edge_list.append((i, i + j, 'forward'))
                         voice_forward_matrix[i].append(i + j)
 
                 if next_note_start > note_position:
@@ -63,7 +65,7 @@ def make_edge(xml_notes):
                 next_note_start = next_note.note_duration.xml_position
                 next_voice = next_note.voice
                 next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
-                if next_note.note_duration.is_grace_note:
+                if next_note.note_duration.duration == 0:
                     continue
                 if next_note_start == note_position:  #same onset
                     edge_list.append((i, i + j, 'onset'))
@@ -78,8 +80,10 @@ def make_edge(xml_notes):
                         in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
                         if in_same_slur:
                             edge_list.append((i, i + j, 'slur'))
+                            edge_list.append((i, i + j, 'forward'))
                         else:
-                            edge_list.append((i, i + j, 'voice'))
+                            # edge_list.append((i, i + j, 'voice'))
+                            edge_list.append((i, i + j, 'forward'))
                         voice_forward_matrix[i].append(i+j)
                         # voice_backward_matrix[i+j].append(i)
                     else:
@@ -95,64 +99,64 @@ def make_edge(xml_notes):
                 else:
                     break
 
-        num_onset = len(same_onset_matrix[i])
-        onset_pitch_list = [xml_notes[same_onset_matrix[i][k]].pitch[1]for k in range(num_onset)]
-        num_next = len(forward_edge_matrix[i])
-        next_pitch_list = [{'pitch': xml_notes[forward_edge_matrix[i][k]].pitch[1], 'index':forward_edge_matrix[i][k]} for k in range(num_next)]
-        num_voice_next = len(voice_forward_matrix[i])
-        next_pitch_voice_list = [{'pitch': xml_notes[voice_forward_matrix[i][k]].pitch[1], 'index':voice_forward_matrix[i][k]} for k in range(num_voice_next)]
-        num_pedal_tone = len(pedal_tone_matrix[i])
-        onset_pitch_list.append(current_pitch)
-
-        onset_pitch_list += [xml_notes[pedal_tone_matrix[i][k]].pitch[1] for k in range(num_pedal_tone)]
-        next_pitch_list += next_pitch_voice_list
-
-        onset_pitch_list.sort()
-
-        if len(next_pitch_list) == 0:
-            num_notes_after_rest = len(rest_forward_matrix[i])
-            next_pitch_list = [{'pitch': xml_notes[rest_forward_matrix[i][k]].pitch[1], 'index':rest_forward_matrix[i][k]} for k in range(num_notes_after_rest)]
-
-        if len(next_pitch_list) != 0:
-            next_pitch_list.sort(key=lambda x: x['pitch'])
-            num_next_pitch = len(next_pitch_list)
-            current_pitch_index = onset_pitch_list.index(current_pitch)
-
-            if current_pitch_index == 0: #lowest note
-                next_pitch_index = next_pitch_list[0]['index']
-                edge_list.append((i, next_pitch_index, 'boundary'))
-                # boundary_pitch_forward[i].append(next_pitch_index)
-                # boundary_pitch_backward[next_pitch_index].append(i)
-            elif current_pitch_index == len(next_pitch_list)-1: #higest note
-                next_pitch_index = next_pitch_list[-1]['index']
-                edge_list.append((i, next_pitch_index, 'boundary'))
-                # boundary_pitch_forward[i].append(next_pitch_index)
-                # boundary_pitch_backward[next_pitch_index].append(i)
-
-            pitch_diff = [abs(current_pitch-next_pitch_list[k]['pitch']) for k in range(num_next_pitch)]
-            min_pitch_diff = min(pitch_diff)
-            min_diff_index = pitch_diff.index(min_pitch_diff)
-            closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
-            closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
-            edge_list.append((i, next_pitch_list[min_diff_index]['index'], 'closest'))
-            search_index = min_diff_index
-            while search_index > 0:
-                search_index -= 1
-                if pitch_diff[search_index] == min_pitch_diff:
-                    edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
-                    # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
-                    # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
-                else:
-                    break
-            search_index = min_diff_index
-            while search_index < num_next_pitch -1:
-                search_index += 1
-                if pitch_diff[search_index] == min_pitch_diff:
-                    edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
-                    # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
-                    # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
-                else:
-                    break
+        # num_onset = len(same_onset_matrix[i])
+        # onset_pitch_list = [xml_notes[same_onset_matrix[i][k]].pitch[1]for k in range(num_onset)]
+        # num_next = len(forward_edge_matrix[i])
+        # next_pitch_list = [{'pitch': xml_notes[forward_edge_matrix[i][k]].pitch[1], 'index':forward_edge_matrix[i][k]} for k in range(num_next)]
+        # num_voice_next = len(voice_forward_matrix[i])
+        # next_pitch_voice_list = [{'pitch': xml_notes[voice_forward_matrix[i][k]].pitch[1], 'index':voice_forward_matrix[i][k]} for k in range(num_voice_next)]
+        # num_pedal_tone = len(pedal_tone_matrix[i])
+        # onset_pitch_list.append(current_pitch)
+        #
+        # onset_pitch_list += [xml_notes[pedal_tone_matrix[i][k]].pitch[1] for k in range(num_pedal_tone)]
+        # next_pitch_list += next_pitch_voice_list
+        #
+        # onset_pitch_list.sort()
+        #
+        # if len(next_pitch_list) == 0:
+        #     num_notes_after_rest = len(rest_forward_matrix[i])
+        #     next_pitch_list = [{'pitch': xml_notes[rest_forward_matrix[i][k]].pitch[1], 'index':rest_forward_matrix[i][k]} for k in range(num_notes_after_rest)]
+        #
+        # if len(next_pitch_list) != 0:
+        #     next_pitch_list.sort(key=lambda x: x['pitch'])
+        #     num_next_pitch = len(next_pitch_list)
+        #     current_pitch_index = onset_pitch_list.index(current_pitch)
+        #
+        #     if current_pitch_index == 0: #lowest note
+        #         next_pitch_index = next_pitch_list[0]['index']
+        #         edge_list.append((i, next_pitch_index, 'boundary'))
+        #         # boundary_pitch_forward[i].append(next_pitch_index)
+        #         # boundary_pitch_backward[next_pitch_index].append(i)
+        #     elif current_pitch_index == len(next_pitch_list)-1: #higest note
+        #         next_pitch_index = next_pitch_list[-1]['index']
+        #         edge_list.append((i, next_pitch_index, 'boundary'))
+        #         # boundary_pitch_forward[i].append(next_pitch_index)
+        #         # boundary_pitch_backward[next_pitch_index].append(i)
+        #
+        #     pitch_diff = [abs(current_pitch-next_pitch_list[k]['pitch']) for k in range(num_next_pitch)]
+        #     min_pitch_diff = min(pitch_diff)
+        #     min_diff_index = pitch_diff.index(min_pitch_diff)
+        #     closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
+        #     closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+        #     edge_list.append((i, next_pitch_list[min_diff_index]['index'], 'closest'))
+        #     search_index = min_diff_index
+        #     while search_index > 0:
+        #         search_index -= 1
+        #         if pitch_diff[search_index] == min_pitch_diff:
+        #             edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
+        #             # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
+        #             # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+        #         else:
+        #             break
+        #     search_index = min_diff_index
+        #     while search_index < num_next_pitch -1:
+        #         search_index += 1
+        #         if pitch_diff[search_index] == min_pitch_diff:
+        #             edge_list.append((i, next_pitch_list[search_index]['index'], 'closest'))
+        #             # closest_pitch_forward[i].append(next_pitch_list[min_diff_index]['index'])
+        #             # closest_pitch_backward[next_pitch_list[min_diff_index]['index']].append(i)
+        #         else:
+        #             break
 
 
     # total_edges = {'forward': forward_edge_matrix, 'backward': backward_edge_matrix, 'onset': same_onset_matrix,

@@ -7,9 +7,11 @@ import xml_matching
 import pickle
 import score_as_graph as score_graph
 
+xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
+
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Chopin/Chopin_Etude_op_10/3/'
+folderDir = 'test_pieces/schumann/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
 artistName = 'SunMeiting08'
 # artistName = 'CHEN03'
@@ -17,12 +19,13 @@ xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
 midiname= 'midi_cleaned.mid'
 
+
 XMLDocument = MusicXMLDocument(folderDir + xmlname)
 melody_notes = xml_matching.extract_notes(XMLDocument, melody_only=False, grace_note=True)
 melody_notes.sort(key=lambda x: x.note_duration.time_position)
 
-for note in melody_notes:
-    print(note.note_notations.is_beam_start, note.note_duration.xml_position, note.pitch)
+# for note in melody_notes:
+#     print(note.note_notations.is_beam_start, note.note_duration.xml_position, note.pitch)
 score_midi = midi_utils.to_midi_zero(folderDir + midiname)
 perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
 # perform_midi = midi_utils.elongate_offset_by_pedal(perform_midi)
