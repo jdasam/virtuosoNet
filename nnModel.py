@@ -9,14 +9,12 @@ DROP_OUT = 0.25
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 28
-PITCH_IDX = 15
-QPM_PRIMO_IDX = 5
+TEMPO_IDX = 26
+PITCH_IDX = 13
+QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
-NUM_VOICE_FEED_PARAM = 2
-
 
 class GatedGraph(nn.Module):
     class subGraph():
@@ -112,7 +110,7 @@ class GGNN_HAN(nn.Module):
         self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
-        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+        self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 5 + 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
 
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
 
@@ -257,7 +255,7 @@ class GGNN_HAN(nn.Module):
         beat_hidden = self.init_beat_layer(1)
         measure_hidden = self.init_measure_layer(1)
 
-        note_out = self.run_graph_network(x, edges, start_index)
+        note_out = self.run_graph_network(x, edges)
         note_out = note_out.view(1,note_out.shape[0], note_out.shape[1])
         # note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
         # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
@@ -424,7 +422,7 @@ class GGNN_HAN(nn.Module):
                 if index is None:
                     beat_tempos.append(y[0,i,:])
                 if index == TEMPO_IDX:
-                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+3])
+                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
                 else:
                     beat_tempos.append(y[0,i,index])
                 prev_beat = cur_beat
@@ -671,7 +669,7 @@ class GGNN_Recursive(nn.Module):
         beat_hidden = self.init_beat_layer(1)
         measure_hidden = self.init_measure_layer(1)
 
-        note_out = self.run_graph_network(x, edges, start_index)
+        note_out = self.run_graph_network(x, edges)
         note_out = note_out.view(1,note_out.shape[0], note_out.shape[1])
         # note_out, onset_out = self.run_onset_rnn(x, voice_out, onset_numbers, start_index)
         # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
@@ -684,7 +682,7 @@ class GGNN_Recursive(nn.Module):
 
         return note_out, beat_hidden_out, measure_hidden_out
 
-    def run_graph_network(self, nodes, graph_matrix, start_index):
+    def run_graph_network(self, nodes, graph_matrix):
         # 1. Run feed-forward network by note level
 
         notes_hidden = self.note_fc(nodes)
@@ -841,7 +839,7 @@ class GGNN_Recursive(nn.Module):
                 if index is None:
                     beat_tempos.append(y[0,i,:])
                 if index == TEMPO_IDX:
-                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+3])
+                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
                 else:
                     beat_tempos.append(y[0,i,index])
                 prev_beat = cur_beat
@@ -1092,7 +1090,7 @@ class HAN_VAE(nn.Module):
                     result_nodes[current_beat, :] = result_node
 
                     tempos = torch.zeros(1, num_beats, 1).to(self.device)
-                    beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
+                    beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 5]
                     beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :], prev_tempo,
                                                 qpm_primo, tempo_primo, beat_tempo_vec,
                                                 result_nodes[current_beat, :], perform_z)).view(1, 1, -1)
@@ -1388,7 +1386,7 @@ class HAN_VAE(nn.Module):
                 if index is None:
                     beat_tempos.append(y[0,i,:])
                 if index == TEMPO_IDX:
-                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+3])
+                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
                 else:
                     beat_tempos.append(y[0,i,index])
                 prev_beat = cur_beat
@@ -1600,7 +1598,7 @@ class HAN(nn.Module):
                 result_nodes[current_beat, :] = result_node
 
                 tempos = torch.zeros(1, num_beats, 1).to(self.device)
-                beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 3]
+                beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 5]
                 beat_tempo_cat = torch.cat((beat_hidden_out[0,current_beat,:], prev_tempo,
                                         qpm_primo, tempo_primo, beat_tempo_vec, result_nodes[current_beat,:])).view(1, 1, -1)
                 beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)

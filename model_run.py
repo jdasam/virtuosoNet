@@ -72,7 +72,7 @@ print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 75 #score information only
+SCORE_INPUT = 78 #score information only
 DROP_OUT = 0.25
 TOTAL_OUTPUT = 16
 
@@ -109,11 +109,11 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 25
-PITCH_IDX = 12
-QPM_PRIMO_IDX = 3
+TEMPO_IDX = 26
+PITCH_IDX = 13
+QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'voice', 'boundary', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -136,7 +136,7 @@ if 'ggnn_non_ar' in args.modelCode:
     NET_PARAM.measure.layer = 1
     NET_PARAM.measure.size = 16
     NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 24
+    NET_PARAM.final.size = 64
 
     NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
@@ -160,7 +160,7 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.final.layer = 1
     NET_PARAM.final.size = 64
 
-    NET_PARAM.encoder.size = 32
+    NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
 
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
@@ -237,7 +237,7 @@ if LOSS_TYPE == 'MSE':
             data_size = torch.sum(aligned_status).item() * pred.shape[-1]
             if data_size ==0:
                 data_size = 1
-                print('data size for loss calculation is zero')
+                print('data size for loss calculation is zero', aligned_status)
         return torch.sum( ((target - pred) ** 2) * aligned_status) / data_size
 elif LOSS_TYPE == 'CE':
     # criterion = nn.CrossEntropyLoss()
@@ -287,6 +287,7 @@ def key_augmentation(data_x, key_change):
         new_pitch_vec[new_pitch+1] = 1
 
         data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
+        data[0] = data[0] + key_change
 
     return data_x_aug
 

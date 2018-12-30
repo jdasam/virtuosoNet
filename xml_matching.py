@@ -19,18 +19,17 @@ import numpy as np
 
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
-                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento',
-                            'Freely, with expression', "d'un rythme souple", 'agitato',
+                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento', 'agitato'
                             'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft', 'geschwind',
+                            "d'un rythme souple",
                             'lent', 'large', 'vif', 'animé', 'scherzo', 'menuetto', 'minuetto']
-relative_tempos_keywords = ['animato', 'pesante', 'veloce',
-                            'acc', 'accel', 'rit', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto', 'string',
-                            'a tempo', 'stretto', 'slentando', 'meno mosso', 'meno vivo', 'più mosso', 'allargando', 'smorzando', 'appassionato', 'perdendo',
+relative_tempos_keywords = ['animato', 'pesante', 'veloce', 'agitato',
+                            'acc', 'accel', 'rit', 'ritard', 'ritardando', 'accelerando', 'rall', 'rallentando', 'ritenuto', 'string',
+                            'a tempo', 'im tempo', 'stretto', 'slentando', 'meno mosso', 'meno vivo', 'più mosso', 'allargando', 'smorzando', 'appassionato', 'perdendo',
                             'langsamer', 'schneller', 'bewegter',
-                            'plus lent', 'più lento', 'retenu', 'revenez', 'cédez', 'mesuré', 'élargissant', 'accélerez', 'rapide', 'Reprenez  le  mouvement']
+                             'retenu', 'revenez', 'cédez', 'mesuré', 'élargissant', 'accélerez', 'rapide', 'reprenez  le  mouvement']
 relative_long_tempo_keywords = ['meno mosso', 'meno vivo', 'più mosso', 'animato', 'langsamer', 'schneller',
-                                'stretto', 'bewegter', 'tranquillo',
-                                'plus lent']
+                                'stretto', 'bewegter', 'tranquillo', 'agitato', 'appassionato']
 tempo_primo_words = ['tempo i', 'tempo primo', 'erstes tempo', '1er mouvement', '1er mouvt', 'au mouvtdu début', 'au mouvement', 'au mouvt', '1o tempo']
 absolute_tempos_keywords += tempo_primo_words
 
@@ -44,7 +43,8 @@ tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'all
 absolute_dynamics_keywords = ['pppp','ppp', 'pp', 'p', 'piano', 'mp', 'mf', 'f', 'forte', 'ff', 'fff', 'fp', 'ffp']
 relative_dynamics_keywords = ['crescendo', 'diminuendo', 'cresc', 'dim', 'dimin' 'sotto voce',
                               'mezza voce', 'sf', 'fz', 'sfz', 'rf,' 'sffz', 'rf', 'rinf',
-                              'con forza', 'con fuoco', 'smorzando', 'appassionato', 'perdendo']
+                              'con brio', 'con forza', 'con fuoco', 'smorzando', 'appassionato', 'perdendo']
+relative_long_dynamics_keywords = ['con brio', 'con forza', 'con fuoco', 'smorzando', 'appassionato', 'perdendo']
 
 dynamics_keywords = absolute_dynamics_keywords + relative_dynamics_keywords
 dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'], 'ff', 'fff', 'fp', ['crescendo', 'cresc'],  ['diminuendo', 'dim', 'dimin'],
@@ -480,8 +480,11 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
     if qpm_primo == 0:
         qpm_primo = xml_notes[0].state_fixed.qpm
     tempo_primo_word = direction_words_flatten(xml_notes[0].tempo)
-    tempo_primo = dynamic_embedding(tempo_primo_word, tempo_embed_table, 3)
-    tempo_primo = tempo_primo[0:2]
+    if tempo_primo_word:
+        tempo_primo = dynamic_embedding(tempo_primo_word, tempo_embed_table, 5)
+        tempo_primo = tempo_primo[0:2]
+    else:
+        tempo_primo = [0, 0]
 
     cresc_words = ['cresc', 'decresc', 'dim']
 
@@ -541,7 +544,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         tempo_words = direction_words_flatten(note.tempo)
 
         # feature.dynamic = keyword_into_onehot(dynamic_words, dynamics_merged_keys)
-        feature.dynamic = dynamic_embedding(dynamic_words, dynamic_embed_table)
+        feature.dynamic = dynamic_embedding(dynamic_words, dynamic_embed_table, len_vec=4)
         if dynamic_words and feature.dynamic[0] == 0:
             print('dynamic vector zero index value is zero:',dynamic_words.encode('utf-8'))
         if feature.dynamic[1] != 0:
@@ -561,12 +564,13 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         else:
             feature.cresciuto = 0
         feature.dynamic.append(feature.cresciuto)
-        feature.tempo = dynamic_embedding(tempo_words, tempo_embed_table, len_vec=3)
+        feature.tempo = dynamic_embedding(tempo_words, tempo_embed_table, len_vec=5)
         # TEMP CODE for debugging
-        tempo_pair = (tempo_words, feature.tempo)
-        if tempo_pair not in TEMP_WORDS:
-            TEMP_WORDS.append(tempo_pair)
-            print('tempo pair: ', tempo_pair)
+        # if dynamic_words:
+        #     tempo_pair = (dynamic_words.encode('utf-8'), [feature.dynamic[0]] + feature.dynamic[2:])
+        #     if tempo_pair not in TEMP_WORDS:
+        #         TEMP_WORDS.append(tempo_pair)
+        #         print('tempo pair: ', tempo_pair)
 
         # feature.tempo = keyword_into_onehot(note.tempo.absolute, tempos_merged_key)
         feature.notation = note_notation_to_vector(note)
@@ -1501,7 +1505,10 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         note = xml_notes[i]
         feat = features[i]
         if not feat.xml_deviation == None:
-            xml_deviation = (feat.xml_deviation ** 2) * note.state_fixed.divisions
+            if feat.xml_deviation >= 0:
+                xml_deviation = (feat.xml_deviation ** 2) * note.state_fixed.divisions
+            else:
+                xml_deviation = -(feat.xml_deviation ** 2) * note.state_fixed.divisions
         else:
             xml_deviation = 0
 
@@ -2028,11 +2035,11 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
 
         for cresc in cresciutos:
             if cresc.xml_position > note_position:
-                continue
+                break
             if note_position < cresc.end_xml_position:
                 note_cresciuto = note.dynamic.cresciuto
                 if note_cresciuto is None:
-                    note.dynamic.cresciuto = cresc
+                    note.dynamic.cresciuto = copy.copy(cresc)
                 else:
                     prev_type = note.dynamic.cresciuto.type
                     if cresc.type == prev_type:
@@ -2099,13 +2106,14 @@ def check_direction_by_keywords(dir, keywords):
     if dir.type['type'] in keywords:
         return True
     elif dir.type['type'] == 'words':
-        dir_word = dir.type['content'].replace(',', '').replace('.', '').replace('\n', ' ').lower()
+        dir_word = word_regularization(dir.type['content'])
+        # dir_word = dir.type['content'].replace(',', '').replace('.', '').replace('\n', ' ').replace('(','').replace(')','').lower()
         if dir_word in keywords:
             return True
         else:
             word_split = dir_word.split(' ')
             for w in word_split:
-                if w.lower() in keywords:
+                if w in keywords:
                     # dir.type[keywords[0]] = dir.type.pop('words')
                     # dir.type[keywords[0]] = w
                     return True
@@ -2124,14 +2132,14 @@ def get_dynamics(directions):
     abs_dynamic_dummy = []
     for abs in absolute_dynamics:
         if abs.type['content'] == 'fp':
-            abs.type['content'] = 'f sfz'
+            abs.type['content'] = 'f'
             abs2 = copy.copy(abs)
             abs2.xml_position += 0.1
             abs2.type = copy.copy(abs.type)
             abs2.type['content'] = 'p'
             abs_dynamic_dummy.append(abs2)
         elif abs.type['content'] == 'ffp':
-            abs.type['content'] = 'ff sfz'
+            abs.type['content'] = 'ff'
             abs2 = copy.copy(abs)
             abs2.xml_position += 0.1
             abs2.type = copy.copy(abs.type)
@@ -2152,6 +2160,13 @@ def get_dynamics(directions):
 
 
     absolute_dynamics = abs_dynamic_dummy
+    absolute_dynamics, temp_relative = check_relative_word_in_absolute_directions(absolute_dynamics)
+    relative_dynamics += temp_relative
+    dummy_rel = []
+    for rel in relative_dynamics:
+        if rel not in absolute_dynamics:
+            dummy_rel.append(rel)
+    relative_dynamics = dummy_rel
 
     relative_dynamics.sort(key=lambda x:x.xml_position)
     relative_dynamics = merge_start_end_of_direction(relative_dynamics)
@@ -2165,24 +2180,39 @@ def get_dynamics(directions):
             self.end_xml_position = end
             self.type = type #crescendo or diminuendo
             self.overlapped = 0
-
-    for rel in relative_dynamics:
+    num_relative = len(relative_dynamics)
+    for i in range(num_relative):
+        rel = relative_dynamics[i]
         index = binaryIndex(absolute_dynamics_position, rel.xml_position)
         rel.previous_dynamic = absolute_dynamics[index].type['content']
-        if rel.type['type'] == 'dynamic' and not rel.type['content'] == 'rf': # sf, fz, sfz
+        if rel.type['type'] == 'dynamic' and not rel.type['content'] in ['rf', 'rfz', 'rffz']: # sf, fz, sfz
             rel.end_xml_position = rel.xml_position + 0.1
+
+        if not hasattr(rel, 'end_xml_position'):
+            for j in range(1, num_relative-i):
+                next_rel = relative_dynamics[i+j]
+                rel.end_xml_position = next_rel.xml_position
+                break
+
         if index+1 < len(absolute_dynamics):
             rel.next_dynamic = absolute_dynamics[index+1] #.type['content']
-            if not hasattr(rel, 'end_xml_position'):
+            if not hasattr(rel, 'end_xml_position') or absolute_dynamics[index+1].xml_position < rel.end_xml_position:
                 rel.end_xml_position = absolute_dynamics_position[index+1]
         else:
             rel.next_dynamic = absolute_dynamics[index]
+
         if not hasattr(rel, 'end_xml_position'):
             rel.end_xml_position = float("inf")
 
-        if rel.type['type'] in cresc_name and rel.end_xml_position < rel.next_dynamic.xml_position:
-            cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, rel.type['type'])
+        if (rel.type['type'] in cresc_name or crescendo_word_regularization(rel.type['content']) in cresc_name )\
+                and rel.end_xml_position < rel.next_dynamic.xml_position:
+            if rel.type['type'] in cresc_name:
+                cresc_type = rel.type['type']
+            else:
+                cresc_type = crescendo_word_regularization(rel.type['content'])
+            cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, cresc_type)
             cresciuto_list.append(cresciuto)
+
     return absolute_dynamics, relative_dynamics, cresciuto_list
 
 
@@ -2190,6 +2220,28 @@ def get_tempos(directions):
     absolute_tempos = extract_directions_by_keywords(directions, absolute_tempos_keywords)
     relative_tempos = extract_directions_by_keywords(directions, relative_tempos_keywords)
     relative_long_tempos = extract_directions_by_keywords(directions, relative_long_tempo_keywords)
+
+    if (len(absolute_tempos)==0 or absolute_tempos[0].xml_position != 0) \
+            and len(relative_long_tempos) > 0 and relative_long_tempos[0].xml_position == 0:
+        absolute_tempos.insert(0, relative_long_tempos[0])
+
+    dummy_relative_tempos = []
+    for rel in relative_tempos:
+        if rel not in absolute_tempos:
+            dummy_relative_tempos.append(rel)
+    relative_tempos = dummy_relative_tempos
+
+    dummy_relative_tempos = []
+    for rel in relative_long_tempos:
+        if rel not in absolute_tempos:
+            dummy_relative_tempos.append(rel)
+    relative_long_tempos = dummy_relative_tempos
+
+
+    absolute_tempos, temp_relative = check_relative_word_in_absolute_directions(absolute_tempos)
+    relative_tempos += temp_relative
+    relative_long_tempos += temp_relative
+    relative_tempos.sort(key=lambda x:x.xml_position)
 
     absolute_tempos_position = [tmp.xml_position for tmp in absolute_tempos]
     num_abs_tempos = len(absolute_tempos)
@@ -2204,6 +2256,12 @@ def get_tempos(directions):
         rel = relative_tempos[i]
         if rel not in relative_long_tempos and i+1< num_rel_tempos:
             rel.end_xml_position = relative_tempos[i+1].xml_position
+        elif rel in relative_long_tempos:
+            for j in range(1, num_rel_tempos-i):
+                next_rel = relative_tempos[i+j]
+                if next_rel in relative_long_tempos:
+                    rel.end_xml_position = next_rel.xml_position
+                    break
         index = binaryIndex(absolute_tempos_position, rel.xml_position)
         rel.previous_tempo = absolute_tempos[index].type['content']
         if index+1 < num_abs_tempos:
@@ -2216,6 +2274,24 @@ def get_tempos(directions):
 
     return absolute_tempos, relative_tempos
 
+
+def word_regularization(word):
+    if word:
+        word = word.replace(',', ' ').replace('.', ' ').replace('\n', ' ').replace('(', '').replace(')', '').replace('  ', ' ').lower()
+    else:
+        word = None
+    return word
+
+
+def crescendo_word_regularization(word):
+    word = word_regularization(word)
+    if 'decresc' in word:
+        word = 'diminuendo'
+    elif 'cresc' in word:
+        word = 'crescendo'
+    elif 'dim' in word:
+        word = 'diminuendo'
+    return word
 
 def get_all_words_from_folders(path):
     entire_words = []
@@ -2239,6 +2315,22 @@ def get_all_words_from_folders(path):
 
     entire_words = list(set(entire_words))
     return entire_words
+
+
+def check_relative_word_in_absolute_directions(abs_directions):
+    relative_keywords = ['più', 'meno', 'plus', 'moins', 'mehr', 'bewegter', 'langsamer']
+    absolute_directions = []
+    relative_directions = []
+    for dir in abs_directions:
+        dir_word = word_regularization(dir.type['content'])
+        for rel_key in relative_keywords:
+            if rel_key in dir_word:
+                relative_directions.append(dir)
+                break
+        else:
+            absolute_directions.append(dir)
+
+    return absolute_directions, relative_directions
 
 
 def read_all_tempo_vector(path):
@@ -2489,14 +2581,13 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
         #           feat.xml_position, feat.grace_order,
         #           feat.time_sig_num, feat.time_sig_den, feat.no_following_note] \
         #             + feat.pitch + feat.tempo + feat.dynamic + feat.notation
-        temp_x = [(feat.pitch_interval - means[0][0]) / stds[0][0],
-                    (feat.duration - means[0][1]) / stds[0][1],(feat.duration_ratio-means[0][2])/stds[0][2],
-                      (feat.beat_position-means[0][3])/stds[0][3], (feat.measure_length-means[0][4])/stds[0][4],
-                   (feat.qpm_primo - means[0][5]) / stds[0][5],(feat.following_rest - means[0][6]) / stds[0][6],
-                    (feat.distance_from_abs_dynamic - means[0][7]) / stds[0][7],
-                  (feat.distance_from_recent_tempo - means[0][8]) / stds[0][8] ,
+        temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
+                    (feat.beat_importance-means[0][2])/stds[0][2], (feat.measure_length-means[0][3])/stds[0][3],
+                   (feat.qpm_primo - means[0][4]) / stds[0][4],(feat.following_rest - means[0][5]) / stds[0][5],
+                    (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+                  (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7] ,
                   feat.beat_position, feat.xml_position, feat.grace_order, feat.is_grace_note,
-                    feat.followed_by_fermata_rest, feat.preceded_by_grace_note, feat.no_following_note] \
+                    feat.preceded_by_grace_note] \
                    + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
@@ -2795,7 +2886,9 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
     dynamic_vector = [0] * len_vec
     # dynamic_vector[0] = 0.5
     keywords = embed_table.keywords
-    dynamic_word = dynamic_word.replace(',', ' ').replace('.', ' ').replace('\n', ' ').lower()
+    dynamic_word = word_regularization(dynamic_word)
+    # dynamic_word = dynamic_word.replace(',', ' ').replace('.', ' ').replace('\n', ' ').replace('(','').replace(')','').lower()
+    applied_words = []
 
     if dynamic_word == None:
         return dynamic_vector
@@ -2813,14 +2906,25 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
         word_split = dynamic_word.split(' ')
         for w in word_split:
             index = find_index_list_of_list(w, keywords)
-            if index:
-                vec_idx = embed_table.embed_key[index].vector_index
-                dynamic_vector[vec_idx] = embed_table.embed_key[index].value
+            if index is not None:
+                applied_words.append(w)
+                # vec_idx = embed_table.embed_key[index].vector_index
+                # dynamic_vector[vec_idx] = embed_table.embed_key[index].value
 
         for key in keywords:
-            if isinstance(key, str) and len(key) > 3 and key in dynamic_word:
+            if isinstance(key, str) and len(key) > 4 and key in dynamic_word:
                 # if type(key) is st and len(key) > 2 and key in attribute:
-                index = keywords.index(key)
+                applied_words.append(key)
+                # index = keywords.index(key)
+                # vec_idx = embed_table.embed_key[index].vector_index
+                # dynamic_vector[vec_idx] = embed_table.embed_key[index].value
+
+        for word in applied_words:
+            for other_word in applied_words:
+                if len(word) > 4 and word != other_word and word in other_word:
+                    break
+            else:
+                index = keywords.index(word)
                 vec_idx = embed_table.embed_key[index].vector_index
                 dynamic_vector[vec_idx] = embed_table.embed_key[index].value
 
@@ -2829,6 +2933,7 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
 def define_dyanmic_embedding_table():
     embed_table = EmbeddingTable()
 
+    embed_table.append(EmbeddingKey('pppp', 0, -1.1))
     embed_table.append(EmbeddingKey('ppp', 0, -0.9))
     embed_table.append(EmbeddingKey('pp', 0, -0.7))
     embed_table.append(EmbeddingKey('piano', 0, -0.4))
@@ -2840,11 +2945,11 @@ def define_dyanmic_embedding_table():
     embed_table.append(EmbeddingKey('ff', 0, 0.7))
     embed_table.append(EmbeddingKey('fff', 0, 0.9))
 
-    embed_table.append(EmbeddingKey('più p', 0, -0.5))
-    embed_table.append(EmbeddingKey('più piano', 0, -0.5))
-    embed_table.append(EmbeddingKey('più pp', 0, -0.7))
-    embed_table.append(EmbeddingKey('più f', 0, 0.5))
-    embed_table.append(EmbeddingKey('più forte', 0, 0.5))
+    embed_table.append(EmbeddingKey('più p', 3, -0.5))
+    embed_table.append(EmbeddingKey('più piano', 3, -0.5))
+    embed_table.append(EmbeddingKey('più pp', 3, -0.7))
+    embed_table.append(EmbeddingKey('più f', 3, 0.5))
+    embed_table.append(EmbeddingKey('più forte', 3, 0.5))
     embed_table.append(EmbeddingKey('più forte possibile', 0, 1))
 
     embed_table.append(EmbeddingKey('cresc', 1, 0.7))
@@ -2859,6 +2964,7 @@ def define_dyanmic_embedding_table():
 
     embed_table.append(EmbeddingKey('poco a poco meno f', 1, -0.2))
     embed_table.append(EmbeddingKey('poco cresc', 1, 0.5))
+    embed_table.append(EmbeddingKey('più cresc', 1, 0.85))
     embed_table.append(EmbeddingKey('molto cresc', 1, 1))
     embed_table.append(EmbeddingKey('cresc molto', 1, 1))
 
@@ -2892,15 +2998,13 @@ def define_dyanmic_embedding_table():
 def define_tempo_embedding_table():
     # [abs tempo, abs_tempo_added, tempo increase or decrease, sudden change]
     embed_table = EmbeddingTable()
-    embed_table.append(EmbeddingKey('scherzo', 1, 0.5))
-    embed_table.append(EmbeddingKey('menuetto', 1, -0.2))
-    embed_table.append(EmbeddingKey('minuetto', 1, -0.2))
-
+    embed_table.append(EmbeddingKey('scherzo', 4, 1))
+    embed_table.append(EmbeddingKey('menuetto', 4, -1))
+    embed_table.append(EmbeddingKey('minuetto', 4, -1))
 
     #short words
     embed_table.append(EmbeddingKey('rit', 2, -0.5))
     embed_table.append(EmbeddingKey('acc', 2, 0.5))
-
 
     embed_table.append(EmbeddingKey('lent', 0, -0.9))
     embed_table.append(EmbeddingKey('lento', 0, -0.9))
@@ -2935,34 +3039,41 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('allegro ma non troppo', 0, 0.4))
     embed_table.append(EmbeddingKey('più presto possibile', 0, 1))
     embed_table.append(EmbeddingKey('largo e mesto', 0, -0.8))
-
-    embed_table.append(EmbeddingKey('as a lullaby', 0, -0.6))
-    embed_table.append(EmbeddingKey('freely, with expression', 0, 0.2))
+    embed_table.append(EmbeddingKey('non troppo presto', 0, 0.75))
+    embed_table.append(EmbeddingKey('andante con moto', 0, -0.4))
+    embed_table.append(EmbeddingKey('allegretto vivace', 0, 0.4))
 
 
 
     embed_table.append(EmbeddingKey('a tempo', 1, 0))
-    embed_table.append(EmbeddingKey('meno mosso', 1, -0.8))
-    embed_table.append(EmbeddingKey('meno vivo', 1, -0.7))
-    embed_table.append(EmbeddingKey('ritenuto', 1, -0.5))
+    embed_table.append(EmbeddingKey('im tempo', 1, 0))
+    embed_table.append(EmbeddingKey('meno mosso', 1, -0.6))
+    embed_table.append(EmbeddingKey('meno vivo', 1, -0.6))
+    embed_table.append(EmbeddingKey('più lento', 1, -0.5))
+
     embed_table.append(EmbeddingKey('animato', 1, 0.5))
     embed_table.append(EmbeddingKey('più animato', 1, 0.6))
+    embed_table.append(EmbeddingKey('molto animato', 1, 0.8))
     embed_table.append(EmbeddingKey('agitato', 1, 0.4))
-    embed_table.append(EmbeddingKey('più mosso', 1, 0.8))
+    embed_table.append(EmbeddingKey('più mosso', 1, 0.6))
     embed_table.append(EmbeddingKey('stretto', 1, 0.5))
     embed_table.append(EmbeddingKey('appassionato', 1, 0.2))
     embed_table.append(EmbeddingKey('più moderato', 1, -0.1))
     embed_table.append(EmbeddingKey('più allegro', 1, 0.8))
+    embed_table.append(EmbeddingKey('più allegro quasi presto', 1, 1))
+    embed_table.append(EmbeddingKey('più largo', 1, -0.5))
 
-    embed_table.append(EmbeddingKey('poco riten', 1, -0.3))
-    embed_table.append(EmbeddingKey('poco ritenuto', 1, -0.3))
-    embed_table.append(EmbeddingKey('poco meno mosso', 1, -0.5))
-    embed_table.append(EmbeddingKey('poco più mosso', 1, 0.5))
-    embed_table.append(EmbeddingKey('più animato', 1, 0.3))
+    embed_table.append(EmbeddingKey('poco meno mosso', 1, -0.3))
+    embed_table.append(EmbeddingKey('poco più mosso', 1, 0.3))
+    embed_table.append(EmbeddingKey('poco più vivace', 1, 0.3))
     embed_table.append(EmbeddingKey('molto agitato', 1, 0.8))
-
     embed_table.append(EmbeddingKey('tranquillo', 1, -0.2))
 
+    embed_table.append(EmbeddingKey('riten', 3, -0.5))
+    embed_table.append(EmbeddingKey('ritenuto', 3, -0.5))
+    embed_table.append(EmbeddingKey('più riten', 3, -0.7))
+    embed_table.append(EmbeddingKey('poco riten', 3, -0.3))
+    embed_table.append(EmbeddingKey('poco ritenuto', 3, -0.3))
 
     # French
     embed_table.append(EmbeddingKey('très grave', 0, -1))
@@ -2998,16 +3109,15 @@ def define_tempo_embedding_table():
 
     # German
     embed_table.append(EmbeddingKey('sehr langsam', 0, -0.55))
-    embed_table.append(EmbeddingKey('sehr innig', 0, -0.4))
-    embed_table.append(EmbeddingKey('leicht uns zart', 0, 0.2))
+    embed_table.append(EmbeddingKey('sehr innig', 0, -0.5))
+    embed_table.append(EmbeddingKey('innig', 0, -0.4))
+    embed_table.append(EmbeddingKey('leicht und zart', 0, 0.2))
     embed_table.append(EmbeddingKey('sehr lebhaft', 0, 0.6))
     embed_table.append(EmbeddingKey('sehr aufgeregt', 0, 0.6))
     embed_table.append(EmbeddingKey('sehr rasch', 0, 0.8))
     embed_table.append(EmbeddingKey('Sehr innig und nicht zu rasch', 0, -0.8))
     embed_table.append(EmbeddingKey('lebhaftig', 0, 0.5))
     embed_table.append(EmbeddingKey('nicht zu geschwind', 0, -0.3))
-
-
 
     embed_table.append(EmbeddingKey('langsamer', 1, -0.5))
     embed_table.append(EmbeddingKey('etwas langsamer', 1, -0.3))
@@ -3016,6 +3126,8 @@ def define_tempo_embedding_table():
 
     embed_table.append(EmbeddingKey('allargando', 2, -0.2))
     embed_table.append(EmbeddingKey('ritardando', 2, -0.5))
+    embed_table.append(EmbeddingKey('rit', 2, -0.5))
+    embed_table.append(EmbeddingKey('ritard', 2, -0.5))
     embed_table.append(EmbeddingKey('rallentando', 2, -0.5))
     embed_table.append(EmbeddingKey('rall', 2, -0.5))
     embed_table.append(EmbeddingKey('slentando', 2, -0.3))

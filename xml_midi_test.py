@@ -11,9 +11,9 @@ xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'test_pieces/schumann/'
+folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/18-2/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'SunMeiting08'
+artistName = 'Schmitt01'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
