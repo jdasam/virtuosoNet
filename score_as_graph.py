@@ -52,7 +52,7 @@ def make_edge(xml_notes):
                             edge_list.append((i, i + j, 'slur'))
                             edge_list.append((i, i + j, 'forward'))
                         else:
-                            # edge_list.append((i, i + j, 'voice'))
+                            edge_list.append((i, i + j, 'voice'))
                             edge_list.append((i, i + j, 'forward'))
                         voice_forward_matrix[i].append(i + j)
 
@@ -82,7 +82,7 @@ def make_edge(xml_notes):
                             edge_list.append((i, i + j, 'slur'))
                             edge_list.append((i, i + j, 'forward'))
                         else:
-                            # edge_list.append((i, i + j, 'voice'))
+                            edge_list.append((i, i + j, 'voice'))
                             edge_list.append((i, i + j, 'forward'))
                         voice_forward_matrix[i].append(i+j)
                         # voice_backward_matrix[i+j].append(i)

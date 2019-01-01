@@ -47,7 +47,7 @@ class NetParams:
     class Param:
         def __init__(self):
             self.size = 0
-            self.layer = 0
+            self.layer = 1
             self.input = 0
 
     def __init__(self):
@@ -59,6 +59,7 @@ class NetParams:
         self.voice = self.Param()
         self.sum = self.Param()
         self.encoder = self.Param()
+        self.time_reg = self.Param()
         self.input_size = 0
         self.output_size = 0
 
@@ -113,7 +114,7 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -163,6 +164,8 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
 
+    NET_PARAM.time_reg.size = 64
+
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                              NET_PARAM.measure.size) * 2
     NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
@@ -190,7 +193,7 @@ elif 'han' in args.modelCode:
                                NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
                               + NUM_PRIME_PARAM
     num_voice_feed_param = 2  # velocity, onset deviation
-    num_tempo_info = 3
+    num_tempo_info = 3 #qpm primo, tempo primo
     num_dynamic_info = 0
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.voice.size + NET_PARAM.beat.size +
                              NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
@@ -237,7 +240,7 @@ if LOSS_TYPE == 'MSE':
             data_size = torch.sum(aligned_status).item() * pred.shape[-1]
             if data_size ==0:
                 data_size = 1
-                print('data size for loss calculation is zero', aligned_status)
+                print('data size for loss calculation is zero')
         return torch.sum( ((target - pred) ** 2) * aligned_status) / data_size
 elif LOSS_TYPE == 'CE':
     # criterion = nn.CrossEntropyLoss()

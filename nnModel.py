@@ -13,8 +13,9 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
+NUM_VOICE_FEED_PARAM = 2
 
 class GatedGraph(nn.Module):
     class subGraph():
@@ -513,6 +514,8 @@ class GGNN_Recursive(nn.Module):
         self.encoder_layer_num = network_parameters.encoder.layer
         self.onset_hidden_size = network_parameters.onset.size
         self.num_onset_layers = network_parameters.onset.layer
+        self.time_regressive_size = network_parameters.time_reg.size
+        self.time_regressive_layer = network_parameters.time_reg.layer
 
         self.beat_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
         self.beat_rnn = nn.LSTM(self.note_hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -521,8 +524,15 @@ class GGNN_Recursive(nn.Module):
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
         self.final_beat_attention = nn.Linear(self.final_input+self.encoder_size+self.output_size, self.final_input+self.encoder_size+self.output_size)
-        self.tempo_fc = nn.Linear(self.beat_hidden_size * 2, 1)
-        self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
+        self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
+        # self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
+        self.fc = nn.Sequential(
+            nn.Linear(self.final_input + self.encoder_size + self.output_size + self.time_regressive_size * 2 + 1, self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+
+            nn.Linear(self.encoder_size, self.output_size - 1),
+        )
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
@@ -566,7 +576,7 @@ class GGNN_Recursive(nn.Module):
         # )
 
         self.beat_tempo_contractor = nn.Sequential(
-            nn.Linear(self.final_input + self.encoder_size + self.output_size, self.beat_hidden_size),
+            nn.Linear(self.final_input + self.encoder_size + self.output_size, self.time_regressive_size),
             nn.Dropout(DROP_OUT),
             nn.ReLU()
         )
@@ -575,7 +585,7 @@ class GGNN_Recursive(nn.Module):
 
         self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
         self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
-        self.tempo_rnn = nn.LSTM(self.beat_hidden_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=True)
+        self.tempo_rnn = nn.LSTM(self.time_regressive_size, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
@@ -642,20 +652,22 @@ class GGNN_Recursive(nn.Module):
         qpm_primo = x[:, :, QPM_PRIMO_IDX].view(1, -1, 1)
         tempo_primo = x[:, :, TEMPO_PRIMO_IDX:].view(1, -1, 2)
         # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
-        beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_beats, 1))
-        beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
-        beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
+        # beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_beats, 1))
+        # beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
+        # beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
 
         for i in range(5):
             out_with_result = self.final_graph(out_with_result, edges, iteration=10)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                              beat_numbers, start_index, lower_is_note=True)
             out_beat = self.beat_tempo_contractor(out_beat)
-            tempo_beat_cat = torch.cat((out_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector ),2)
+            # tempo_beat_cat = torch.cat((out_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector ),2)
             out_beat_rnn_result, _ = self.tempo_rnn(out_beat, tempo_hidden)
             tempo_out = self.tempo_fc(out_beat_rnn_result)
-            other_out = self.fc(out_with_result)
             tempos_spanned = self.span_beat_to_note_num(tempo_out, beat_numbers, num_notes, start_index)
+            out_beat_spanned = self.span_beat_to_note_num(out_beat_rnn_result, beat_numbers, num_notes, start_index)
+            out_with_beat_out = torch.cat((out_with_result, out_beat_spanned, tempos_spanned),2)
+            other_out = self.fc(out_with_beat_out)
 
             final_out = torch.cat((tempos_spanned, other_out),2)
             out_with_result = torch.cat((out_with_result[:,:,:-self.output_size], final_out),2)
@@ -895,7 +907,7 @@ class GGNN_Recursive(nn.Module):
         return (h0, h0)
 
     def init_beat_tempo_forward(self, batch_size):
-        h0 = torch.zeros(1 * 2, batch_size, self.beat_hidden_size).to(self.device)
+        h0 = torch.zeros(1 * 2, batch_size, self.time_regressive_size).to(self.device)
         return (h0, h0)
 
     def init_performance_encoder(self, batch_size):
@@ -996,7 +1008,7 @@ class HAN_VAE(nn.Module):
         )
 
         if self.step_by_step:
-            self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.output_size + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+            self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 5 + 3 + self.output_size + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
             self.tempo_attention = nn.Linear(self.output_size - 1, self.output_size - 1)
         else:
             self.beat_tempo_forward = nn.LSTM(self.beat_hidden_size*2 + 3+ 3 + self.encoder_size, self.beat_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
@@ -1126,7 +1138,7 @@ class HAN_VAE(nn.Module):
 
             out_total = out_total.view(1, num_notes, -1)
             hidden_total = torch.cat((note_out, beat_out_spanned, measure_out_spanned, voice_out), 2)
-            return out_total, False, False, hidden_total
+            return out_total, perform_mu, perform_var, hidden_total
         else:
             # non autoregressive
             qpm_primo = x[:,:,QPM_PRIMO_IDX].view(1,-1,1)
