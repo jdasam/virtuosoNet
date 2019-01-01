@@ -1067,8 +1067,8 @@ def cal_onset_deviation_with_tempo(pairs, i, tempo_obj):
     else:
         pos_diff_sqrt = -math.sqrt(-pos_diff_in_quarter_note)
     # pos_diff_cube_root = float(pos_diff_in_quarter_note) ** (1/3)
-    return pos_diff_sqrt
-    # return deviation_time, pos_diff_in_quarter_note
+    # return pos_diff_sqrt
+    return deviation_time#, pos_diff_in_quarter_note
 
 
 def cal_beat_importance(beat_position, numerator):
@@ -2535,7 +2535,6 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
     if not os.path.isfile(xml_name):
         xml_name = path_name + 'xml.xml'
         midi_name = path_name + 'midi.mid'
-
 
     xml_object = MusicXMLDocument(xml_name)
     beats = cal_beat_positions_of_piece(xml_object)

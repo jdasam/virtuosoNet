@@ -300,7 +300,6 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-
 chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
 save_features_as_vector(chopin_pairs, num_train_pairs, 'slur_entire')
 
