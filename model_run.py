@@ -66,7 +66,7 @@ class NetParams:
 ### parameters
 
 
-learning_rate = 0.0003
+learning_rate = 0.0001
 TIME_STEPS = 500
 VALID_STEPS = 3000
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
@@ -164,7 +164,7 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
 
-    NET_PARAM.time_reg.size = 64
+    NET_PARAM.time_reg.size = 32
 
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                              NET_PARAM.measure.size) * 2
