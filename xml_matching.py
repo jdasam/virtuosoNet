@@ -1068,7 +1068,7 @@ def cal_onset_deviation_with_tempo(pairs, i, tempo_obj):
         pos_diff_sqrt = -math.sqrt(-pos_diff_in_quarter_note)
     # pos_diff_cube_root = float(pos_diff_in_quarter_note) ** (1/3)
     # return pos_diff_sqrt
-    return deviation_time#, pos_diff_in_quarter_note
+    return pos_diff_in_quarter_note
 
 
 def cal_beat_importance(beat_position, numerator):
@@ -1497,6 +1497,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         corresp_tempo = get_item_by_xml_position(tempos, note)
         previous_sec = corresp_tempo.time_position
         passed_duration = note.note_duration.xml_position + xml_dev - corresp_tempo.xml_position
+        # passed_duration = note.note_duration.xml_position - corresp_tempo.xml_position
         passed_second = passed_duration / note.state_fixed.divisions / corresp_tempo.qpm * 60
 
         return previous_sec + passed_second
@@ -1505,10 +1506,11 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         note = xml_notes[i]
         feat = features[i]
         if not feat.xml_deviation == None:
-            if feat.xml_deviation >= 0:
-                xml_deviation = (feat.xml_deviation ** 2) * note.state_fixed.divisions
-            else:
-                xml_deviation = -(feat.xml_deviation ** 2) * note.state_fixed.divisions
+            xml_deviation = feat.xml_deviation
+            # if feat.xml_deviation >= 0:
+            #     xml_deviation = (feat.xml_deviation ** 2) * note.state_fixed.divisions
+            # else:
+            #     xml_deviation = -(feat.xml_deviation ** 2) * note.state_fixed.divisions
         else:
             xml_deviation = 0
 
