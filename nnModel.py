@@ -656,8 +656,8 @@ class GGNN_Recursive(nn.Module):
         beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
         beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
 
-        for i in range(7):
-            out_with_result = self.final_graph(out_with_result, edges, iteration=15)
+        for i in range(5):
+            out_with_result = self.final_graph(out_with_result, edges, iteration=10 )
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                              beat_numbers, start_index, lower_is_note=True)
             out_beat = self.beat_tempo_contractor(out_beat)
