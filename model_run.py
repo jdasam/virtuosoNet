@@ -24,7 +24,7 @@ parser.add_argument("-mode", "--sessMode", type=str, default='train', help="trai
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
-parser.add_argument("-data", "--dataName", type=str, default="slur_test", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="test", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
@@ -32,7 +32,7 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='han_ar_test', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
@@ -65,9 +65,8 @@ class NetParams:
 
 ### parameters
 
-
-learning_rate = 0.0001
-TIME_STEPS = 500
+learning_rate = 0.00003
+TIME_STEPS = 450
 VALID_STEPS = 3000
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
@@ -80,6 +79,9 @@ TOTAL_OUTPUT = 16
 
 NUM_PRIME_PARAM = 11
 NUM_TEMPO_PARAM = 1
+VEL_PARAM_IDX = 1
+DEV_PARAM_IDX = 2
+PEDAL_PARAM_IDX = 3
 num_second_param = 0
 num_trill_param = 5
 num_voice_feed_param = 0 # velocity, onset deviation
@@ -425,29 +427,13 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
         return outputs
 
 
-def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, step, batch_size=batch_size, time_steps=TIME_STEPS, model=MODEL, trill_model=trill_model):
-    num_total_notes = len(x)
-    if step < total_batch_num - 1:
-        batch_start = step * batch_size * time_steps
-        batch_end = (step + 1) * batch_size * time_steps
-        batch_x = torch.Tensor(x[batch_start:batch_end])
-        batch_y = torch.Tensor(y[batch_start:batch_end])
-        align_matched = torch.Tensor(align_matched[batch_start:batch_end])
-        # input_y = torch.Tensor(prev_feature[batch_start:batch_end])
-        # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-    elif num_total_notes < time_steps:
-        batch_x = torch.Tensor(x)
-        batch_y = torch.Tensor(y)
-        align_matched = torch.Tensor(align_matched)
-        batch_start = 0
-    else:
-        # num_left_data = data_size % batch_size*time_steps
-        batch_start = num_total_notes-(batch_size * time_steps)
-        batch_x = torch.Tensor(x[batch_start:])
-        batch_y = torch.Tensor(y[batch_start:])
-        align_matched = torch.Tensor(align_matched[batch_start:])
-        # input_y = torch.Tensor(prev_feature[batch_start:])
-        # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, slice_index, batch_size=batch_size, time_steps=TIME_STEPS, model=MODEL, trill_model=trill_model):
+    batch_start, batch_end = slice_index
+
+    batch_x = torch.Tensor(x[batch_start:batch_end])
+    batch_y = torch.Tensor(y[batch_start:batch_end])
+
+    align_matched = torch.Tensor(align_matched[batch_start:batch_end])
     batch_x = batch_x.view((batch_size, -1, SCORE_INPUT)).to(DEVICE)
     batch_y = batch_y.view((batch_size, -1, TOTAL_OUTPUT)).to(DEVICE)
     align_matched = align_matched.view((batch_size, -1, 1)).to(DEVICE)
@@ -457,7 +443,7 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
     prime_batch_x = batch_x
     prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
 
-    batch_graph = edges[:,batch_start:batch_start+time_steps, batch_start:batch_start+time_steps].to(DEVICE)
+    batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
 
     model_train = model.train()
     prime_outputs, perform_mu, perform_var, note_out \
@@ -496,9 +482,11 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
 
     # loss = criterion(outputs, batch_y)
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
-    vel_loss = criterion(prime_outputs[:, :, 1], prime_batch_y[:, :, 1])
-    dev_loss = criterion(prime_outputs[:, :, 2], prime_batch_y[:, :, 2])
-    return tempo_loss, vel_loss, dev_loss, trill_loss, perform_kld
+    vel_loss = criterion(prime_outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX])
+    dev_loss = criterion(prime_outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX])
+    pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:,:,PEDAL_PARAM_IDX:])
+
+    return tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, perform_kld
 
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
@@ -518,6 +506,41 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
     return tempo_loss
+
+
+def make_slicing_indexes_by_measure(num_notes, measure_numbers):
+    slice_indexes = []
+    if num_notes < TIME_STEPS:
+        slice_indexes.append((0, num_notes))
+    else:
+        first_end_measure = measure_numbers[TIME_STEPS]
+        last_measure = measure_numbers[-1]
+        if first_end_measure < last_measure - 1 :
+            first_note_after_the_measure = measure_numbers.index(first_end_measure+1)
+            slice_indexes.append((0, first_note_after_the_measure))
+            second_end_start_measure = measure_numbers[num_notes - TIME_STEPS]
+            first_note_of_the_measure = measure_numbers.index(second_end_start_measure)
+            slice_indexes.append((first_note_of_the_measure, num_notes))
+
+            if num_notes > TIME_STEPS * 2:
+                first_start = random.randrange(int(TIME_STEPS/2), int(TIME_STEPS*1.5))
+                start_measure = measure_numbers[first_start]
+                end_measure = 0
+
+                while end_measure < second_end_start_measure:
+                    start_note = measure_numbers.index(start_measure)
+
+                    end_measure = measure_numbers[start_note+TIME_STEPS]
+                    end_note = measure_numbers.index(end_measure-1)
+                    slice_indexes.append((start_note, end_note))
+
+                    if end_measure > start_measure + 2:
+                        start_measure = end_measure - 2
+        else:
+            slice_indexes.append((0, num_notes))
+
+    return slice_indexes
+
 
 
 ### training
@@ -554,10 +577,11 @@ if args.sessMode == 'train':
     best_trill_loss = float("inf")
     # total_step = len(train_loader)
     for epoch in range(num_epochs):
-        tempo_loss_total =[]
-        vel_loss_total =[]
-        second_loss_total =[]
-        trill_loss_total =[]
+        tempo_loss_total = []
+        vel_loss_total = []
+        dev_loss_total = []
+        pedal_loss_total = []
+        trill_loss_total = []
         kld_total = []
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
@@ -571,6 +595,7 @@ if args.sessMode == 'train':
 
             data_size = len(train_x)
             graphs = edges_to_matrix(edges, data_size)
+            measure_numbers = [x.measure for x in note_locations]
             # graphs = edges_to_sparse_tensor(edges)
             total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
 
@@ -584,23 +609,25 @@ if args.sessMode == 'train':
             for i in range(num_key_augmentation+1):
                 key = key_lists[i]
                 temp_train_x = key_augmentation(train_x, key)
+                slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers)
 
-                for step in range(total_batch_num):
-                    tempo_loss, vel_loss, second_loss, trill_loss, kld = \
-                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, step)
+                for slice_idx in slice_indexes:
+                    tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
+                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, slice_idx)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
                     # print(tempo_loss)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
-                    second_loss_total.append(second_loss.item())
+                    dev_loss_total.append(dev_loss.item())
+                    pedal_loss_total.append(pedal_loss.item())
                     trill_loss_total.append(trill_loss.item())
                     kld_total.append(kld.item())
 
-        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
+        print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
               .format(epoch + 1, num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
-                      np.mean(second_loss_total), np.mean(trill_loss_total), np.mean(kld_total) *1000))
+                      np.mean(dev_loss_total), np.mean(pedal_loss_total), np.mean(trill_loss_total), np.mean(kld_total) *1000))
 
 
         ## Validation
@@ -674,12 +701,13 @@ if args.sessMode == 'train':
         mean_valid_loss = (mean_valid_loss + mean_tempo_loss * 0.5) / 1.5
         mean_vel_loss =  np.mean(vel_loss_total)
         mean_deviation_loss = np.mean(deviation_loss_total)
+        mean_pedal_loss = np.mean(pedal_loss_total)
         mean_trill_loss = np.mean(trill_loss_total)
-        print("Valid Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Trill: {:.4f}"
+        print("Valid Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}"
               .format(mean_valid_loss, mean_tempo_loss , mean_vel_loss,
-                      mean_deviation_loss, mean_trill_loss))
+                      mean_deviation_loss, mean_pedal_loss, mean_trill_loss))
 
-        mean_prime_loss = (mean_tempo_loss + mean_vel_loss + mean_deviation_loss) /3
+        mean_prime_loss = (mean_tempo_loss + mean_vel_loss + mean_deviation_loss + mean_pedal_loss) / 4
         is_best = mean_valid_loss < best_prime_loss
         best_prime_loss = min(mean_valid_loss, best_prime_loss)
 
@@ -703,7 +731,6 @@ if args.sessMode == 'train':
 
 
     #end of epoch
-
 
 
 elif args.sessMode=='test':
