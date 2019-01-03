@@ -5,7 +5,7 @@ from torch.autograd import Variable
 import random
 
 
-DROP_OUT = 0.25
+DROP_OUT = 0.5
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
@@ -13,7 +13,7 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 NUM_VOICE_FEED_PARAM = 2
 
@@ -60,8 +60,7 @@ class GatedGraph(nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, input, edge_matrix, iteration=10):
-
+    def forward(self, input, edge_matrix, iteration=20):
         for i in range(iteration):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)
             temp_z = self.sigmoid( torch.bmm(activation, self.wz).sum(0) + torch.matmul(input, self.uz) + self.bz)
@@ -595,7 +594,6 @@ class GGNN_Recursive(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
 
-
     def forward(self, x, y, edges, note_locations, start_index, step_by_step = False, initial_z=False, rand_threshold=0.7):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
@@ -657,7 +655,7 @@ class GGNN_Recursive(nn.Module):
         beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
 
         for i in range(5):
-            out_with_result = self.final_graph(out_with_result, edges, iteration=10 )
+            out_with_result = self.final_graph(out_with_result, edges, iteration=20)
             out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
                                              beat_numbers, start_index, lower_is_note=True)
             out_beat = self.beat_tempo_contractor(out_beat)

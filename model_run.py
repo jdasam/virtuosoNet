@@ -73,9 +73,8 @@ num_epochs = 150
 num_key_augmentation = 1
 
 SCORE_INPUT = 78 #score information only
-DROP_OUT = 0.25
+DROP_OUT = 0.5
 TOTAL_OUTPUT = 16
-
 
 NUM_PRIME_PARAM = 11
 NUM_TEMPO_PARAM = 1
@@ -116,7 +115,7 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -166,7 +165,7 @@ elif 'ggnn_ar' in args.modelCode:
     NET_PARAM.encoder.size = 64
     NET_PARAM.encoder.layer = 2
 
-    NET_PARAM.time_reg.size = 32
+    NET_PARAM.time_reg.size = 64
 
     NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
                              NET_PARAM.measure.size) * 2
@@ -515,7 +514,7 @@ def make_slicing_indexes_by_measure(num_notes, measure_numbers):
     else:
         first_end_measure = measure_numbers[TIME_STEPS]
         last_measure = measure_numbers[-1]
-        if first_end_measure < last_measure - 1 :
+        if first_end_measure < last_measure - 1:
             first_note_after_the_measure = measure_numbers.index(first_end_measure+1)
             slice_indexes.append((0, first_note_after_the_measure))
             second_end_start_measure = measure_numbers[num_notes - TIME_STEPS]
@@ -525,17 +524,23 @@ def make_slicing_indexes_by_measure(num_notes, measure_numbers):
             if num_notes > TIME_STEPS * 2:
                 first_start = random.randrange(int(TIME_STEPS/2), int(TIME_STEPS*1.5))
                 start_measure = measure_numbers[first_start]
-                end_measure = 0
+                end_measure = start_measure
 
                 while end_measure < second_end_start_measure:
                     start_note = measure_numbers.index(start_measure)
-
-                    end_measure = measure_numbers[start_note+TIME_STEPS]
+                    if start_note+TIME_STEPS < num_notes:
+                        end_measure = measure_numbers[start_note+TIME_STEPS]
+                    else:
+                        break
                     end_note = measure_numbers.index(end_measure-1)
                     slice_indexes.append((start_note, end_note))
 
                     if end_measure > start_measure + 2:
                         start_measure = end_measure - 2
+                    elif end_measure > start_measure + 1:
+                        start_measure = end_measure - 1
+                    else:
+                        start_measure - end_measure
         else:
             slice_indexes.append((0, num_notes))
 
