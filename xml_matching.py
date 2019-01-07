@@ -431,8 +431,8 @@ class MusicFeature():
         self.distance_from_abs_dynamic = None
         self.slur_index = None
         self.slur_beam_vec = None
-        self.is_grace_note = True
-        self.preceded_by_grace_note = True
+        self.is_grace_note = False
+        self.preceded_by_grace_note = False
 
         self.align_matched = 0
         self.dynamic = None
@@ -1736,7 +1736,7 @@ def save_lowest_note_on_same_position(alist, minimum_time_interval = 0.08):
     return new_list
 
 
-def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=500):
+def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=600):
     length = len(position_pairs)
     previous_position = -float("Inf")
     previous_time = -float("Inf")
@@ -2851,8 +2851,8 @@ def make_available_xml_midi_positions(pairs):
     # available_pairs = save_lowest_note_on_same_position(available_pairs)
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
     print('Number of mismatched notes: ', len(mismatched_indexes))
-    for index in mismatched_indexes:
-        pairs[index] = []
+    # for index in mismatched_indexes:
+    #     pairs[index] = []
 
     return pairs, available_pairs
 
