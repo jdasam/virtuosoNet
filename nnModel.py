@@ -9,24 +9,15 @@ DROP_OUT = 0.5
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 26
-PITCH_IDX = 13
+TEMPO_IDX = 25
+PITCH_IDX = 12
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 NUM_VOICE_FEED_PARAM = 2
 
 class GatedGraph(nn.Module):
-    class subGraph():
-        def __init__(self, size, device):
-            self.wz = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-            self.wr = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-            self.wh = torch.nn.Parameter(torch.Tensor(size, size)).to(device)
-            nn.init.xavier_normal_(self.wz)
-            nn.init.xavier_normal_(self.wr)
-            nn.init.xavier_normal_(self.wh)
-
     def  __init__(self, size, num_edge_style, device, secondary_size=0):
         super(GatedGraph, self).__init__()
         if secondary_size == 0:
@@ -40,12 +31,12 @@ class GatedGraph(nn.Module):
         self.wz = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
         self.wr = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
         self.wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
-        self.uz = torch.nn.Parameter(torch.Tensor(size, secondary_size)).to(device)
-        self.bz = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
-        self.ur = torch.nn.Parameter(torch.Tensor(size, secondary_size)).to(device)
-        self.br = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
-        self.uh = torch.nn.Parameter(torch.Tensor(secondary_size, secondary_size)).to(device)
-        self.bh = torch.nn.Parameter(torch.Tensor(secondary_size)).to(device)
+        self.uz = torch.nn.Parameter(torch.Tensor(size, secondary_size))
+        self.bz = torch.nn.Parameter(torch.Tensor(secondary_size))
+        self.ur = torch.nn.Parameter(torch.Tensor(size, secondary_size))
+        self.br = torch.nn.Parameter(torch.Tensor(secondary_size))
+        self.uh = torch.nn.Parameter(torch.Tensor(secondary_size, secondary_size))
+        self.bh = torch.nn.Parameter(torch.Tensor(secondary_size))
 
         nn.init.xavier_normal_(self.wz)
         nn.init.xavier_normal_(self.wr)
@@ -103,6 +94,9 @@ class GGNN_HAN(nn.Module):
         self.encoder_layer_num = network_parameters.encoder.layer
         self.onset_hidden_size = network_parameters.onset.size
         self.num_onset_layers = network_parameters.onset.layer
+        self.num_edge_types = network_parameters.num_edge_types
+        self.graph_iteration = network_parameters.graph_iteration
+
 
         self.beat_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
         self.beat_rnn = nn.LSTM(self.note_hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -146,16 +140,16 @@ class GGNN_HAN(nn.Module):
             nn.ReLU(),
         )
 
-        self.graph_1st = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.graph_1st = GatedGraph(self.note_hidden_size, self.num_edge_types, self.device)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
-        self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.graph_2nd = GatedGraph(self.note_hidden_size, self.num_edge_types, self.device)
 
-        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types, self.device)
         self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.performance_contractor = nn.Sequential(
@@ -515,6 +509,8 @@ class GGNN_Recursive(nn.Module):
         self.num_onset_layers = network_parameters.onset.layer
         self.time_regressive_size = network_parameters.time_reg.size
         self.time_regressive_layer = network_parameters.time_reg.layer
+        self.graph_iteration = network_parameters.graph_iteration
+        self.num_edge_types = network_parameters.num_edge_types
 
         self.beat_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
         self.beat_rnn = nn.LSTM(self.note_hidden_size * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -548,16 +544,16 @@ class GGNN_Recursive(nn.Module):
             nn.ReLU(),
         )
 
-        self.graph_1st = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.graph_1st = GatedGraph(self.note_hidden_size, self.num_edge_types, self.device)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
-        self.graph_2nd = GatedGraph(self.note_hidden_size, N_EDGE_TYPE, self.device)
+        self.graph_2nd = GatedGraph(self.note_hidden_size, self.num_edge_types, self.device)
 
-        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types, self.device)
         self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.performance_contractor = nn.Sequential(
@@ -583,7 +579,7 @@ class GGNN_Recursive(nn.Module):
         # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
 
         self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
-        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
+        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, self.num_edge_types, self.device, self.output_size)
         self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3 + 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
@@ -933,6 +929,7 @@ class Sequential_GGNN(nn.Module):
         self.time_regressive_size = network_parameters.time_reg.size
         self.time_regressive_layer = network_parameters.time_reg.layer
         self.graph_iteration = network_parameters.graph_iteration
+        self.num_edge_types = network_parameters.num_edge_types
 
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
@@ -949,20 +946,20 @@ class Sequential_GGNN(nn.Module):
             nn.ReLU(),
         )
 
-        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, N_EDGE_TYPE, self.device, secondary_size=self.note_hidden_size)
+        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device, secondary_size=self.note_hidden_size)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
-        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, N_EDGE_TYPE, self.device, secondary_size=self.note_hidden_size)
+        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device)
 
         self.measure_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
         self.measure_rnn = nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
 
-        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types, self.device)
         self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
 
         self.performance_contractor = nn.Sequential(
@@ -985,7 +982,7 @@ class Sequential_GGNN(nn.Module):
         # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
 
         self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
-        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
+        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, self.num_edge_types, self.device, self.output_size)
         self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3 + 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
         self.final_beat_attention = nn.Linear(self.final_input+self.encoder_size+self.output_size, self.final_input+self.encoder_size+self.output_size)
@@ -1259,6 +1256,7 @@ class TrillGraph(nn.Module):
         self.num_layers = network_parameters.note.layer
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
+        self.num_edge_types = network_parameters.num_edge_types
         self.is_trill_index = trill_index
         self.device = device
 
@@ -1272,7 +1270,7 @@ class TrillGraph(nn.Module):
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
         )
-        self.graph = GatedGraph(self.hidden_size, N_EDGE_TYPE, self.device)
+        self.graph = GatedGraph(self.hidden_size, self.num_edge_types, self.device)
 
         self.out_fc = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),

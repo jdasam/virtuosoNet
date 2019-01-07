@@ -19,7 +19,6 @@ import xml_matching
 import nnModel
 import model_parameters as param
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test")
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
@@ -30,7 +29,7 @@ parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best mo
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
 parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from beat level")
-parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
+parser.add_argument("-voice", "--voiceEdge", default=False, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
@@ -92,11 +91,13 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
-TEMPO_IDX = 26
-PITCH_IDX = 13
+TEMPO_IDX = 25
+PITCH_IDX = 12
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
+if args.voiceEdge:
+    GRAPH_KEYS.append('voice')
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -109,10 +110,16 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if not args.trainTrill:
     if args.sessMode == 'train':
         NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
+        NET_PARAM.num_edge_types = N_EDGE_TYPE
         param.save_parameters(NET_PARAM, args.modelCode + '_param')
     else:
         NET_PARAM = param.load_parameters(args.modelCode + '_param')
         TrillNET_Param = param.load_parameters(args.trillCode + '_trill_param')
+        if not hasattr(NET_PARAM, 'num_edge_types'):
+            NET_PARAM.num_edge_types = 10
+        if not hasattr(TrillNET_Param, 'num_edge_types'):
+            TrillNET_Param.num_edge_types = 10
+
         trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
 
     if 'ggnn_non_ar' in args.modelCode:
@@ -141,6 +148,7 @@ else:
     TrillNET_Param.output_size = num_trill_param
     TrillNET_Param.note.size = 32
     TrillNET_Param.note.layer = 1
+    TrillNET_Param.num_edge_types = N_EDGE_TYPE
     param.save_parameters(TrillNET_Param, args.modelCode + '_trill_param')
 
     trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
@@ -525,7 +533,10 @@ if args.sessMode == 'train':
 
     # load data
     print('Loading the training data...')
-    with open(args.dataName + ".dat", "rb") as f:
+    training_data_name = args.dataName + ".dat"
+    if not os.path.isfile(training_data_name):
+        training_data_name = '/mnt/ssd1/jdasam_data/' + training_data_name
+    with open(training_data_name, "rb") as f:
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
         # p = u.load()
