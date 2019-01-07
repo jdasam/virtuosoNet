@@ -13,7 +13,7 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 NUM_VOICE_FEED_PARAM = 2
 
@@ -60,7 +60,7 @@ class GatedGraph(nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, input, edge_matrix, iteration=20):
+    def forward(self, input, edge_matrix, iteration=10):
         for i in range(iteration):
             activation = torch.matmul(edge_matrix.transpose(1,2), input)
             temp_z = self.sigmoid( torch.bmm(activation, self.wz).sum(0) + torch.matmul(input, self.uz) + self.bz)
@@ -495,7 +495,7 @@ class GGNN_HAN(nn.Module):
 
 
 class GGNN_Recursive(nn.Module):
-    def __init__(self, network_parameters, device, num_trill_param=5):
+    def __init__(self, network_parameters, device):
         super(GGNN_Recursive, self).__init__()
         self.device = device
         self.input_size = network_parameters.input_size
@@ -913,6 +913,298 @@ class GGNN_Recursive(nn.Module):
 
 
 
+class Sequential_GGNN(nn.Module):
+    def __init__(self, network_parameters, device):
+        super(Sequential_GGNN, self).__init__()
+        self.device = device
+        self.input_size = network_parameters.input_size
+        self.output_size = network_parameters.output_size
+        self.num_layers = network_parameters.note.layer
+        self.note_hidden_size = network_parameters.note.size
+        self.num_measure_layers = network_parameters.measure.layer
+        self.measure_hidden_size = network_parameters.measure.size
+        self.final_hidden_size = network_parameters.final.size
+        self.final_input = network_parameters.final.input
+        self.encoder_size = network_parameters.encoder.size
+        self.encoder_input_size = network_parameters.encoder.input
+        self.encoder_layer_num = network_parameters.encoder.layer
+        self.onset_hidden_size = network_parameters.onset.size
+        self.num_onset_layers = network_parameters.onset.layer
+        self.time_regressive_size = network_parameters.time_reg.size
+        self.time_regressive_layer = network_parameters.time_reg.layer
+        self.graph_iteration = network_parameters.graph_iteration
+
+        self.note_fc = nn.Sequential(
+            nn.Linear(self.input_size, self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+            nn.Linear(self.note_hidden_size, self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+            nn.Linear(self.note_hidden_size, self.note_hidden_size),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+        )
+
+        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, N_EDGE_TYPE, self.device, secondary_size=self.note_hidden_size)
+        self.graph_between = nn.Sequential(
+            nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
+            nn.Dropout(DROP_OUT),
+            # nn.BatchNorm1d(self.note_hidden_size),
+            nn.ReLU()
+        )
+        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, N_EDGE_TYPE, self.device, secondary_size=self.note_hidden_size)
+
+        self.measure_attention = nn.Linear(self.note_hidden_size * 2, self.note_hidden_size * 2)
+        self.measure_rnn = nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
+        # self.tempo_attention = nn.Linear(self.output_size-1, self.output_size-1)
+
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, N_EDGE_TYPE, self.device)
+        self.performance_measure_attention = nn.Linear(self.encoder_size, self.encoder_size)
+
+        self.performance_contractor = nn.Sequential(
+            nn.Linear(self.encoder_input_size, self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            # nn.BatchNorm1d(self.encoder_size),
+            nn.ReLU()
+        )
+        self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size, num_layers=self.encoder_layer_num,
+                                           batch_first=True, bidirectional=False)
+        self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
+        self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
+
+        self.beat_tempo_contractor = nn.Sequential(
+            nn.Linear(self.final_input + self.encoder_size + self.output_size, self.time_regressive_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU()
+        )
+
+        # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+
+        self.initial_result_fc = nn.Linear(self.final_input, self.output_size)
+        self.final_graph = GatedGraph(self.final_input + self.encoder_size + self.output_size, N_EDGE_TYPE, self.device, self.output_size)
+        self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3 + 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
+
+        self.final_beat_attention = nn.Linear(self.final_input+self.encoder_size+self.output_size, self.final_input+self.encoder_size+self.output_size)
+        self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
+        # self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
+        self.fc = nn.Sequential(
+            nn.Linear(self.final_input + self.encoder_size + self.output_size + self.time_regressive_size * 2 + 1, self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+
+            nn.Linear(self.encoder_size, self.output_size - 1),
+        )
+
+        self.softmax = nn.Softmax(dim=0)
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+
+    def forward(self, x, y, edges, note_locations, start_index, step_by_step = False, initial_z=False, rand_threshold=0.7):
+        beat_numbers = [x.beat for x in note_locations]
+        measure_numbers = [x.measure for x in note_locations]
+        num_notes = x.size(1)
+
+        note_out = self.run_graph_network(x, edges, measure_numbers, start_index)
+        if initial_z:
+            perform_z = torch.Tensor(initial_z).to(self.device).view(1,-1)
+            perform_mu = 0
+            perform_var = 0
+        else:
+            encoder_hidden = self.init_performance_encoder(x.shape[0])
+            perform_concat = torch.cat((note_out, y), 2).view(-1, self.encoder_input_size)
+            perform_style_contracted = self.performance_contractor(perform_concat).view(1, num_notes, -1)
+            perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
+            performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
+                                                  measure_numbers, start_index, lower_is_note=True)
+            perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes, encoder_hidden)
+
+            # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
+            # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
+            perform_style_vector = perform_style_encoded[:, -1, :]  # need check
+            perform_z, perform_mu, perform_var = \
+                self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+
+        # perform_z = self.performance_decoder(perform_z)
+        perform_z_batched = perform_z.repeat(num_notes, 1).view(1,num_notes, -1)
+
+        # mean_velocity_info = x[:, :, mean_vel_start_index:mean_vel_start_index+4].view(1,-1,4)
+        # dynamic_info = torch.cat((x[:, :, mean_vel_start_index + 4].view(1,-1,1),
+        #                           x[:, :, vel_vec_start_index:vel_vec_start_index + 4]), 2).view(1,-1,5)
+
+        # out_combined = torch.cat((
+        #     note_out, measure_out_spanned), 2)
+
+        # out = self.final_contractor(out_combined)
+        initial_output = self.initial_result_fc(note_out)
+        # initial_output = torch.zeros(1, num_notes, self.output_size).to(self.device)
+        # style_to_measure_hidden = self.init_performance_encoder(x.shape[0])
+        # perform_z_measure_spanned = perform_z.repeat(measure_hidden_out.shape[1], 1).view(1,measure_hidden_out.shape[1], -1)
+        # perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
+        # measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat, style_to_measure_hidden)
+        # measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
+        out_with_result = torch.cat((note_out, perform_z_batched, initial_output), 2)
+        tempo_hidden = self.init_beat_tempo_forward(x.shape[0])
+
+        num_beats = beat_numbers[start_index+num_notes-1] - beat_numbers[start_index] + 1
+        qpm_primo = x[:, :, QPM_PRIMO_IDX].view(1, -1, 1)
+        tempo_primo = x[:, :, TEMPO_PRIMO_IDX:].view(1, -1, 2)
+        # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+        beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_beats, 1))
+        beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
+        beat_tempo_vector = self.note_tempo_infos_to_beat(x, beat_numbers, start_index, TEMPO_IDX)
+
+        for i in range(5):
+            out_with_result = self.final_graph(out_with_result, edges, iteration=self.graph_iteration)
+            out_beat = self.make_higher_node(out_with_result, self.final_beat_attention, beat_numbers,
+                                             beat_numbers, start_index, lower_is_note=True)
+            out_beat = self.beat_tempo_contractor(out_beat)
+            tempo_beat_cat = torch.cat((out_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector ),2)
+            out_beat_rnn_result, _ = self.tempo_rnn(tempo_beat_cat, tempo_hidden)
+            tempo_out = self.tempo_fc(out_beat_rnn_result)
+            tempos_spanned = self.span_beat_to_note_num(tempo_out, beat_numbers, num_notes, start_index)
+            out_beat_spanned = self.span_beat_to_note_num(out_beat_rnn_result, beat_numbers, num_notes, start_index)
+            out_with_beat_out = torch.cat((out_with_result, out_beat_spanned, tempos_spanned),2)
+            other_out = self.fc(out_with_beat_out)
+
+            final_out = torch.cat((tempos_spanned, other_out),2)
+            out_with_result = torch.cat((out_with_result[:,:,:-self.output_size], final_out),2)
+            # out = torch.cat((out, trill_out), 2)
+
+        return final_out, perform_mu, perform_var, note_out
+
+    def run_graph_network(self, nodes, adjacency_matrix, measure_numbers, start_index, iteration=5):
+        # 1. Run feed-forward network by note level
+        num_notes = nodes.shape[1]
+        notes_hidden = self.note_fc(nodes)
+        initial_measure = torch.zeros((notes_hidden.size(0), notes_hidden.size(1), self.measure_hidden_size * 2)).to(self.device)
+        notes_and_measure_hidden = torch.cat((initial_measure, notes_hidden), 2)
+        for i in range(iteration):
+            notes_hidden = self.graph_1st(notes_and_measure_hidden, adjacency_matrix, iteration=self.graph_iteration)
+            notes_between = self.graph_between(notes_hidden)
+            notes_hidden_second = self.graph_2nd(notes_between, adjacency_matrix, iteration=self.graph_iteration)
+            notes_hidden_cat = torch.cat((notes_hidden[:,:, -self.note_hidden_size:],
+                                          notes_hidden_second[:,:, -self.note_hidden_size:]), -1)
+
+            measure_nodes = self.make_higher_node(notes_hidden_cat, self.measure_attention, measure_numbers, measure_numbers,
+                                                  start_index, lower_is_note=True)
+            initial_measure_hidden = self.init_measure_layer(1)
+            measure_hidden, _ = self.measure_rnn(measure_nodes, initial_measure_hidden)
+            measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden, measure_numbers, num_notes, start_index)
+            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
+
+        final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
+        return final_out
+
+    def encode_with_net(self, score_input, mean_net, var_net):
+        mu = mean_net(score_input)
+        var = var_net(score_input)
+
+        z = self.reparameterize(mu, var)
+        return z, mu, var
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add_(mu)
+
+    # def decode_with_net(self, z, decode_network):
+    #     decode_network
+    #     return
+
+    def sum_with_attention(self, hidden, attention_net):
+        attention = attention_net(hidden)
+        attention = self.softmax(attention)
+        upper_node = hidden * attention
+        upper_node_sum = torch.sum(upper_node, dim=0)
+
+        return upper_node_sum
+
+    def make_higher_node(self, lower_out, attention_weights, lower_indexes, higher_indexes, start_index, lower_is_note=False):
+        higher_nodes = []
+        prev_higher_index = higher_indexes[start_index]
+        lower_node_start = 0
+        lower_node_end = 0
+        num_lower_nodes = lower_out.shape[1]
+        start_lower_index = lower_indexes[start_index]
+        lower_hidden_size = lower_out.shape[2]
+        for low_index in range(num_lower_nodes):
+            absolute_low_index = start_lower_index + low_index
+            if lower_is_note:
+                current_note_index = start_index + low_index
+            else:
+                current_note_index = lower_indexes.index(absolute_low_index)
+
+            if higher_indexes[current_note_index] > prev_higher_index:
+                # new beat start
+                lower_node_end = low_index
+                corresp_lower_out = lower_out[0, lower_node_start:lower_node_end, :]
+                higher = self.sum_with_attention(corresp_lower_out, attention_weights)
+                higher_nodes.append(higher)
+
+                lower_node_start = low_index
+                prev_higher_index = higher_indexes[current_note_index]
+
+        corresp_lower_out = lower_out[0, lower_node_start:, :]
+        higher = self.sum_with_attention(corresp_lower_out, attention_weights)
+        higher_nodes.append(higher)
+
+        higher_nodes = torch.stack(higher_nodes).view(1, -1, lower_hidden_size)
+
+        return higher_nodes
+
+
+    def span_beat_to_note_num(self, beat_out, beat_number, num_notes, start_index):
+        start_beat = beat_number[start_index]
+        num_beat = beat_out.shape[1]
+        span_mat = torch.zeros(1, num_notes, num_beat)
+        node_size = beat_out.shape[2]
+        for i in range(num_notes):
+            beat_index = beat_number[start_index+i] - start_beat
+            if beat_index >= num_beat:
+                beat_index = num_beat-1
+            span_mat[0,i,beat_index] = 1
+        span_mat = span_mat.to(self.device)
+
+        spanned_beat = torch.bmm(span_mat, beat_out)
+        return spanned_beat
+
+    def note_tempo_infos_to_beat(self, y, beat_numbers, start_index, index=None):
+        beat_tempos = []
+        num_notes = y.size(1)
+        prev_beat = -1
+        for i in range(num_notes):
+            cur_beat = beat_numbers[start_index+i]
+            if cur_beat > prev_beat:
+                if index is None:
+                    beat_tempos.append(y[0,i,:])
+                if index == TEMPO_IDX:
+                    beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
+                else:
+                    beat_tempos.append(y[0,i,index])
+                prev_beat = cur_beat
+        num_beats = len(beat_tempos)
+        beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
+        return beat_tempos
+
+    def init_final_layer(self, batch_size):
+        h0 = torch.zeros(1, batch_size, self.final_hidden_size).to(self.device)
+        return (h0, h0)
+
+    def init_measure_layer(self, batch_size):
+        h0 = torch.zeros(self.num_measure_layers * 2, batch_size, self.measure_hidden_size).to(self.device)
+        return (h0, h0)
+
+    def init_beat_tempo_forward(self, batch_size):
+        h0 = torch.zeros(1 * 2, batch_size, self.time_regressive_size).to(self.device)
+        return (h0, h0)
+
+    def init_performance_encoder(self, batch_size):
+        h0 = torch.zeros(1, batch_size, self.encoder_size).to(self.device)
+
 
 
 class TrillRNN(nn.Module):
@@ -958,6 +1250,60 @@ class TrillRNN(nn.Module):
     def init_hidden(self, batch_size):
         h0 = torch.zeros(self.num_layers * 2, batch_size, self.hidden_size).to(self.device)
         return (h0, h0)
+
+class TrillGraph(nn.Module):
+    def __init__(self, network_parameters, trill_index, loss_type, device):
+        super(TrillGraph, self).__init__()
+        self.loss_type = loss_type
+        self.hidden_size = network_parameters.note.size
+        self.num_layers = network_parameters.note.layer
+        self.input_size = network_parameters.input_size
+        self.output_size = network_parameters.output_size
+        self.is_trill_index = trill_index
+        self.device = device
+
+        # self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for
+
+        self.note_fc = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+        )
+        self.graph = GatedGraph(self.hidden_size, N_EDGE_TYPE, self.device)
+
+        self.out_fc = nn.Sequential(
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+            nn.Linear(self.hidden_size, self.output_size),
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x, edges):
+        # hidden = self.init_hidden(x.size(0))
+        # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+
+        # Decode the hidden state of the last time step
+        is_trill_mat = x[:, :, self.is_trill_index]
+        is_trill_mat = is_trill_mat.view(1,-1,1).repeat(1,1,self.output_size).view(1,-1,self.output_size)
+        is_trill_mat = Variable(is_trill_mat, requires_grad=False)
+
+        note_contracted = self.note_fc(x)
+        note_after_graph = self.graph(note_contracted, edges, iteration=5)
+        out = self.out_fc(note_after_graph)
+
+        if self.loss_type == 'MSE':
+            up_trill = self.sigmoid(out[:,:,-1])
+            out[:,:,-1] = up_trill
+        else:
+            out = self.sigmoid(out)
+        # out = out * is_trill_mat
+        return out
+
+
 
 
 

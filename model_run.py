@@ -17,6 +17,7 @@ import copy
 import random
 import xml_matching
 import nnModel
+import model_parameters as param
 
 
 parser = argparse.ArgumentParser()
@@ -33,6 +34,7 @@ parser.add_argument("-voice", "--voiceNet", default=True, type=lambda x: (str(x)
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='ggnn_ar_test', help="code name for saving the model")
+parser.add_argument("-tCode", "--trillCode", type=str, default='default', help="code name for loading trill model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
@@ -42,37 +44,15 @@ parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='ty
 args = parser.parse_args()
 LOSS_TYPE = args.trainingLoss
 
-
-class NetParams:
-    class Param:
-        def __init__(self):
-            self.size = 0
-            self.layer = 1
-            self.input = 0
-
-    def __init__(self):
-        self.note = self.Param()
-        self.onset = self.Param()
-        self.beat = self.Param()
-        self.measure = self.Param()
-        self.final = self.Param()
-        self.voice = self.Param()
-        self.sum = self.Param()
-        self.encoder = self.Param()
-        self.time_reg = self.Param()
-        self.input_size = 0
-        self.output_size = 0
-
 ### parameters
-
-learning_rate = 0.00003
+learning_rate = 0.0003
 TIME_STEPS = 450
 VALID_STEPS = 3000
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 150
 num_key_augmentation = 1
 
-SCORE_INPUT = 78 #score information only
+SCORE_INPUT = 77 #score information only
 DROP_OUT = 0.5
 TOTAL_OUTPUT = 16
 
@@ -88,6 +68,7 @@ num_tempo_info = 0
 num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, forte marking and velocity = 4
 is_trill_index_score = -11
 is_trill_index_concated = -11 - (NUM_PRIME_PARAM + num_second_param)
+
 
 with open(args.dataName + "_stat.dat", "rb") as f:
     u = pickle._Unpickler(f)
@@ -115,7 +96,7 @@ TEMPO_IDX = 26
 PITCH_IDX = 13
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur', 'voice']
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -125,101 +106,48 @@ batch_size = 1
 torch.cuda.set_device(args.device)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-NET_PARAM = NetParams()
-NET_PARAM.input_size = SCORE_INPUT
-NET_PARAM.output_size = NUM_PRIME_PARAM
-
-if 'ggnn_non_ar' in args.modelCode:
-
-    NET_PARAM.note.layer = 2
-    NET_PARAM.note.size = 64
-    NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 32
-    NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 16
-    NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 64
-
-    NET_PARAM.encoder.size = 64
-    NET_PARAM.encoder.layer = 2
-
-    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
-                            num_tempo_info + num_dynamic_info
-    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size) * 2 \
-                              + NUM_PRIME_PARAM
-    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE, LOSS_TYPE, NUM_TEMPO_PARAM).to(DEVICE)
-
-elif 'ggnn_ar' in args.modelCode:
-
-    NET_PARAM.note.layer = 2
-    NET_PARAM.note.size = 64
-    NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 32
-    NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 16
-    NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 64
-
-    NET_PARAM.encoder.size = 64
-    NET_PARAM.encoder.layer = 2
-
-    NET_PARAM.time_reg.size = 64
-
-    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                             NET_PARAM.measure.size) * 2
-    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size) * 2 \
-                              + NUM_PRIME_PARAM
-    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
-
-elif 'han' in args.modelCode:
-    NET_PARAM.note.layer = 2
-    NET_PARAM.note.size = 64
-    NET_PARAM.beat.layer = 2
-    NET_PARAM.beat.size = 32
-    NET_PARAM.measure.layer = 1
-    NET_PARAM.measure.size = 16
-    NET_PARAM.final.layer = 1
-    NET_PARAM.final.size = 64
-    NET_PARAM.voice.layer = 2
-    NET_PARAM.voice.size = 64
-    NET_PARAM.sum.layer = 2
-    NET_PARAM.sum.size = 64
-
-    NET_PARAM.encoder.size = 64
-    NET_PARAM.encoder.layer = 2
-    NET_PARAM.encoder.input = (NET_PARAM.note.size + NET_PARAM.beat.size +
-                               NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 \
-                              + NUM_PRIME_PARAM
-    num_voice_feed_param = 2  # velocity, onset deviation
-    num_tempo_info = 3 #qpm primo, tempo primo
-    num_dynamic_info = 0
-    NET_PARAM.final.input = (NET_PARAM.note.size + NET_PARAM.voice.size + NET_PARAM.beat.size +
-                             NET_PARAM.measure.size) * 2 + NET_PARAM.encoder.size + \
-                            num_tempo_info + num_dynamic_info
-    if 'ar' in args.modelCode:
-        step_by_step = True
-        NET_PARAM.final.input += NET_PARAM.output_size + num_voice_feed_param
+if not args.trainTrill:
+    if args.sessMode == 'train':
+        NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
+        param.save_parameters(NET_PARAM, args.modelCode + '_param')
     else:
-        step_by_step = False
+        NET_PARAM = param.load_parameters(args.modelCode + '_param')
+        TrillNET_Param = param.load_parameters(args.trillCode + '_trill_param')
+        trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
 
-    MODEL = nnModel.HAN_VAE(NET_PARAM, DEVICE, step_by_step).to(DEVICE)
+    if 'ggnn_non_ar' in args.modelCode:
+        MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE, LOSS_TYPE, NUM_TEMPO_PARAM).to(DEVICE)
+    elif 'ggnn_ar' in args.modelCode:
+        MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
+    elif 'ggnn_simple_ar' in args.modelCode:
+        MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
+    elif 'sequential_ggnn' in args.modelCode:
+        MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
+    elif 'han' in args.modelCode:
+        if 'ar' in args.modelCode:
+            step_by_step = True
+        else:
+            step_by_step = False
+        MODEL = nnModel.HAN_VAE(NET_PARAM, DEVICE, step_by_step).to(DEVICE)
+    else:
+        print('Error: Unclassified model code')
+        # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
+
+    optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
+    # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 else:
-    print('Unclassified model code')
+    TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
+    TrillNET_Param.input_size = SCORE_INPUT + TOTAL_OUTPUT - num_trill_param
+    TrillNET_Param.output_size = num_trill_param
+    TrillNET_Param.note.size = 32
+    TrillNET_Param.note.layer = 1
+    param.save_parameters(TrillNET_Param, args.modelCode + '_trill_param')
+
+    trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
+
+    trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
 
-Second_NET_PARAM = copy.deepcopy(NET_PARAM)
-Second_NET_PARAM.input_size = SCORE_INPUT + NET_PARAM.output_size
-Second_NET_PARAM.output_size = num_second_param
-Second_NET_PARAM.final.input += Second_NET_PARAM.output_size - NET_PARAM.output_size - num_tempo_info - num_voice_feed_param - num_dynamic_info
-
-TrillNET_Param = copy.deepcopy(NET_PARAM)
-TrillNET_Param.input_size = SCORE_INPUT + NET_PARAM.output_size + Second_NET_PARAM.output_size
-TrillNET_Param.output_size = num_trill_param
-TrillNET_Param.note.size = (NET_PARAM.note.size + NET_PARAM.beat.size + NET_PARAM.measure.size + NET_PARAM.voice.size) * 2 + NET_PARAM.output_size + Second_NET_PARAM.output_size
-TrillNET_Param.note.layer = 3
 
 ### Model
 
@@ -230,7 +158,6 @@ TrillNET_Param.note.layer = 3
 
 # model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
 # second_model = ExtraHAN(NET_PARAM).to(device)
-trill_model =nnModel.TrillRNN(TrillNET_Param, is_trill_index_concated, LOSS_TYPE).to(DEVICE)
 
 
 if LOSS_TYPE == 'MSE':
@@ -254,9 +181,6 @@ elif LOSS_TYPE == 'CE':
                 data_size = 1
                 print('data size for loss calculation is zero')
         return -1 * torch.sum((target * torch.log(pred)  + (1-target) * torch.log(1-pred)) * aligned_status) / data_size
-optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
-# second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
-trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
 
 
 def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
@@ -370,122 +294,162 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
     num_notes = input.shape[1]
     total_valid_batch = int(math.ceil(num_notes / VALID_STEPS))
     with torch.no_grad():  # no need to track history in validation
-        model_eval = MODEL.eval()
-        trill_model_eval = trill_model.eval()
+        if not args.trainTrill:
+            model_eval = MODEL.eval()
+            if args.sessMode == 'test' or args.trainTrill:
+                trill_model_eval = trill_model.eval()
 
-        total_output = []
-        if num_notes < VALID_STEPS:
-            if input_y.shape[1] > 1:
-                prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
-            else:
-                prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
-            batch_graph = edges.to(DEVICE)
-            prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
-                                                              note_locations=note_locations, start_index=0,
-                                                              initial_z=initial_z)
-            # second_inputs = torch.cat((input,prime_outputs), 2)
-            # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
-            # model_eval = second_model.eval()
-            # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-            if torch.sum(input[:, :, is_trill_index_score]) > 0:
-                trill_inputs = torch.cat((input, prime_outputs), 2)
-                notes_hidden_cat = torch.cat((note_hidden_out, prime_outputs), 2)
-                trill_outputs = trill_model_eval(trill_inputs, notes_hidden_cat)
-            else:
-                trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(DEVICE)
-
-            outputs = torch.cat((prime_outputs, trill_outputs), 2)
-        else:
-            for i in range(total_valid_batch):
-                batch_start = i * VALID_STEPS
-                if i == total_valid_batch-1:
-                    batch_end = num_notes
-                else:
-                    batch_end = (i+1) * VALID_STEPS
+            total_output = []
+            if num_notes < VALID_STEPS:
                 if input_y.shape[1] > 1:
-                    prime_input_y = input_y[:,batch_start:batch_end, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
+                    prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
                 else:
                     prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
-                batch_input = input[:,batch_start:batch_end,:]
-                batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
-                prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, initial_z=initial_z)
+                batch_graph = edges.to(DEVICE)
+                prime_outputs, _, _, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
+                                                                  note_locations=note_locations, start_index=0,
+                                                                  initial_z=initial_z)
                 # second_inputs = torch.cat((input,prime_outputs), 2)
                 # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
                 # model_eval = second_model.eval()
                 # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-                if torch.sum(input[:,batch_start:batch_end,is_trill_index_score])> 0:
-                    trill_inputs = torch.cat((batch_input, prime_outputs), 2)
-                    notes_hidden_cat = torch.cat((note_hidden_out,prime_outputs), 2)
-                    trill_outputs = trill_model_eval(trill_inputs, notes_hidden_cat)
+                if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
+                    trill_inputs = torch.cat((input, prime_outputs), 2)
+                    trill_outputs = trill_model_eval(trill_inputs, batch_graph)
                 else:
-                    trill_outputs = torch.zeros(1, batch_end-batch_start, num_trill_param).to(DEVICE)
+                    trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(DEVICE)
 
-                temp_outputs = torch.cat((prime_outputs, trill_outputs),2)
-                total_output.append(temp_outputs)
-            outputs = torch.cat(total_output, 1)
-        return outputs
+                outputs = torch.cat((prime_outputs, trill_outputs), 2)
+            else:
+                for i in range(total_valid_batch):
+                    batch_start = i * VALID_STEPS
+                    if i == total_valid_batch-1:
+                        batch_end = num_notes
+                    else:
+                        batch_end = (i+1) * VALID_STEPS
+                    if input_y.shape[1] > 1:
+                        prime_input_y = input_y[:,batch_start:batch_end, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
+                    else:
+                        prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
+                    batch_input = input[:,batch_start:batch_end,:]
+                    batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
+                    prime_outputs, _, _, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, initial_z=initial_z)
+                    # second_inputs = torch.cat((input,prime_outputs), 2)
+                    # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
+                    # model_eval = second_model.eval()
+                    # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
+                    if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
+                        trill_inputs = torch.cat((batch_input, prime_outputs), 2)
+                        trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                    else:
+                        trill_outputs = torch.zeros(1, batch_end-batch_start, num_trill_param).to(DEVICE)
+
+                    temp_outputs = torch.cat((prime_outputs, trill_outputs),2)
+                    total_output.append(temp_outputs)
+                outputs = torch.cat(total_output, 1)
+            return outputs
+        else:
+            trill_model_eval = trill_model.eval()
+            if num_notes < VALID_STEPS:
+                batch_graph = edges.to(DEVICE)
+                if torch.sum(input[:, :, is_trill_index_score]) > 0:
+                    trill_inputs = torch.cat((input, input_y[:,:,:-num_trill_param]), 2)
+                    trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                else:
+                    trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(DEVICE)
+
+                outputs = torch.cat((input_y[:,:,:-num_trill_param], trill_outputs), 2)
+            else:
+                total_output = []
+                for i in range(total_valid_batch):
+                    batch_start = i * VALID_STEPS
+                    if i == total_valid_batch - 1:
+                        batch_end = num_notes
+                    else:
+                        batch_end = (i + 1) * VALID_STEPS
+                    batch_input = input[:, batch_start:batch_end, :]
+                    batch_graph = edges[:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
+                    batch_prime_output = input_y[:, batch_start:batch_end, :-num_trill_param]
+                    # second_inputs = torch.cat((input,prime_outputs), 2)
+                    # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
+                    # model_eval = second_model.eval()
+                    # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
+                    if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
+                        trill_inputs = torch.cat((batch_input, batch_prime_output), 2)
+                        trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                    else:
+                        trill_outputs = torch.zeros(1, batch_end - batch_start, num_trill_param).to(DEVICE)
+
+                    temp_outputs = torch.cat((batch_prime_output, trill_outputs), 2)
+                    total_output.append(temp_outputs)
+                outputs = torch.cat(total_output, 1)
+            return outputs
 
 
-def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, slice_index, batch_size=batch_size, time_steps=TIME_STEPS, model=MODEL, trill_model=trill_model):
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, slice_index, model, batch_size=batch_size):
     batch_start, batch_end = slice_index
 
     batch_x = torch.Tensor(x[batch_start:batch_end])
     batch_y = torch.Tensor(y[batch_start:batch_end])
-
     align_matched = torch.Tensor(align_matched[batch_start:batch_end])
     batch_x = batch_x.view((batch_size, -1, SCORE_INPUT)).to(DEVICE)
     batch_y = batch_y.view((batch_size, -1, TOTAL_OUTPUT)).to(DEVICE)
     align_matched = align_matched.view((batch_size, -1, 1)).to(DEVICE)
-    # input_y = input_y.view((batch_size, time_steps, TOTAL_OUTPUT)).to(device)
+    batch_graph = edges[:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
 
-    # async def train_prime(batch_x, batch_y, input_y, model):
-    prime_batch_x = batch_x
-    prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
+    if not args.trainTrill:
+        prime_batch_x = batch_x
+        prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
 
-    batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
 
-    model_train = model.train()
-    prime_outputs, perform_mu, perform_var, note_out \
-        = model_train(prime_batch_x, prime_batch_y, batch_graph, note_locations, batch_start)
+        model_train = model.train()
+        prime_outputs, perform_mu, perform_var, note_out \
+            = model_train(prime_batch_x, prime_batch_y, batch_graph, note_locations, batch_start)
 
-    # prime_outputs *= align_matched
-    # prime_batch_y *= align_matched
+        # prime_outputs *= align_matched
+        # prime_batch_y *= align_matched
 
-    tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
-    other_loss = criterion(prime_outputs[:,:,NUM_TEMPO_PARAM:], prime_batch_y[:,:,NUM_TEMPO_PARAM:], align_matched)
-    if isinstance(perform_mu, bool):
-        prime_loss = tempo_loss + other_loss
-        perform_kld = torch.zeros(1)
+        tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
+        other_loss = criterion(prime_outputs[:,:,NUM_TEMPO_PARAM:], prime_batch_y[:,:,NUM_TEMPO_PARAM:], align_matched)
+        if isinstance(perform_mu, bool):
+            prime_loss = tempo_loss + other_loss
+            perform_kld = torch.zeros(1)
+        else:
+            perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+            prime_loss = tempo_loss + other_loss + perform_kld
+        optimizer.zero_grad()
+        prime_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+        optimizer.step()
+
+        vel_loss = criterion(prime_outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
+                             prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX])
+        dev_loss = criterion(prime_outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
+                             prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX])
+        pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:])
+
+        return tempo_loss, vel_loss, dev_loss, pedal_loss, torch.zeros(1), perform_kld
+
     else:
-        perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-        prime_loss = tempo_loss + other_loss + perform_kld
-    optimizer.zero_grad()
-    prime_loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
-    optimizer.step()
+        trill_bool = batch_x[:,:,is_trill_index_score:is_trill_index_score+1]
+        if torch.sum(trill_bool) > 0:
+            trill_batch_x = torch.cat((batch_x, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
+            trill_batch_y = batch_y[:,:,-num_trill_param:]
+            model_train = model.train()
+            trill_output = model_train(trill_batch_x, batch_graph)
+            trill_loss = criterion(trill_output, trill_batch_y, trill_bool)
+            trill_optimizer.zero_grad()
+            trill_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            trill_optimizer.step()
+        else:
+            trill_loss = torch.zeros(1)
 
-    trill_bool = batch_x[:,:,is_trill_index_score:is_trill_index_score+1]
-    if torch.sum(trill_bool) > 0:
-        trill_batch_x = torch.cat((batch_x, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
-        note_out_cat = torch.cat((note_out, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
-        trill_batch_y = batch_y[:,:,-num_trill_param:]
-        model_train = trill_model.train()
-        trill_output = model_train(trill_batch_x, note_out_cat)
-        trill_loss = criterion(trill_output, trill_batch_y, trill_bool)
-        trill_optimizer.zero_grad()
-        trill_loss.backward()
-        torch.nn.utils.clip_grad_norm_(trill_model.parameters(), 0.25)
-        trill_optimizer.step()
-    else:
-        trill_loss = torch.zeros(1)
+        return torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), trill_loss, torch.zeros(1)
 
     # loss = criterion(outputs, batch_y)
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
-    vel_loss = criterion(prime_outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX])
-    dev_loss = criterion(prime_outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX])
-    pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:,:,PEDAL_PARAM_IDX:])
 
-    return tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, perform_kld
 
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
@@ -551,10 +515,13 @@ def make_slicing_indexes_by_measure(num_notes, measure_numbers):
 ### training
 
 if args.sessMode == 'train':
-    model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
+    if not args.trainTrill:
+        model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
+        params = sum([np.prod(p.size()) for p in model_parameters])
+    else:
+        model_parameters = filter(lambda p: p.requires_grad, trill_model.parameters())
+        params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of Network Parameters is ', params)
-
 
     # load data
     print('Loading the training data...')
@@ -580,6 +547,12 @@ if args.sessMode == 'train':
     best_prime_loss = float("inf")
     best_second_loss = float("inf")
     best_trill_loss = float("inf")
+
+    if args.trainTrill:
+        train_model = trill_model
+    else:
+        train_model = MODEL
+
     # total_step = len(train_loader)
     for epoch in range(num_epochs):
         tempo_loss_total = []
@@ -618,7 +591,7 @@ if args.sessMode == 'train':
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
-                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, slice_idx)
+                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, slice_idx, model=train_model)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
@@ -720,19 +693,20 @@ if args.sessMode == 'train':
         is_best_trill = mean_trill_loss < best_trill_loss
         best_trill_loss = min(mean_trill_loss, best_trill_loss)
 
-
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': MODEL.state_dict(),
-            'best_valid_loss': best_prime_loss,
-            'optimizer': optimizer.state_dict(),
-        }, is_best, model_name='prime')
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': trill_model.state_dict(),
-            'best_valid_loss': best_trill_loss,
-            'optimizer': trill_optimizer.state_dict(),
-        }, is_best_trill, model_name='trill')
+        if args.trainTrill:
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': trill_model.state_dict(),
+                'best_valid_loss': best_trill_loss,
+                'optimizer': trill_optimizer.state_dict(),
+            }, is_best_trill, model_name='trill')
+        else:
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': MODEL.state_dict(),
+                'best_valid_loss': best_prime_loss,
+                'optimizer': optimizer.state_dict(),
+            }, is_best, model_name='prime')
 
 
     #end of epoch
@@ -742,19 +716,22 @@ elif args.sessMode=='test':
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
-        model_codes = ['prime', 'trill']
-        for i in range(2):
-            filename = model_codes[i] + '_' + args.modelCode + args.resume
-            checkpoint = torch.load(filename)
-            # args.start_epoch = checkpoint['epoch']
-            # best_valid_loss = checkpoint['best_valid_loss']
-            if i == 0:
-                MODEL.load_state_dict(checkpoint['state_dict'])
-            elif i==1:
-                trill_model.load_state_dict(checkpoint['state_dict'])
-            # optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(filename, checkpoint['epoch']))
+        # model_codes = ['prime', 'trill']
+        filename = 'prime_' + args.modelCode + args.resume
+        checkpoint = torch.load(filename)
+        # args.start_epoch = checkpoint['epoch']
+        # best_valid_loss = checkpoint['best_valid_loss']
+        MODEL.load_state_dict(checkpoint['state_dict'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(filename, checkpoint['epoch']))
+
+        trill_filename = 'trill_' + args.trillCode + args.resume
+        checkpoint = torch.load(trill_filename)
+        trill_model.load_state_dict(checkpoint['state_dict'])
+        # optimizer.load_state_dict(checkpoint['optimizer'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(trill_filename, checkpoint['epoch']))
+
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
     path_name = args.testPath
