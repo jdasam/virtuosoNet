@@ -110,11 +110,10 @@ def initialize_model_parameters_by_code(model_code):
                                    net_param.measure.size) * 2 \
                                   + cons.NUM_PRIME_PARAM
     elif 'sequential_ggnn' in model_code:
-
         net_param.note.layer = 2
-        net_param.note.size = 32
+        net_param.note.size = 64
         net_param.measure.layer = 1
-        net_param.measure.size = 32
+        net_param.measure.size = 16
         net_param.final.layer = 1
         net_param.final.size = 64
 

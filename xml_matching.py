@@ -105,7 +105,7 @@ def matchXMLtoMIDI(xml_notes, midi_notes):
         if note.is_rest:
             return([])
         note_start = xml_note.note_duration.time_position
-        if note.note_duration.after_grace_note:
+        if note.note_duration.preceded_by_grace_note:
             note_start += 0.5
             match_threshold = 0.6
         elif note.note_notations.is_arpeggiate:
@@ -136,7 +136,7 @@ def matchXMLtoMIDI(xml_notes, midi_notes):
             candidates_list.append([])
             continue
         note_start = note.note_duration.time_position
-        if note.note_duration.after_grace_note:
+        if note.note_duration.preceded_by_grace_note:
             note_start += 0.5
             match_threshold = 0.6
         # check grace note and adjust time_position
@@ -280,10 +280,10 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
             num_grc = len(previous_grace_notes)
             for grc in reversed(previous_grace_notes):
                 if grc.voice == note.voice:
-                    note.note_duration.after_grace_note = True
+                    note.note_duration.preceded_by_grace_note = True
                     grc.note_duration.grace_order = grace_order
                     grc.following_note = note
-                    note.preceded_by_grace_note = True
+                    note.note_duration.preceded_by_grace_note = True
                     if grc.chord_index == 0:
                         grace_order -= 1
                     added_grc.append(grc)
@@ -360,12 +360,12 @@ def apply_rest_to_note(xml_notes, rests):
 
 def apply_after_grace_note_to_chord_notes(notes):
     for note in notes:
-        if note.note_duration.after_grace_note:
+        if note.note_duration.preceded_by_grace_note:
             onset= note.note_duration.xml_position
             voice = note.voice
             chords = find(lambda x: x.note_duration.xml_position == onset and x.voice == voice, notes)
             for chd in chords:
-                chd.note_duration.after_grace_note = True
+                chd.note_duration.preceded_by_grace_note = True
     return notes
 
 
@@ -527,7 +527,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.xml_position = note.note_duration.xml_position / total_length
         feature.grace_order = note.note_duration.grace_order
         feature.is_grace_note = int(note.note_duration.is_grace_note)
-        feature.preceded_by_grace_note = int(note.note_duration.after_grace_note)
+        feature.preceded_by_grace_note = int(note.note_duration.preceded_by_grace_note)
         feature.melody = int(note in melody_notes)
 
         feature.slur_beam_vec = [int(note.note_notations.is_slur_start), int(note.note_notations.is_slur_continue),
@@ -1749,7 +1749,7 @@ def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=600):
         pos_pair = position_pairs[i]
         current_position = pos_pair.xml_position
         current_time = pos_pair.time_position
-        if current_position > previous_position and previous_position >= 0:
+        if current_position > previous_position >= 0:
             minimum_time_interval = (current_position - previous_position) / pos_pair.divisions / maximum_qpm * 60 + 0.01
         else:
             minimum_time_interval = 0
@@ -2801,7 +2801,7 @@ def get_average_of_onset_time(pairs, index):
             prev_note = pairs[index-i]['xml']
             prev_midi = pairs[index-i]['midi']
             if prev_note.note_duration.xml_position == current_position \
-                    and not prev_note.note_duration.is_grace_note and not prev_note.note_duration.after_grace_note:
+                    and not prev_note.note_duration.is_grace_note and not prev_note.note_duration.preceded_by_grace_note:
                 if abs(standard_time - prev_midi.start) < 0.5:
                     cur_time += prev_midi.start
                     added_num += 1
@@ -2851,8 +2851,8 @@ def make_available_xml_midi_positions(pairs):
     # available_pairs = save_lowest_note_on_same_position(available_pairs)
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
     print('Number of mismatched notes: ', len(mismatched_indexes))
-    # for index in mismatched_indexes:
-    #     pairs[index] = []
+    for index in mismatched_indexes:
+        pairs[index] = []
 
     return pairs, available_pairs
 
