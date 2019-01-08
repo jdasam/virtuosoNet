@@ -134,7 +134,7 @@ if not args.trainTrill:
     elif 'sequential_ggnn' in args.modelCode:
         MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
     elif 'sggnn_alt' in args.modelCode:
-        MODEL = nnModel.SGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
+        MODEL = nnModel.SGGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
     elif 'han' in args.modelCode:
         if 'ar' in args.modelCode:
             step_by_step = True

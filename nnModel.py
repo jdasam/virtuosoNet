@@ -1263,7 +1263,7 @@ class SGGNN_Alt(nn.Module):
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU(),
-            nn.Linear(self.encoder_input_size, self.encoder_size),
+            nn.Linear(self.encoder_size, self.encoder_size),
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
@@ -1305,7 +1305,7 @@ class SGGNN_Alt(nn.Module):
         measure_numbers = [x.measure for x in note_locations]
         num_notes = x.size(1)
 
-        note_out = self.run_graph_network(x, edges, measure_numbers, start_index)
+        note_out, measure_hidden_out = self.run_graph_network(x, edges, measure_numbers, start_index)
         if type(initial_z) is not bool:
             if type(initial_z) is list or not initial_z.is_cuda:
                 perform_z = torch.Tensor(initial_z).to(self.device).view(1,-1)
@@ -1345,7 +1345,8 @@ class SGGNN_Alt(nn.Module):
         style_to_measure_hidden = self.init_performance_encoder(x.shape[0])
         num_measures = measure_numbers[start_index+num_notes-1] - measure_numbers[start_index] + 1
         perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1,num_measures, -1)
-        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, note_out[:,:self.measure_hidden_size*2,:]), 2)
+
+        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
         measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat, style_to_measure_hidden)
         measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
         out_with_result = torch.cat((note_out, measure_perform_style_spanned, initial_output), 2)
@@ -1391,7 +1392,7 @@ class SGGNN_Alt(nn.Module):
             notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
 
         final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
-        return final_out
+        return final_out, measure_hidden
 
     def encode_with_net(self, score_input, mean_net, var_net):
         mu = mean_net(score_input)
