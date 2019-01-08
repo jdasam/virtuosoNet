@@ -1283,6 +1283,8 @@ class TrillGraph(nn.Module):
     def forward(self, x, edges):
         # hidden = self.init_hidden(x.size(0))
         # hidden_out, hidden = self.lstm(x, hidden)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        if edges.shape[0] != self.num_edge_types:
+            edges = edges[:self.num_edge_types, :, :]
 
         # Decode the hidden state of the last time step
         is_trill_mat = x[:, :, self.is_trill_index]

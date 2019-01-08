@@ -20,7 +20,7 @@ import nnModel
 import model_parameters as param
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test")
+parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
 # parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 # parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
@@ -146,7 +146,7 @@ else:
     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
     TrillNET_Param.input_size = SCORE_INPUT + TOTAL_OUTPUT - num_trill_param
     TrillNET_Param.output_size = num_trill_param
-    TrillNET_Param.note.size = 32
+    TrillNET_Param.note.size = 16
     TrillNET_Param.note.layer = 1
     TrillNET_Param.num_edge_types = N_EDGE_TYPE
     param.save_parameters(TrillNET_Param, args.modelCode + '_trill_param')
@@ -243,16 +243,6 @@ def edges_to_matrix(edges, num_notes):
             matrix[edge_type, edg[1], edg[0]] = 1
 
     matrix[num_keywords, :,:] = np.identity(num_notes)
-
-    # for k in range(num_keywords):
-    #     selected_key = GRAPH_KEYS[k]
-    #     selected_edge = edges[selected_key]
-    #     for i in range(time_steps):
-    #         abs_index = start_index + i
-    #         for edge_index in selected_edge[abs_index]:
-    #             if 0 <= edge_index - start_index < time_steps:
-    #                 matrix[k, i, edge_index-start_index] = 1
-
     matrix = torch.Tensor(matrix)
     return matrix
 
@@ -296,6 +286,105 @@ def categorize_value_to_vector(y, bins):
         y_categorized.append(total_vec)
 
     return y_categorized
+
+def load_file_and_generate_performance(filename, composer=args.composer, z=args.latent, save_name='performed_by_nn'):
+    path_name = filename
+    composer_name = composer
+    vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
+    test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
+                                                                                       args.startTempo, composer_name,
+                                                                                       vel_pair)
+    batch_x = torch.Tensor(test_x).to(DEVICE)
+    batch_x = batch_x.view(1, -1, SCORE_INPUT)
+
+    for i in range(len(STDS)):
+        for j in range(len(STDS[i])):
+            if STDS[i][j] < 1e-4:
+                STDS[i][j] = 1
+
+    if args.startTempo == 0:
+        start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
+        start_tempo = math.log(start_tempo, 10)
+        # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
+    else:
+        start_tempo = math.log(args.startTempo, 10)
+    input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
+
+    #
+    if LOSS_TYPE == 'MSE':
+        start_tempo_norm = (start_tempo - MEANS[1][0]) / STDS[1][0]
+        input_y[0, 0, 0] = start_tempo_norm
+        for i in range(1, TOTAL_OUTPUT - 1):
+            input_y[0, 0, i] -= MEANS[1][i]
+            input_y[0, 0, i] /= STDS[1][i]
+        input_y = input_y.to(DEVICE)
+        tempo_stats = [MEANS[1][0], STDS[1][0]]
+    else:
+        tempo_stats = [0, 0]
+    initial_z = [z] * NET_PARAM.encoder.size
+    graph = edges_to_matrix(edges, batch_x.shape[1])
+    prediction = perform_xml(batch_x, input_y, graph, note_locations, tempo_stats, initial_z=initial_z)
+
+    prediction = np.squeeze(np.asarray(prediction))
+    num_notes = len(prediction)
+    if LOSS_TYPE == 'MSE':
+        for i in range(15):
+            prediction[:, i] *= STDS[1][i]
+            prediction[:, i] += MEANS[1][i]
+    elif LOSS_TYPE == 'CE':
+        prediction_in_value = np.zeros((num_notes, 16))
+        for i in range(num_notes):
+            bin_range_start = 0
+            for j in range(15):
+                feature_bin_size = len(BINS[j]) - 1
+                feature_class = np.argmax(prediction[i, bin_range_start:bin_range_start + feature_bin_size])
+                feature_value = (BINS[j][feature_class] + BINS[j][feature_class + 1]) / 2
+                prediction_in_value[i, j] = feature_value
+                bin_range_start += feature_bin_size
+            prediction_in_value[i, 15] = prediction[i, -1]
+        prediction = prediction_in_value
+    output_features = []
+    num_notes = len(xml_notes)
+    for i in range(num_notes):
+        pred = prediction[i]
+        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
+        feat = xml_matching.MusicFeature()
+        feat.qpm = pred[0]
+        feat.velocity = pred[1]
+        feat.xml_deviation = pred[2]
+        feat.articulation = pred[3]
+        # feat.xml_deviation = 0
+        feat.pedal_refresh_time = pred[4]
+        feat.pedal_cut_time = pred[5]
+        feat.pedal_at_start = pred[6]
+        feat.pedal_at_end = pred[7]
+        feat.soft_pedal = pred[8]
+        feat.pedal_refresh = pred[9]
+        feat.pedal_cut = pred[10]
+
+        feat.beat_index = note_locations[i].beat
+        feat.measure_index = note_locations[i].measure
+
+        feat.trill_param = pred[11:16]
+        feat.trill_param[0] = round(feat.trill_param[0]).astype(int)
+        feat.trill_param[1] = (feat.trill_param[1])
+        feat.trill_param[2] = (feat.trill_param[2])
+        feat.trill_param[3] = (feat.trill_param[3])
+        feat.trill_param[4] = round(feat.trill_param[4])
+
+        if test_x[i][is_trill_index_score] == 1:
+            print(feat.trill_param)
+        output_features.append(feat)
+
+    output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time=1,
+                                                           predicted=True)
+    output_midi = xml_matching.xml_notes_to_midi(output_xml)
+    piece_name = path_name.split('/')
+    save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
+
+    performanceWorm.plot_performance_worm(output_features, save_name + '.png')
+    xml_matching.save_midi_notes_as_piano_midi(output_midi, save_name + '.mid',
+                                               bool_pedal=args.boolPedal, disklavier=True)
 
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
@@ -641,28 +730,8 @@ if args.sessMode == 'train':
             batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
             # input_y = torch.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
             align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
-            # align_matched = align_matched.repeat(1,1,TOTAL_OUTPUT)
-            # if args.trainTrill:
-            #     input_y = torch.Tensor(prev_feature).view((1, -1, output_size)).to(device)
-            # else:
-            #     input_y = torch.Tensor(prev_feature)
-            #     input_y = input_y[:,:-num_trill_param].view((1, -1, output_size - num_trill_param)).to(device)
-            # hidden = model.init_hidden(1)
-            # final_hidden = model.init_final_layer(1)
-            # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
-
-            # batch_x = Variable(torch.Tensor(test_x)).view((1, -1, SCORE_INPUT)).to(device)
-            #
             outputs = perform_xml(batch_x, batch_y, graphs, note_locations, tempo_stats, valid_y=batch_y)
 
-            # outputs *= align_matched
-            # batch_y *= align_matched
-            # outputs = outputs.view(1,-1,NET_PARAM.output_size)
-            # outputs = torch.Tensor(outputs).view((1, -1, output_size)).to(device)
-            # if args.trainTrill:
-            #     outputs = torch.Tensor(outputs).view((1, -1, output_size))
-            # else:
-            #     outputs = torch.Tensor(outputs).view((1, -1, output_size - num_trill_param))
             valid_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:-num_trill_param], batch_y[:,:,NUM_TEMPO_PARAM:-num_trill_param], align_matched)
             tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
             if LOSS_TYPE =='CE':
@@ -723,7 +792,7 @@ if args.sessMode == 'train':
     #end of epoch
 
 
-elif args.sessMode=='test':
+elif args.sessMode in ['test', 'testAll', 'encode']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -745,221 +814,109 @@ elif args.sessMode=='test':
 
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
-    path_name = args.testPath
-    composer_name = args.composer
-    vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
-    test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS, args.startTempo, composer_name, vel_pair)
-    batch_x = torch.Tensor(test_x).to(DEVICE)
-    batch_x = batch_x.view(1, -1, SCORE_INPUT)
 
-    for i in range(len(STDS)):
-        for j in range(len(STDS[i])):
-            if STDS[i][j] < 1e-4:
-                STDS[i][j] = 1
-    #
-    # test_x = np.asarray(test_x)
-    # timestep_quantize_num = int(math.ceil(test_x.shape[0] / time_steps))
-    # padding_size = timestep_quantize_num * time_steps - test_x.shape[0]
-    # test_x_padded = np.pad(test_x, ((0, padding_size), (0, 0)), 'constant')
-    # batch_x = test_x_padded.reshape((-1, time_steps, input_size))
-    # batch_x = Variable(torch.from_numpy(batch_x)).float().to(device)
-    # tempos = xml_doc.get_tempos()
+    if args.sessMode == 'test':
+        load_file_and_generate_performance(args.testPath)
+    elif args.sessMode=='testAll':
+        test_list = [('schumann', 'Schumann'),
+                ('mozart545-1', 'Mozart'),
+                ('chopin_nocturne', 'Chopin'),
+                ('chopin_fantasie_impromptu', 'Chopin'),
+                ('cho_waltz_69_2', 'Chopin'),
+                ('lacampanella', 'Liszt'),
+                ('bohemian_rhapsody', 'Liszt')
+                ]
+        for piece in test_list:
+            path = 'test_pieces/' + piece[0] + '/'
+            composer = piece[1]
+            for z in [-1.5, 0, 1.5]:
+                load_file_and_generate_performance(path, composer, z=z)
 
-    if args.startTempo == 0:
-        start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
-        start_tempo = math.log(start_tempo, 10)
-        # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
-    else:
-        start_tempo = math.log(args.startTempo, 10)
-    input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
-    # if args.trainTrill:
-    #     input_y = torch.zeros(1, 1, output_size)
-    # else:
-    #     input_y = torch.zeros(1, 1, output_size - num_trill_param)
-    # input_y[0,0,0] = start_tempo
-    # # input_y[0,0,1] = 1
-    # # input_y[0,0,2] = 64
-
-    #
-    if LOSS_TYPE == 'MSE':
-        start_tempo_norm = (start_tempo - MEANS[1][0]) / STDS[1][0]
-        input_y[0,0,0] = start_tempo_norm
-        for i in range(1, TOTAL_OUTPUT - 1):
-            input_y[0, 0, i] -= MEANS[1][i]
-            input_y[0, 0, i] /= STDS[1][i]
-        input_y = input_y.to(DEVICE)
-        tempo_stats = [MEANS[1][0], STDS[1][0]]
-    else:
-        tempo_stats = [0, 0]
-    initial_z = [args.latent] * NET_PARAM.encoder.size
-    graph = edges_to_matrix(edges, batch_x.shape[1])
-    prediction = perform_xml(batch_x, input_y, graph, note_locations, tempo_stats, initial_z=initial_z)
-
-    # outputs = outputs.view(-1, num_output)
-    prediction = np.squeeze(np.asarray(prediction))
-    num_notes = len(prediction)
-    # prediction = outputs.cpu().detach().numpy()
-    if LOSS_TYPE == 'MSE':
-        for i in range(15):
-            prediction[:, i] *= STDS[1][i]
-            prediction[:, i] += MEANS[1][i]
-    elif LOSS_TYPE == 'CE':
-        prediction_in_value = np.zeros((num_notes,16))
-        for i in range(num_notes):
-            bin_range_start = 0
-            for j in range(15):
-                feature_bin_size = len(BINS[j]) - 1
-                feature_class = np.argmax(prediction[i,bin_range_start:bin_range_start+feature_bin_size])
-                feature_value = (BINS[j][feature_class] + BINS[j][feature_class+1]) / 2
-                prediction_in_value[i,j] = feature_value
-                bin_range_start += feature_bin_size
-            prediction_in_value[i,15] = prediction[i,-1]
-        prediction = prediction_in_value
-    # print(prediction)
-    # print(means, stds)
-    output_features = []
-    # for i in range(100):
-    #     pred = prediction[i]
-    #     print(pred[0:4])
-    num_notes = len(xml_notes)
-    for i in range(num_notes):
-        pred = prediction[i]
-        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
-        feat = xml_matching.MusicFeature()
-        feat.qpm = pred[0]
-        feat.velocity = pred[1]
-        feat.xml_deviation = pred[2]
-        feat.articulation = pred[3]
-        # feat.xml_deviation = 0
-        feat.pedal_refresh_time = pred[4]
-        feat.pedal_cut_time = pred[5]
-        feat.pedal_at_start = pred[6]
-        feat.pedal_at_end = pred[7]
-        feat.soft_pedal = pred[8]
-        feat.pedal_refresh = pred[9]
-        feat.pedal_cut = pred[10]
-
-        feat.beat_index = note_locations[i].beat
-        feat.measure_index = note_locations[i].measure
-
-        feat.trill_param = pred[11:16]
-        feat.trill_param[0] = round(feat.trill_param[0]).astype(int)
-        feat.trill_param[1] = (feat.trill_param[1])
-        feat.trill_param[2] = (feat.trill_param[2])
-        feat.trill_param[3] = (feat.trill_param[3])
-        feat.trill_param[4] = round(feat.trill_param[4])
-
-        if test_x[i][is_trill_index_score] == 1:
-            print(feat.trill_param)
-        #
-        # feat.passed_second = pred[0]
-        # feat.duration_second = pred[1]
-        # feat.pedal_refresh_time = pred[3]
-        # feat.pedal_cut_time = pred[4]
-        # feat.pedal_at_start = pred[5]
-        # feat.pedal_at_end = pred[6]
-        # feat.soft_pedal = pred[7]
-        # feat.pedal_refresh = pred[8]
-        # feat.pedal_cut = pred[9]
-
-        # feat = {'qpm': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': pred[3],
-        #         'pedal_at_start': pred[6], 'pedal_at_end': pred[7], 'soft_pedal': pred[8],
-        #         'pedal_refresh_time': pred[4], 'pedal_cut_time': pred[5], 'pedal_refresh': pred[9],
-        #         'pedal_cut': pred[10]}
-        output_features.append(feat)
-    num_notes = len(xml_notes)
-    performanceWorm.plot_performance_worm(output_features, path_name + 'perfWorm.png')
-
-    # output_xml = xml_matching.apply_perform_features(xml_notes, output_features)
-    output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time= 1, predicted=True)
-    # output_xml = xml_matching.apply_time_position_features(xml_notes, output_features, start_time=1)
-
-    output_midi = xml_matching.xml_notes_to_midi(output_xml)
-
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, path_name + 'performed_by_nn.mid', bool_pedal=args.boolPedal, disklavier=True)
+    elif args.sessMode=='encode':
+        pass
 
 
 
-elif args.sessMode=='plot':
-    if os.path.isfile(args.resume):
-        print("=> loading checkpoint '{}'".format(args.resume))
-        checkpoint = torch.load(args.resume)
-        # args.start_epoch = checkpoint['epoch']
-        best_valid_loss = checkpoint['best_valid_loss']
-        MODEL.load_state_dict(checkpoint['state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        print("=> loaded checkpoint '{}' (epoch {})"
-              .format(args.resume, checkpoint['epoch']))
-    else:
-        print("=> no checkpoint found at '{}'".format(args.resume))
-
-
-    with open(args.dataName + ".dat", "rb") as f:
-        u = pickle._Unpickler(f)
-        u.encoding = 'latin1'
-        # p = u.load()
-        # complete_xy = pickle.load(f)
-        complete_xy = u.load()
-
-    with open(args.dataName + "_stat.dat", "rb") as f:
-        u = pickle._Unpickler(f)
-        u.encoding = 'latin1'
-        MEANS, STDS = u.load()
-
-    perform_num = len(complete_xy)
-    tempo_stats = [MEANS[1][0], STDS[1][0]]
-
-    train_perf_num = int(perform_num * training_ratio)
-    train_xy = complete_xy[:train_perf_num]
-    test_xy = complete_xy[train_perf_num:]
-
-    n_tuple = 0
-    for xy_tuple in test_xy:
-        n_tuple += 1
-        train_x = xy_tuple[0]
-        train_y = xy_tuple[1]
-        prev_feature = xy_tuple[2]
-        note_locations = xy_tuple[3]
-
-        data_size = len(train_x)
-        total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
-        batch_size=1
-        for step in range(total_batch_num - 1):
-            batch_start = step * batch_size * TIME_STEPS
-            batch_end = (step + 1) * batch_size * TIME_STEPS
-            batch_x = Variable(
-                torch.Tensor(train_x[batch_start:batch_end]))
-            batch_y = train_y[batch_start:batch_end]
-            # print(batch_x.shape, batch_y.shape)
-            # input_y = Variable(
-            #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
-            # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-            batch_x = batch_x.view((batch_size, TIME_STEPS, SCORE_INPUT)).to(DEVICE)
-            # is_beat_batch = is_beat_list[batch_start:batch_end]
-            # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
-            # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
-
-            # hidden = model.init_hidden(1)
-            # final_hidden = model.init_final_layer(1)
-            # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
-            #
-            if args.trainTrill:
-                input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
-            else:
-                input_y = torch.zeros(1, 1, TOTAL_OUTPUT - num_trill_param)
-
-            input_y[0] = batch_y[0][0]
-            input_y = input_y.view((1, 1, TOTAL_OUTPUT)).to(DEVICE)
-            outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats)
-            outputs = torch.Tensor(outputs).view((1, -1, TOTAL_OUTPUT))
-
-            outputs = outputs.cpu().detach().numpy()
-            # batch_y = batch_y.cpu().detach().numpy()
-            batch_y = np.asarray(batch_y).reshape((1, -1, TOTAL_OUTPUT))
-            plt.figure(figsize=(10, 7))
-            for i in range(4):
-                plt.subplot(411+i)
-                plt.plot(batch_y[0, :, i])
-                plt.plot(outputs[0, :, i])
-            plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
-            plt.close()
+# elif args.sessMode=='plot':
+#     if os.path.isfile(args.resume):
+#         print("=> loading checkpoint '{}'".format(args.resume))
+#         checkpoint = torch.load(args.resume)
+#         # args.start_epoch = checkpoint['epoch']
+#         best_valid_loss = checkpoint['best_valid_loss']
+#         MODEL.load_state_dict(checkpoint['state_dict'])
+#         optimizer.load_state_dict(checkpoint['optimizer'])
+#         print("=> loaded checkpoint '{}' (epoch {})"
+#               .format(args.resume, checkpoint['epoch']))
+#     else:
+#         print("=> no checkpoint found at '{}'".format(args.resume))
+#
+#
+#     with open(args.dataName + ".dat", "rb") as f:
+#         u = pickle._Unpickler(f)
+#         u.encoding = 'latin1'
+#         # p = u.load()
+#         # complete_xy = pickle.load(f)
+#         complete_xy = u.load()
+#
+#     with open(args.dataName + "_stat.dat", "rb") as f:
+#         u = pickle._Unpickler(f)
+#         u.encoding = 'latin1'
+#         MEANS, STDS = u.load()
+#
+#     perform_num = len(complete_xy)
+#     tempo_stats = [MEANS[1][0], STDS[1][0]]
+#
+#     train_perf_num = int(perform_num * training_ratio)
+#     train_xy = complete_xy[:train_perf_num]
+#     test_xy = complete_xy[train_perf_num:]
+#
+#     n_tuple = 0
+#     for xy_tuple in test_xy:
+#         n_tuple += 1
+#         train_x = xy_tuple[0]
+#         train_y = xy_tuple[1]
+#         prev_feature = xy_tuple[2]
+#         note_locations = xy_tuple[3]
+#
+#         data_size = len(train_x)
+#         total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
+#         batch_size=1
+#         for step in range(total_batch_num - 1):
+#             batch_start = step * batch_size * TIME_STEPS
+#             batch_end = (step + 1) * batch_size * TIME_STEPS
+#             batch_x = Variable(
+#                 torch.Tensor(train_x[batch_start:batch_end]))
+#             batch_y = train_y[batch_start:batch_end]
+#             # print(batch_x.shape, batch_y.shape)
+#             # input_y = Variable(
+#             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
+#             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
+#             batch_x = batch_x.view((batch_size, TIME_STEPS, SCORE_INPUT)).to(DEVICE)
+#             # is_beat_batch = is_beat_list[batch_start:batch_end]
+#             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
+#             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
+#
+#             # hidden = model.init_hidden(1)
+#             # final_hidden = model.init_final_layer(1)
+#             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
+#             #
+#             if args.trainTrill:
+#                 input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
+#             else:
+#                 input_y = torch.zeros(1, 1, TOTAL_OUTPUT - num_trill_param)
+#
+#             input_y[0] = batch_y[0][0]
+#             input_y = input_y.view((1, 1, TOTAL_OUTPUT)).to(DEVICE)
+#             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats)
+#             outputs = torch.Tensor(outputs).view((1, -1, TOTAL_OUTPUT))
+#
+#             outputs = outputs.cpu().detach().numpy()
+#             # batch_y = batch_y.cpu().detach().numpy()
+#             batch_y = np.asarray(batch_y).reshape((1, -1, TOTAL_OUTPUT))
+#             plt.figure(figsize=(10, 7))
+#             for i in range(4):
+#                 plt.subplot(411+i)
+#                 plt.plot(batch_y[0, :, i])
+#                 plt.plot(outputs[0, :, i])
+#             plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
+#             plt.close()
