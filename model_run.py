@@ -18,6 +18,7 @@ import random
 import xml_matching
 import nnModel
 import model_parameters as param
+import model_constants as cons
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
@@ -38,6 +39,8 @@ parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="com
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
 parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
 parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
+parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (str(x).lower() == 'true'), help='resume training after loading model')
+parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help='resume training after loading model')
 
 
 args = parser.parse_args()
@@ -130,6 +133,8 @@ if not args.trainTrill:
         MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
     elif 'sequential_ggnn' in args.modelCode:
         MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
+    elif 'sggnn_alt' in args.modelCode:
+        MODEL = nnModel.SGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
     elif 'han' in args.modelCode:
         if 'ar' in args.modelCode:
             step_by_step = True
@@ -287,6 +292,7 @@ def categorize_value_to_vector(y, bins):
 
     return y_categorized
 
+
 def load_file_and_generate_performance(filename, composer=args.composer, z=args.latent, save_name='performed_by_nn'):
     path_name = filename
     composer_name = composer
@@ -321,7 +327,12 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         tempo_stats = [MEANS[1][0], STDS[1][0]]
     else:
         tempo_stats = [0, 0]
-    initial_z = [z] * NET_PARAM.encoder.size
+
+    if type(z) is dict:
+        initial_z = z['z']
+        z = z['key']
+    else:
+        initial_z = [z] * NET_PARAM.encoder.size
     graph = edges_to_matrix(edges, batch_x.shape[1])
     prediction = perform_xml(batch_x, input_y, graph, note_locations, tempo_stats, initial_z=initial_z)
 
@@ -385,6 +396,45 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
     performanceWorm.plot_performance_worm(output_features, save_name + '.png')
     xml_matching.save_midi_notes_as_piano_midi(output_midi, save_name + '.mid',
                                                bool_pedal=args.boolPedal, disklavier=True)
+
+
+def load_file_and_encode_style(path, perf_name, composer_name):
+    test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(path, perf_name, composer_name, MEANS, STDS)
+    test_x = torch.Tensor(test_x).to(DEVICE).view(1, -1, SCORE_INPUT)
+    test_y = torch.Tensor(test_y).to(DEVICE).view(1, -1, TOTAL_OUTPUT)
+    edges = edges_to_matrix(edges, test_x.shape[1])
+    perform_z = encode_performance_style_vector(test_x, test_y, edges, note_locations)
+    return perform_z
+
+
+def encode_performance_style_vector(input, input_y, edges, note_locations):
+    with torch.no_grad():
+        model_eval = MODEL.eval()
+        prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
+        batch_graph = edges.to(DEVICE)
+        encoded_z = model_eval(input, prime_input_y, batch_graph,
+                               note_locations=note_locations, start_index=0, return_z=True)
+    return encoded_z
+
+
+def encode_all_emotionNet_data(path_list, style_keywords):
+    perform_z_by_emotion = []
+    for key in style_keywords:
+        total_perform_z = []
+        for pair in path_list:
+            path = cons.emotion_folder_path + pair[0] + '/'
+            composer_name = pair[1]
+            perf_name = key + '_sub1'
+            perform_z = load_file_and_encode_style(path, perf_name, composer_name)
+            total_perform_z.append(perform_z)
+        total_perform_z = torch.stack(total_perform_z)
+        mean_perform_z = torch.mean(total_perform_z, 0, True)
+        print(key, mean_perform_z)
+        perform_z_by_emotion.append({'z': mean_perform_z, 'key': key})
+
+    return perform_z_by_emotion
+        # with open(args.testPath + args.perfName + '_style' + '.dat', 'wb') as f:
+        #     pickle.dump(mean_perform_z, f, protocol=2)
 
 
 def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = None, initial_z=False):
@@ -620,6 +670,30 @@ if args.sessMode == 'train':
         params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of Network Parameters is ', params)
 
+
+    best_prime_loss = float("inf")
+    best_second_loss = float("inf")
+    best_trill_loss = float("inf")
+    start_epoch = 0
+
+
+    if args.resumeTraining and not args.trainTrill:
+        if os.path.isfile('prime_' + args.modelCode + args.resume):
+            print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
+            # model_codes = ['prime', 'trill']
+            filename = 'prime_' + args.modelCode + args.resume
+            checkpoint = torch.load(filename)
+            # args.start_epoch = checkpoint['epoch']
+            # best_valid_loss = checkpoint['best_valid_loss']
+            MODEL.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(filename, checkpoint['epoch']))
+            start_epoch = checkpoint['epoch'] - 1
+            best_prime_loss = checkpoint['best_valid_loss']
+            print('Best valid loss was ', best_prime_loss)
+
+
     # load data
     print('Loading the training data...')
     training_data_name = args.dataName + ".dat"
@@ -644,9 +718,6 @@ if args.sessMode == 'train':
     print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
 
     print(train_xy[0][0][0])
-    best_prime_loss = float("inf")
-    best_second_loss = float("inf")
-    best_trill_loss = float("inf")
 
     if args.trainTrill:
         train_model = trill_model
@@ -654,7 +725,7 @@ if args.sessMode == 'train':
         train_model = MODEL
 
     # total_step = len(train_loader)
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         tempo_loss_total = []
         vel_loss_total = []
         dev_loss_total = []
@@ -792,7 +863,7 @@ if args.sessMode == 'train':
     #end of epoch
 
 
-elif args.sessMode in ['test', 'testAll', 'encode']:
+elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -818,23 +889,22 @@ elif args.sessMode in ['test', 'testAll', 'encode']:
     if args.sessMode == 'test':
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
-        test_list = [('schumann', 'Schumann'),
-                ('mozart545-1', 'Mozart'),
-                ('chopin_nocturne', 'Chopin'),
-                ('chopin_fantasie_impromptu', 'Chopin'),
-                ('cho_waltz_69_2', 'Chopin'),
-                ('lacampanella', 'Liszt'),
-                ('bohemian_rhapsody', 'Liszt')
-                ]
+        path_list = cons.emotion_data_path
+        emotion_list = cons.emotion_key_list
+        perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
+        test_list = cons.test_piece_list
         for piece in test_list:
             path = 'test_pieces/' + piece[0] + '/'
             composer = piece[1]
-            for z in [-1.5, 0, 1.5]:
-                load_file_and_generate_performance(path, composer, z=z)
+            for perform_z_pair in perform_z_by_list:
+                load_file_and_generate_performance(path, composer, z=perform_z_pair)
+            load_file_and_generate_performance(path, composer, z=0)
 
-    elif args.sessMode=='encode':
-        pass
-
+    elif args.sessMode == 'encode':
+        perform_z = load_file_and_encode_style(args.testPath, args.perfName, args.composer)
+        print(perform_z)
+        with open(args.testPath + args.perfName + '_style' + '.dat', 'wb') as f:
+            pickle.dump(perform_z, f, protocol=2)
 
 
 # elif args.sessMode=='plot':

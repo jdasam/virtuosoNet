@@ -23,7 +23,6 @@ class NetParams:
         self.graph_iteration = 5
         self.num_edge_types = 10
 
-
 def save_parameters(param, save_name):
     with open(save_name + ".dat", "wb") as f:
         pickle.dump(param, f, protocol=2)
@@ -109,18 +108,18 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size) * 2 \
                                   + cons.NUM_PRIME_PARAM
-    elif 'sequential_ggnn' in model_code:
+    elif 'sequential_ggnn' or 'sggnn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 32
         net_param.measure.layer = 1
-        net_param.measure.size = 16
+        net_param.measure.size = 8
         net_param.final.layer = 1
         net_param.final.size = 64
 
-        net_param.encoder.size = 16
+        net_param.encoder.size = 32
         net_param.encoder.layer = 2
 
-        net_param.time_reg.size = 32
+        net_param.time_reg.size = 16
         net_param.graph_iteration = 5
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
@@ -129,15 +128,15 @@ def initialize_model_parameters_by_code(model_code):
 
     elif 'han' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 48
+        net_param.note.size = 64
         net_param.beat.layer = 2
-        net_param.beat.size = 16
+        net_param.beat.size = 32
         net_param.measure.layer = 1
-        net_param.measure.size = 8
+        net_param.measure.size = 16
         net_param.final.layer = 1
         net_param.final.size = 32
         net_param.voice.layer = 2
-        net_param.voice.size = 48
+        net_param.voice.size = 64
         net_param.sum.layer = 2
         net_param.sum.size = 64
 

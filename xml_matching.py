@@ -3636,3 +3636,68 @@ def composer_name_to_vec(composer_name):
     one_hot_vec[index] = 1
 
     return one_hot_vec
+
+
+def read_score_perform_pair(path, perf_name, composer_name, means, stds):
+    xml_name = path + 'musicxml_cleaned.musicxml'
+    score_midi_name = path + 'midi_cleaned.mid'
+
+    if not os.path.isfile(xml_name):
+        xml_name = path + 'xml.xml'
+        score_midi_name = path + 'midi.mid'
+
+    xml_object = MusicXMLDocument(xml_name)
+    xml_notes = extract_notes(xml_object, melody_only=False, grace_note=True)
+    directions, time_signatures = extract_directions(xml_object)
+    xml_notes = apply_directions_to_notes(xml_notes, directions, time_signatures)
+
+    score_midi = midi_utils.to_midi_zero(score_midi_name)
+    score_midi_notes = score_midi.instruments[0].notes
+    score_midi_notes.sort(key=lambda x:x.start)
+    match_list = matchXMLtoMIDI(xml_notes, score_midi_notes)
+    score_pairs = make_xml_midi_pair(xml_notes, score_midi_notes, match_list)
+    measure_positions = extract_measure_position(xml_object)
+
+    perf_midi_name = path + perf_name + '.mid'
+    perf_midi = midi_utils.to_midi_zero(perf_midi_name)
+    perf_midi = midi_utils.add_pedal_inf_to_notes(perf_midi)
+    perf_midi_notes= perf_midi.instruments[0].notes
+    corresp_name = path +  perf_name + '_infer_corresp.txt'
+    corresp = read_corresp(corresp_name)
+
+    xml_perform_match = match_score_pair2perform(score_pairs, perf_midi_notes, corresp)
+    perform_pairs = make_xml_midi_pair(xml_notes, perf_midi_notes, xml_perform_match)
+    print("performance name is " + perf_name)
+    check_pairs(perform_pairs)
+    perform_features = extract_perform_features(xml_object, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
+    features = make_index_continuous(perform_features, score=True)
+    composer_vec = composer_name_to_vec(composer_name)
+    edges = score_graph.make_edge(xml_notes)
+
+    for i in range(len(stds[0])):
+        if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
+            stds[0][i] = 1
+
+    test_x = []
+    test_y = []
+    note_locations = []
+    for feat in features:
+        temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
+                  (feat.beat_importance - means[0][2]) / stds[0][2], (feat.measure_length - means[0][3]) / stds[0][3],
+                  (feat.qpm_primo - means[0][4]) / stds[0][4], (feat.following_rest - means[0][5]) / stds[0][5],
+                  (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+                  (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7],
+                  feat.beat_position, feat.xml_position, feat.grace_order,
+                  feat.preceded_by_grace_note] \
+                 + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
+        temp_y = [feat.qpm, feat.velocity, feat.xml_deviation,
+                  feat.articulation, feat.pedal_refresh_time, feat.pedal_cut_time,
+                  feat.pedal_at_start, feat.pedal_at_end, feat.soft_pedal,
+                  feat.pedal_refresh, feat.pedal_cut] + feat.trill_param
+        for i in range(11):
+            temp_y[i] = (temp_y[i] - means[1][i]) / stds[1][i]
+        test_x.append(temp_x)
+        test_y.append(temp_y)
+        note_locations.append(feat.note_location)
+
+    return test_x, test_y, edges, note_locations
