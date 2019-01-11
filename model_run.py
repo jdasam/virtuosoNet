@@ -135,6 +135,8 @@ if not args.trainTrill:
         MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
     elif 'sggnn_alt' in args.modelCode:
         MODEL = nnModel.SGGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
+    elif 'sggnn_note' in args.modelCode:
+        MODEL = nnModel.SGGNN_Note(NET_PARAM, DEVICE).to(DEVICE)
     elif 'han' in args.modelCode:
         if 'ar' in args.modelCode:
             step_by_step = True
@@ -533,7 +535,7 @@ def perform_xml(input, input_y, edges, note_locations, tempo_stats, valid_y = No
             return outputs
 
 
-def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, slice_index, model, batch_size=batch_size):
+def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched, slice_index, model, batch_size=batch_size, kld_weight=1):
     batch_start, batch_end = slice_index
 
     batch_x = torch.Tensor(x[batch_start:batch_end])
@@ -563,7 +565,7 @@ def batch_time_step_run(x, y, prev_feature, edges, note_locations, align_matched
             perform_kld = torch.zeros(1)
         else:
             perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-            prime_loss = tempo_loss + other_loss + perform_kld
+            prime_loss = tempo_loss + other_loss + perform_kld * kld_weight
         optimizer.zero_grad()
         prime_loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -732,6 +734,7 @@ if args.sessMode == 'train':
         pedal_loss_total = []
         trill_loss_total = []
         kld_total = []
+        kld_weight = min(epoch * 0.00005, 0.0005)
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
             train_y = xy_tuple[1]
@@ -762,7 +765,7 @@ if args.sessMode == 'train':
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
-                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, slice_idx, model=train_model)
+                        batch_time_step_run(temp_train_x, train_y, prev_feature, graphs, note_locations, align_matched, slice_idx, model=train_model, kld_weight=kld_weight)
                     # optimizer.zero_grad()
                     # loss.backward()
                     # optimizer.step()
@@ -877,7 +880,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll']:
               .format(filename, checkpoint['epoch']))
 
         trill_filename = 'trill_' + args.trillCode + args.resume
-        checkpoint = torch.load(trill_filename)
+        checkpoint = torch.load(trill_filename, DEVICE)
         trill_model.load_state_dict(checkpoint['state_dict'])
         # optimizer.load_state_dict(checkpoint['optimizer'])
         print("=> loaded checkpoint '{}' (epoch {})"

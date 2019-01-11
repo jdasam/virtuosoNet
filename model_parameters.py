@@ -7,6 +7,7 @@ class NetParams:
             self.size = 0
             self.layer = 1
             self.input = 0
+            self.margin = 0
 
     def __init__(self):
         self.note = self.Param()
@@ -18,6 +19,7 @@ class NetParams:
         self.sum = self.Param()
         self.encoder = self.Param()
         self.time_reg = self.Param()
+        self.margin = self.Param()
         self.input_size = 0
         self.output_size = 0
         self.graph_iteration = 5
@@ -41,17 +43,16 @@ def initialize_model_parameters_by_code(model_code):
     net_param.output_size = cons.NUM_PRIME_PARAM
 
     if 'ggnn_non_ar' in model_code:
-
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 32
         net_param.beat.layer = 2
-        net_param.beat.size = 32
+        net_param.beat.size = 16
         net_param.measure.layer = 1
-        net_param.measure.size = 16
+        net_param.measure.size = 8
         net_param.final.layer = 1
-        net_param.final.size = 64
+        net_param.final.size = 32
 
-        net_param.encoder.size = 64
+        net_param.encoder.size = 16
         net_param.encoder.layer = 2
         net_param.graph_iteration = 5
 
@@ -108,23 +109,27 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size) * 2 \
                                   + cons.NUM_PRIME_PARAM
-    elif 'sequential_ggnn' or 'sggnn' in model_code:
+    elif 'sequential_ggnn' in model_code or 'sggnn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 32
+        net_param.note.size = 48
+        net_param.note.margin = 16
         net_param.measure.layer = 1
-        net_param.measure.size = 16
-        net_param.final.layer = 1
-        net_param.final.size = 64
-
-        net_param.encoder.size = 32
+        net_param.measure.size = 8
+        net_param.final.margin = 8
+        net_param.encoder.size = 16
         net_param.encoder.layer = 2
 
         net_param.time_reg.size = 16
         net_param.graph_iteration = 5
 
+        net_param.margin.size = 8
+
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
         net_param.encoder.input = (net_param.note.size + net_param.measure.size * 2) * 2 \
                                   + cons.NUM_PRIME_PARAM
+        if 'sggnn_note' in model_code:
+            net_param.final.input += net_param.note.size
+            net_param.encoder.input += net_param.note.size
 
     elif 'han' in model_code:
         net_param.note.layer = 2
@@ -140,7 +145,7 @@ def initialize_model_parameters_by_code(model_code):
         net_param.sum.layer = 2
         net_param.sum.size = 64
 
-        net_param.encoder.size = 16
+        net_param.encoder.size = 32
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \

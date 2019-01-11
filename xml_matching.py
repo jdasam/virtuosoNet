@@ -245,7 +245,7 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
                 note.voice += instrument_index * 10
                 if melody_only:
                     if note.voice == 1:
-                        notes, previous_grace_notes, rests= check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
+                        notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
                 else:
                     notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
 
@@ -277,7 +277,6 @@ def check_notes_and_append(note, notes, previous_grace_notes, rests, include_gra
             rest_grc = []
             added_grc = []
             grace_order = -1
-            num_grc = len(previous_grace_notes)
             for grc in reversed(previous_grace_notes):
                 if grc.voice == note.voice:
                     note.note_duration.preceded_by_grace_note = True
@@ -1483,7 +1482,7 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         else:
             passed_second = 0
         current_sec += passed_second
-        tempo = Tempo(start_position, qpm, time_position=current_sec, end_xml=0 ,end_time=0)
+        tempo = Tempo(start_position, qpm, time_position=current_sec, end_xml=0, end_time=0)
         if len(tempos) > 0:
             tempos[-1].end_time = current_sec
             tempos[-1].end_xml = start_position
@@ -1625,9 +1624,14 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         feat = features[i]
 
         if note.note_duration.is_grace_note and note.note_duration.duration == 0:
-            following_note = note.following_note
-            next_second = following_note.note_duration.time_position
-            note.note_duration.seconds = (next_second - note.note_duration.time_position) / note.note_duration.num_grace
+            for j in range(i+1, num_notes):
+                next_note = xml_notes[j]
+                if not next_note.note_duration.duration == 0 \
+                    and next_note.note_duration.xml_position == note.note_duration.xml_position \
+                    and next_note.voice == note.voice:
+                    next_second = next_note.note_duration.time_position
+                    note.note_duration.seconds = (next_second - note.note_duration.time_position) / note.note_duration.num_grace
+                    break
 
     xml_notes = xml_notes + ornaments
     xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
@@ -1910,6 +1914,8 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
     piano_midi = pretty_midi.PrettyMIDI()
     piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
     piano = pretty_midi.Instrument(program=piano_program)
+    pedal_threhsold = 60
+    pedal_time_margin = 0.1
 
     for note in midi_notes:
         piano.notes.append(note)
@@ -1920,7 +1926,7 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
     if bool_pedal:
         pedals = piano_midi.instruments[0].control_changes
         for pedal in pedals:
-            if pedal.value < 30:
+            if pedal.value < pedal_threhsold:
                 pedal.value = 0
 
     if disklavier:
@@ -1928,14 +1934,14 @@ def save_midi_notes_as_piano_midi(midi_notes, output_name, bool_pedal=False, dis
         pedals.sort(key=lambda x:x.time)
         previous_off_time = 0
         for pedal in pedals:
-            if pedal.time <0.2:
+            if pedal.time < 0.2:
                 continue
-            if pedal.value < 40:
+            if pedal.value < pedal_threhsold:
                 previous_off_time = pedal.time
             else:
                 time_passed = pedal.time - previous_off_time
-                if time_passed < 0.15:
-                    pedals.remove(pedal)
+                if time_passed < pedal_time_margin:  #hyperparameter
+                    pedal.time = previous_off_time + pedal_time_margin
         piano_midi.instruments[0].control_changes = pedals
     piano_midi.write(output_name)
 
