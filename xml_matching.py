@@ -17,6 +17,7 @@ import evaluation
 import score_as_graph as score_graph
 import numpy as np
 
+
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
                             'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento', 'agitato'
@@ -52,14 +53,14 @@ dynamics_merged_keys = ['ppp', 'pp', ['p', 'piano'], 'mp', 'mf', ['f', 'forte'],
 
 
 VALID_LIST =['Bach/Prelude/bwv_865/',
-             'Bach/Fugue/bwv_865/'
-             'Chopin/Chopin_Etude_op_10/1/',
-             'Chopin/Chopin_Etude_op_10/10/',
-             'Chopin/Chopin_Etude_op_10/12/',
-             'Chopin/Chopin_Etude_op_25/4/',
-             'Chopin/Chopin_Etude_op_25/10/',
-             'Chopin/Chopin_Scherzos/31/',
-             'Chopin/Chopin_Sonata_3/4th/',
+             'Bach/Prelude/bwv_874/',
+             'Bach/Fugue/bwv_865/',
+             'Bach/Fugue/bwv_874/',
+             'Chopin/Etude_op_10/1/',
+             'Chopin/Etude_op_10/12/',
+             'Chopin/Etude_op_25/4/',
+             'Chopin/Scherzos/31/',
+             'Chopin/Sonata_3/4th/',
              'Mozart/Piano_Sonatas/12-3/',
              'Haydn/Keyboard_Sonatas/46-1/',
              'Rachmaninoff/Preludes_op_23/4/',
@@ -67,12 +68,34 @@ VALID_LIST =['Bach/Prelude/bwv_865/',
              'Beethoven/Piano_Sonatas/12-1/',
              'Beethoven/Piano_Sonatas/15-4/',
              'Beethoven/Piano_Sonatas/21-2/',
+             'Beethoven/Piano_Sonatas/30-1/',
              'Schumann/Kreisleriana/5/',
+             'Schubert/Impromptu_op.90_D.899/2/',
+             'Liszt/Annees_de_pelerinage_2/1_Gondoliera',
              'Liszt/Transcendental_Etudes/4',
-             'Liszt/Transcendental_Etudes/9',
-             'Liszt/Concert_Etude_S145/2'
+             'Liszt/Concert_Etude_S145/2',
              ]
 
+TEST_LIST = ['Bach/Prelude/bwv_858/',
+             'Bach/Prelude/bwv_891/',
+             'Bach/Fugue/bwv_858/',
+             'Bach/Fugue/bwv_891/',
+             'Chopin/Etude_op_10/10/',
+             'Chopin/Etude_op_25/10/',
+             'Chopin/Barcarolle/',
+             'Chopin/Scherzos/39/',
+             'Haydn/Keyboard_Sonatas/31-1/',
+             'Haydn/Keyboard_Sonatas/49-1/',
+             'Beethoven/Piano_Sonatas/5-1/',
+             'Beethoven/Piano_Sonatas/17-1/',
+             'Beethoven/Piano_Sonatas/27-1/',
+             'Beethoven/Piano_Sonatas/31-2/',
+             'Schubert/Impromptu_op.90_D.899/3/',
+             'Schubert/Piano_Sonatas/664-1/',
+             'Liszt/Transcendental_Etudes/5',
+             'Liszt/Transcendental_Etudes/9',
+             'Liszt/Gran_Etudes_de_Paganini/6_Theme_and_Variations'
+             ]
 
 TEMP_WORDS = []
 
@@ -1124,12 +1147,22 @@ def get_item_by_xml_position(alist, item):
 def load_entire_subfolder(path):
     entire_pairs = []
     num_train_pairs = 0
+    num_valid_pairs = 0
+    num_test_pairs = 0
+
+    num_error_in_train = 0
+    num_error_in_valid = 0
+    num_error_in_test = 0
+
     midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
               f == 'midi_cleaned.mid']
     for midifile in midi_list:
         foldername = os.path.split(midifile)[0] + '/'
         for valid_piece in VALID_LIST:
             if valid_piece in foldername:
+                break
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
                 break
         else:
             xml_name = foldername + 'musicxml_cleaned.musicxml'
@@ -1153,10 +1186,25 @@ def load_entire_subfolder(path):
                     piece_pairs = load_pairs_from_folder(foldername)
                     if piece_pairs is not None:
                         entire_pairs.append(piece_pairs)
+                        num_valid_pairs += len(piece_pairs)
+
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
+                xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+                if os.path.isfile(xml_name):
+                    print(foldername)
+                    piece_pairs = load_pairs_from_folder(foldername)
+                    if piece_pairs is not None:
+                        entire_pairs.append(piece_pairs)
+                        num_test_pairs += len(piece_pairs)
+
 
     print('Number of train pairs: ', num_train_pairs)
 
-    return entire_pairs, num_train_pairs
+    return entire_pairs, num_train_pairs, num_valid_pairs, num_test_pairs
 
 
 def load_pairs_from_folder(path):
@@ -2857,8 +2905,8 @@ def make_available_xml_midi_positions(pairs):
     # available_pairs = save_lowest_note_on_same_position(available_pairs)
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
     print('Number of mismatched notes: ', len(mismatched_indexes))
-    for index in mismatched_indexes:
-        pairs[index] = []
+    # for index in mismatched_indexes:
+    #     pairs[index] = []
 
     return pairs, available_pairs
 
@@ -3049,6 +3097,8 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('non troppo presto', 0, 0.75))
     embed_table.append(EmbeddingKey('andante con moto', 0, -0.4))
     embed_table.append(EmbeddingKey('allegretto vivace', 0, 0.4))
+    embed_table.append(EmbeddingKey('adagio molto', 0, -0.9))
+    embed_table.append(EmbeddingKey('adagio ma non troppo', 0, -0.5))
 
 
 
@@ -3075,6 +3125,9 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('poco più vivace', 1, 0.3))
     embed_table.append(EmbeddingKey('molto agitato', 1, 0.8))
     embed_table.append(EmbeddingKey('tranquillo', 1, -0.2))
+    embed_table.append(EmbeddingKey('meno adagio', 1, 0.2))
+    embed_table.append(EmbeddingKey('più adagio', 1, -0.2))
+
 
     embed_table.append(EmbeddingKey('riten', 3, -0.5))
     embed_table.append(EmbeddingKey('ritenuto', 3, -0.5))
@@ -3134,7 +3187,7 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('allargando', 2, -0.2))
     embed_table.append(EmbeddingKey('ritardando', 2, -0.5))
     embed_table.append(EmbeddingKey('rit', 2, -0.5))
-    embed_table.append(EmbeddingKey('ritard', 2, -0.5))
+    embed_table.append(EmbeddingKey('ritar', 2, -0.5))
     embed_table.append(EmbeddingKey('rallentando', 2, -0.5))
     embed_table.append(EmbeddingKey('rall', 2, -0.5))
     embed_table.append(EmbeddingKey('slentando', 2, -0.3))
@@ -3360,8 +3413,13 @@ def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, acc
         ioi_seconds.append(ioi)
         prev_start = trills[i].start
     ioi_seconds.append( (next_note_start - trills[-1].start) *  num_trills / trill_length )
+    trill_density = num_trills / trill_length
 
-    trills_vec[0] = num_trills
+    if trill_density < 1:
+        return trills_vec, trill_length
+
+
+    trills_vec[0] = num_trills / trill_length
     trills_vec[1] = trills[-1].velocity / trills[0].velocity
     trills_vec[2] = ioi_seconds[0]
     trills_vec[3] = ioi_seconds[-1]
@@ -3707,3 +3765,7 @@ def read_score_perform_pair(path, perf_name, composer_name, means, stds):
         note_locations.append(feat.note_location)
 
     return test_x, test_y, edges, note_locations
+
+
+def check_data_split():
+    return
