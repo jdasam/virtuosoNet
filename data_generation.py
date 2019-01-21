@@ -18,8 +18,7 @@ NUM_NORMALIZE_FEATURE = [8, 15, 15]
 REGRESSION = args.regression
 print('Data type is regression: ', args.regression)
 
-def save_features_as_vector(dataset, num_train, save_name):
-
+def save_features_as_vector(dataset, num_train, num_valid, save_name):
     complete_xy = []
     num_total_datapoint = 0
     total_notes = 0
@@ -31,14 +30,12 @@ def save_features_as_vector(dataset, num_train, save_name):
             num_perform +=1
             train_x = []
             train_y = []
-            previous_y = []
             align_matched_status = []
             # is_beat_list = []
             # beat_numbers = []
             # measure_numbers = []
             # voice_numbers = []
             note_locations = []
-            prev_feat = [0] * (NUM_NORMALIZE_FEATURE[1] + NUM_TRILL_PARAM)
             features = perform['features']
             score = perform['score']
             composer_vec = perform['composer']
@@ -88,9 +85,6 @@ def save_features_as_vector(dataset, num_train, save_name):
                     train_y.append(temp_y)
                     align_matched_status.append(feature.align_matched)
                     # prev_feat[0] = feature.previous_tempo
-                    prev_feat[0] = feature.qpm # for beat tempo network.
-                    previous_y.append(prev_feat)
-                    prev_feat = copy.copy(temp_y)
                     num_total_datapoint += 1
                     note_loc = feature.note_location
                     note_locations.append(note_loc)
@@ -100,7 +94,7 @@ def save_features_as_vector(dataset, num_train, save_name):
                     # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
-            complete_xy.append([train_x, train_y, previous_y, note_locations, align_matched_status, score_graph, score])
+            complete_xy.append([train_x, train_y, note_locations, align_matched_status, score_graph, score])
             # key_changed_num = []
             # for i in range(3):
             #     key_change = 0
@@ -130,11 +124,11 @@ def save_features_as_vector(dataset, num_train, save_name):
         complete_xy, bins = output_to_categorical(complete_xy)
 
     complete_xy_train = complete_xy[0:num_train]
-    complete_xy_valid = complete_xy[num_train:]
+    complete_xy_valid = complete_xy[num_train:num_train+num_valid]
+    complete_xy_test = complete_xy[num_train+num_valid:]
     random.shuffle(complete_xy_train)
-    random.shuffle(complete_xy_valid)
-
-
+    # random.shuffle(complete_xy_valid)
+    # random.shuffle(complete_xy_test)
 
     for index1 in (0,1):
         for index2 in range(len(stds[index1])):
@@ -144,6 +138,8 @@ def save_features_as_vector(dataset, num_train, save_name):
 
     with open(save_name + ".dat", "wb") as f:
         pickle.dump({'train': complete_xy_train, 'valid': complete_xy_valid}, f, protocol=2)
+    with open(save_name + "_test.dat", "wb") as f:
+        pickle.dump(complete_xy_test, f, protocol=2)
 
     if REGRESSION:
         with open(save_name + "_stat.dat", "wb") as f:
@@ -180,12 +176,12 @@ def get_mean_and_sd(performances, target_data, target_dimension):
 
 def normalize_features(complete_xy, num_input, num_output, x_only=False):
     complete_xy_normalized = []
-    means = [[], [], [], []]
-    stds = [[], [], [], []]
+    means = [[], [], []]
+    stds = [[], [], []]
     if x_only:
         index_list = [0]
     else:
-        index_list = [0,1,2]
+        index_list = [0,1]
 
     for i1 in index_list:
         for i2 in range(NUM_NORMALIZE_FEATURE[i1]):
@@ -195,9 +191,6 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
     print(means)
     print(stds)
 
-    if not x_only:
-        means[2] = means[1]
-        stds[2] = stds[1]
 
     for performance in complete_xy:
         complete_xy_normalized.append([])
@@ -222,11 +215,10 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
                 complete_xy_normalized[-1][index1].append(new_sample)
         if x_only:
             complete_xy_normalized[-1].append(performance[1])
-            complete_xy_normalized[-1].append(performance[2])
 
+        complete_xy_normalized[-1].append(performance[2])
         complete_xy_normalized[-1].append(performance[3])
         complete_xy_normalized[-1].append(performance[4])
-        complete_xy_normalized[-1].append(performance[5])
 
     return complete_xy_normalized, means, stds
 
@@ -300,5 +292,6 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 
-chopin_pairs, num_train_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas')
-save_features_as_vector(chopin_pairs, num_train_pairs, 'test')
+# xml_matching.check_data_split('chopin_cleaned/')
+chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_clean')

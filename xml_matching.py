@@ -56,9 +56,8 @@ VALID_LIST =['Bach/Prelude/bwv_865/',
              'Bach/Prelude/bwv_874/',
              'Bach/Fugue/bwv_865/',
              'Bach/Fugue/bwv_874/',
-             'Chopin/Etude_op_10/1/',
-             'Chopin/Etude_op_10/12/',
-             'Chopin/Etude_op_25/4/',
+             'Chopin/Etudes_op_10/10/',
+             'Chopin/Etudes_op_25/4/',
              'Chopin/Scherzos/31/',
              'Chopin/Sonata_3/4th/',
              'Mozart/Piano_Sonatas/12-3/',
@@ -80,20 +79,22 @@ TEST_LIST = ['Bach/Prelude/bwv_858/',
              'Bach/Prelude/bwv_891/',
              'Bach/Fugue/bwv_858/',
              'Bach/Fugue/bwv_891/',
-             'Chopin/Etude_op_10/10/',
-             'Chopin/Etude_op_25/10/',
+             'Chopin/Etudes_op_10/2/',
+             'Chopin/Etudes_op_10/12/',
+             'Chopin/Etudes_op_25/12/',
              'Chopin/Barcarolle/',
              'Chopin/Scherzos/39/',
              'Haydn/Keyboard_Sonatas/31-1/',
              'Haydn/Keyboard_Sonatas/49-1/',
              'Beethoven/Piano_Sonatas/5-1/',
+             'Beethoven/Piano_Sonatas/7-2/',
              'Beethoven/Piano_Sonatas/17-1/',
              'Beethoven/Piano_Sonatas/27-1/',
              'Beethoven/Piano_Sonatas/31-2/',
              'Schubert/Impromptu_op.90_D.899/3/',
              'Schubert/Piano_Sonatas/664-1/',
-             'Liszt/Transcendental_Etudes/5',
-             'Liszt/Transcendental_Etudes/9',
+             'Liszt/Transcendental_Etudes/5/',
+             'Liszt/Transcendental_Etudes/9/',
              'Liszt/Gran_Etudes_de_Paganini/6_Theme_and_Variations'
              ]
 
@@ -1150,21 +1151,20 @@ def load_entire_subfolder(path):
     num_valid_pairs = 0
     num_test_pairs = 0
 
-    num_error_in_train = 0
-    num_error_in_valid = 0
-    num_error_in_test = 0
-
     midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
               f == 'midi_cleaned.mid']
     for midifile in midi_list:
         foldername = os.path.split(midifile)[0] + '/'
+        skip = False
         for valid_piece in VALID_LIST:
             if valid_piece in foldername:
+                skip = True
                 break
         for test_piece in TEST_LIST:
             if test_piece in foldername:
+                skip = True
                 break
-        else:
+        if not skip:
             xml_name = foldername + 'musicxml_cleaned.musicxml'
 
             if os.path.isfile(xml_name):
@@ -1173,7 +1173,6 @@ def load_entire_subfolder(path):
                 if piece_pairs is not None:
                     entire_pairs.append(piece_pairs)
                     num_train_pairs += len(piece_pairs)
-
 
     for midifile in midi_list:
         foldername = os.path.split(midifile)[0] + '/'
@@ -1187,6 +1186,7 @@ def load_entire_subfolder(path):
                     if piece_pairs is not None:
                         entire_pairs.append(piece_pairs)
                         num_valid_pairs += len(piece_pairs)
+                        print('num valid pairs', num_valid_pairs)
 
     for midifile in midi_list:
         foldername = os.path.split(midifile)[0] + '/'
@@ -1201,9 +1201,7 @@ def load_entire_subfolder(path):
                         entire_pairs.append(piece_pairs)
                         num_test_pairs += len(piece_pairs)
 
-
-    print('Number of train pairs: ', num_train_pairs)
-
+    print('Number of train pairs: ', num_train_pairs, 'valid pairs: ', num_valid_pairs, 'test pairs: ', num_test_pairs)
     return entire_pairs, num_train_pairs, num_valid_pairs, num_test_pairs
 
 
@@ -1256,7 +1254,6 @@ def load_pairs_from_folder(path):
             perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer': composer_name_vec, 'graph': notes_graph}
 
             perform_features_piece.append(perform_feat_score)
-
     if perform_features_piece == []:
         return None
     return perform_features_piece
@@ -1574,14 +1571,13 @@ def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, pre
         if note.note_notations.is_trill:
             note, _ = apply_feat_to_a_note(note, feat, prev_vel)
             trill_vec = feat.trill_param
-            num_trills = trill_vec[0]
-            if not isinstance(num_trills, int):
-                num_trills = num_trills.astype(int)
+            trill_density = trill_vec[0]
             last_velocity = trill_vec[1] * note.velocity
             first_note_ratio = trill_vec[2]
             last_note_ratio = trill_vec[3]
             up_trill = trill_vec[4]
             total_second = end_position - note.note_duration.time_position
+            num_trills = int(trill_density * total_second)
             first_velocity = note.velocity
 
             key = get_item_by_xml_position(key_signatures, note)
@@ -2486,8 +2482,11 @@ def time_signature_to_vector(time_signature):
     numerator_vec = [0] * 5
     denominator_vec = [0] * 4
 
-    denominator_type = denominator_list.index(denominator)
-    denominator_vec[denominator_type] = 1
+    if denominator ==32:
+        denominator_vec[-1] = 1
+    else:
+        denominator_type = denominator_list.index(denominator)
+        denominator_vec[denominator_type] = 1
 
     if numerator == 2:
         numerator_vec[0] = 1
@@ -2688,6 +2687,10 @@ def cal_beat_positions_of_piece(xml_doc):
         elif num_beat_in_measure == 9:
             num_beat_in_measure = 3
         elif num_beat_in_measure == 12:
+            num_beat_in_measure = 4
+        elif num_beat_in_measure == 18:
+            num_beat_in_measure = 3
+        elif num_beat_in_measure == 24:
             num_beat_in_measure = 4
         inter_beat_interval = full_measure_length / num_beat_in_measure
         if actual_measure_length != full_measure_length:
@@ -2905,8 +2908,8 @@ def make_available_xml_midi_positions(pairs):
     # available_pairs = save_lowest_note_on_same_position(available_pairs)
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
     print('Number of mismatched notes: ', len(mismatched_indexes))
-    # for index in mismatched_indexes:
-    #     pairs[index] = []
+    for index in mismatched_indexes:
+        pairs[index] = []
 
     return pairs, available_pairs
 
@@ -3767,5 +3770,96 @@ def read_score_perform_pair(path, perf_name, composer_name, means, stds):
     return test_x, test_y, edges, note_locations
 
 
-def check_data_split():
-    return
+def check_data_split(path):
+    entire_pairs = []
+    num_train_pairs = 0
+    num_valid_pairs = 0
+    num_test_pairs = 0
+
+    num_piece_train = 0
+    num_piece_valid = 0
+    num_piece_test = 0
+
+    num_notes_in_train = 0
+    num_notes_in_valid = 0
+    num_notes_in_test = 0
+
+    def load_pairs_and_add_num_notes(path):
+        xml_name = path + 'musicxml_cleaned.musicxml'
+
+        XMLDocument = MusicXMLDocument(xml_name)
+        xml_notes = extract_notes(XMLDocument, melody_only=False, grace_note=True)
+        filenames = os.listdir(path)
+        perform_features_piece = []
+
+        for file in filenames:
+            if file[-18:] == '_infer_corresp.txt':
+                perform_features_piece.append(len(xml_notes))
+        if perform_features_piece == []:
+            return None
+        return perform_features_piece
+
+
+    midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
+                 f == 'midi_cleaned.mid']
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        skip = False
+        for valid_piece in VALID_LIST:
+            if valid_piece in foldername:
+                skip = True
+                break
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
+                skip = True
+                break
+        if not skip:
+            xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+            if os.path.isfile(xml_name):
+                print(foldername)
+                piece_pairs = load_pairs_and_add_num_notes(foldername)
+                if piece_pairs is not None:
+                    entire_pairs.append(piece_pairs)
+                    num_train_pairs += len(piece_pairs)
+                    num_piece_train += 1
+                    for pair in piece_pairs:
+                        num_notes_in_train += pair
+
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        for valid_piece in VALID_LIST:
+            if valid_piece in foldername:
+                xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+                if os.path.isfile(xml_name):
+                    print(foldername)
+                    piece_pairs = load_pairs_and_add_num_notes(foldername)
+                    if piece_pairs is not None:
+                        entire_pairs.append(piece_pairs)
+                        num_valid_pairs += len(piece_pairs)
+                        num_piece_valid += 1
+                        for pair in piece_pairs:
+                            num_notes_in_valid += pair
+
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
+                xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+                if os.path.isfile(xml_name):
+                    print(foldername)
+                    piece_pairs = load_pairs_and_add_num_notes(foldername)
+                    if piece_pairs is not None:
+                        entire_pairs.append(piece_pairs)
+                        num_test_pairs += len(piece_pairs)
+                        num_piece_test += 1
+                        for pair in piece_pairs:
+                            num_notes_in_test += pair
+
+    print('Number of train pieces: ', num_piece_train, 'valid pieces: ', num_piece_valid, 'test pieces: ', num_piece_test)
+    print('Number of train pairs: ', num_train_pairs, 'valid pairs: ', num_valid_pairs, 'test pairs: ', num_test_pairs)
+    print('Number of train notes: ', num_notes_in_train, 'valid notes: ', num_notes_in_valid, 'test notes: ',
+          num_notes_in_test)
+    return entire_pairs, num_train_pairs, num_valid_pairs, num_test_pairs

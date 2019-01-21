@@ -23,7 +23,13 @@ class NetParams:
         self.input_size = 0
         self.output_size = 0
         self.graph_iteration = 5
+        self.sequence_iteration = 5
         self.num_edge_types = 10
+        self.num_attention_head = 4
+        self.is_graph = False
+        self.is_teacher_force = False
+        self.is_baseline = False
+
 
 def save_parameters(param, save_name):
     with open(save_name + ".dat", "wb") as f:
@@ -109,20 +115,18 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size) * 2 \
                                   + cons.NUM_PRIME_PARAM
-    elif 'sequential_ggnn' in model_code or 'sggnn' in model_code:
+    elif 'sequential_ggnn' in model_code or 'sggnn' in model_code or 'isgn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 48
-        net_param.note.margin = 16
+        net_param.note.size = 64
         net_param.measure.layer = 1
-        net_param.measure.size = 8
-        net_param.final.margin = 8
+        net_param.measure.size = 16
+        net_param.final.margin = 16
         net_param.encoder.size = 16
         net_param.encoder.layer = 2
 
         net_param.time_reg.size = 16
         net_param.graph_iteration = 5
-
-        net_param.margin.size = 8
+        net_param.sequence_iteration = 5
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
         net_param.encoder.input = (net_param.note.size + net_param.measure.size * 2) * 2 \
@@ -133,31 +137,38 @@ def initialize_model_parameters_by_code(model_code):
 
     elif 'han' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 192
         net_param.beat.layer = 2
-        net_param.beat.size = 32
+        net_param.beat.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 16
+        net_param.measure.size = 64
         net_param.final.layer = 1
-        net_param.final.size = 32
-        net_param.voice.layer = 2
-        net_param.voice.size = 64
-        net_param.sum.layer = 2
-        net_param.sum.size = 64
+        net_param.final.size = 64
+        # net_param.voice.layer = 2
+        # net_param.voice.size = 128
+        # net_param.sum.layer = 2
+        # net_param.sum.size = 64
 
         net_param.encoder.size = 32
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
                                   + cons.NUM_PRIME_PARAM
-        num_voice_feed_param = 2  # velocity, onset deviation
         num_tempo_info = 3  # qpm primo, tempo primo
         num_dynamic_info = 0
         net_param.final.input = (net_param.note.size + net_param.voice.size + net_param.beat.size +
                                  net_param.measure.size) * 2 + net_param.encoder.size + \
                                 num_tempo_info + num_dynamic_info
         if 'ar' in model_code:
-            net_param.final.input += net_param.output_size + num_voice_feed_param
+            net_param.final.input += net_param.output_size
+        if 'graph' in model_code:
+            net_param.is_graph = True
+            net_param.graph_iteration = 5
+
+        if 'teacher' in model_code:
+            net_param.is_teacher_force = True
+        if 'baseline' in model_code:
+            net_param.is_baseline = True
 
     else:
         print('Unclassified model code')
