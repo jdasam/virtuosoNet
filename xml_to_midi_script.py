@@ -9,7 +9,7 @@ import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/29-4/'
+folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/32-1/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
 # artistName = 'SunMeiting08'
 # artistName = 'CHEN03'

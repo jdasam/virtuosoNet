@@ -25,7 +25,7 @@ class NetParams:
         self.graph_iteration = 5
         self.sequence_iteration = 5
         self.num_edge_types = 10
-        self.num_attention_head = 4
+        self.num_attention_head = 8
         self.is_graph = False
         self.is_teacher_force = False
         self.is_baseline = False
@@ -117,16 +117,17 @@ def initialize_model_parameters_by_code(model_code):
                                   + cons.NUM_PRIME_PARAM
     elif 'sequential_ggnn' in model_code or 'sggnn' in model_code or 'isgn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 16
-        net_param.final.margin = 16
-        net_param.encoder.size = 16
+        net_param.measure.size = 32
+        net_param.final.margin = 32
+        net_param.encoder.size = 32
         net_param.encoder.layer = 2
 
-        net_param.time_reg.size = 16
-        net_param.graph_iteration = 5
-        net_param.sequence_iteration = 5
+        net_param.time_reg.size = 64
+        net_param.graph_iteration = 3
+        net_param.sequence_iteration = 3
+
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
         net_param.encoder.input = (net_param.note.size + net_param.measure.size * 2) * 2 \
@@ -136,14 +137,14 @@ def initialize_model_parameters_by_code(model_code):
             net_param.encoder.input += net_param.note.size
 
     elif 'han' in model_code:
-        net_param.note.layer = 2
-        net_param.note.size = 192
-        net_param.beat.layer = 2
-        net_param.beat.size = 128
-        net_param.measure.layer = 1
-        net_param.measure.size = 64
+        net_param.note.layer = 3
+        net_param.note.size = 220
+        # net_param.beat.layer = 2
+        # net_param.beat.size = 128
+        # net_param.measure.layer = 1
+        # net_param.measure.size = 64
         net_param.final.layer = 1
-        net_param.final.size = 64
+        net_param.final.size = 128
         # net_param.voice.layer = 2
         # net_param.voice.size = 128
         # net_param.sum.layer = 2
