@@ -125,8 +125,8 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.layer = 2
 
         net_param.time_reg.size = 64
-        net_param.graph_iteration = 3
-        net_param.sequence_iteration = 3
+        net_param.graph_iteration = 5
+        net_param.sequence_iteration = 5
 
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
@@ -138,7 +138,7 @@ def initialize_model_parameters_by_code(model_code):
 
     elif 'han' in model_code:
         net_param.note.layer = 3
-        net_param.note.size = 220
+        net_param.note.size = 256
         # net_param.beat.layer = 2
         # net_param.beat.size = 128
         # net_param.measure.layer = 1

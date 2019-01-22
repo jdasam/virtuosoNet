@@ -117,32 +117,73 @@ class MultiHeadAttention(nn.Module):
 class ContextAttention(nn.Module):
     def __init__(self, size, num_head):
         super(ContextAttention, self).__init__()
-        self.attention_net = nn.Linear(size, size)
+        self.attention_net = nn.Sequential(
+            nn.Linear(size, size),
+            nn.ReLU(),
+            nn.Linear(size,size)
+        )
         self.num_head = num_head
 
-        if size % num_head != 0:
-            raise ValueError("size must be dividable by num_head", size, num_head)
-        self.head_size = int(size/num_head)
-        self.context_vector = torch.nn.Parameter(torch.Tensor(num_head, self.head_size, 1))
+        # if size % num_head != 0:
+        #     raise ValueError("size must be dividable by num_head", size, num_head)
+        # self.head_size = int(size/num_head)
+        # self.context_vector = torch.nn.Parameter(torch.Tensor(num_head, self.head_size, 1))
+        # nn.init.uniform_(self.context_vector, a=-1, b=1)
 
-        nn.init.uniform_(self.context_vector, a=-1, b=1)
 
     def forward(self, x):
         attention = self.attention_net(x)
-        attention_tanh = F.tanh(attention)
+        # attention_tanh = F.tanh(attention)
         # similarity = torch.matmul(attention_tanh, self.context_vector)
-        attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-        similarity = torch.bmm(attention_split, self.context_vector)
-        softmax_weight = F.softmax(similarity, dim=1)
-        x_split = torch.cat(x.split(split_size=self.head_size, dim=2), dim=0)
+        # if self.head_size != 1:
+        #     attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
+        #     similarity = torch.bmm(attention_split, self.context_vector)
+        #     softmax_weight = F.softmax(similarity, dim=1)
+        #     x_split = torch.cat(x.split(split_size=self.head_size, dim=2), dim=0)
+        #
+        #     weighted_mul = torch.bmm(softmax_weight.transpose(1,2), x_split)
+        #
+        #     restore_size = int(weighted_mul.size(0) / self.num_head)
+        #     attention = torch.cat(weighted_mul.split(split_size=restore_size, dim=0), dim=2)
+        # else:
+        # softmax_weight = F.softmax(attention_tanh, dim=1)
+        softmax_weight = F.softmax(attention, dim=1)
+        attention = softmax_weight * x
 
-        weighted_mul = torch.bmm(softmax_weight.transpose(1,2), x_split)
-
-        restore_size = int(weighted_mul.size(0) / self.num_head)
-        attention = torch.cat(weighted_mul.split(split_size=restore_size, dim=0), dim=2)
         sum_attention = torch.sum(attention, dim=1)
-
         return sum_attention
+
+# class ContextAttention(nn.Module):
+#     def __init__(self, size, num_head):
+#         super(ContextAttention, self).__init__()
+#         self.attention_net = nn.Linear(size, size),
+#         self.num_head = num_head
+#
+#         if size % num_head != 0:
+#             raise ValueError("size must be dividable by num_head", size, num_head)
+#         self.head_size = int(size/num_head)
+#         self.context_vector = torch.nn.Parameter(torch.Tensor(num_head, self.head_size, 1))
+#         nn.init.uniform_(self.context_vector, a=-1, b=1)
+#
+#     def forward(self, x):
+#         attention = self.attention_net(x)
+#         attention_tanh = F.tanh(attention)
+#         if self.head_size != 1:
+#             attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
+#             similarity = torch.bmm(attention_split, self.context_vector)
+#             softmax_weight = F.softmax(similarity, dim=1)
+#             x_split = torch.cat(x.split(split_size=self.head_size, dim=2), dim=0)
+#
+#             weighted_mul = torch.bmm(softmax_weight.transpose(1,2), x_split)
+#
+#             restore_size = int(weighted_mul.size(0) / self.num_head)
+#             attention = torch.cat(weighted_mul.split(split_size=restore_size, dim=0), dim=2)
+#         else:
+#             softmax_weight = F.softmax(attention, dim=1)
+#             attention = softmax_weight * x
+#
+#         sum_attention = torch.sum(attention, dim=1)
+#         return sum_attention
 
 class GGNN_HAN(nn.Module):
     def __init__(self, network_parameters, device, LOSS_TYPE, tempo_length=1, num_trill_param=5):
@@ -1990,7 +2031,7 @@ class ISGN(nn.Module):
         self.final_graph = GatedGraph(self.final_graph_input_size, self.num_edge_types, self.device, self.output_size + self.final_graph_margin_size)
         self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3+ 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
-        self.final_beat_attention = ContextAttention(self.final_graph_input_size - self.time_regressive_size * 2, 1)
+        self.final_beat_attention = ContextAttention(self.final_graph_input_size - self.time_regressive_size * 2, self.final_graph_input_size - self.time_regressive_size * 2)
         self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
         # self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
         self.fc = nn.Sequential(

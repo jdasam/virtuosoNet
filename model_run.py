@@ -48,7 +48,7 @@ LOSS_TYPE = args.trainingLoss
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 450
+TIME_STEPS = 500
 VALID_STEPS = 3000
 NUM_UPDATED = 0
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
