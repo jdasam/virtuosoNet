@@ -2031,7 +2031,7 @@ class ISGN(nn.Module):
         self.final_graph = GatedGraph(self.final_graph_input_size, self.num_edge_types, self.device, self.output_size + self.final_graph_margin_size)
         self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3+ 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
-        self.final_beat_attention = ContextAttention(self.final_graph_input_size - self.time_regressive_size * 2, self.final_graph_input_size - self.time_regressive_size * 2)
+        self.final_beat_attention = ContextAttention(self.final_graph_input_size - self.time_regressive_size * 2, 1)
         self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
         # self.fc = nn.Linear(self.final_input + self.encoder_size + self.output_size, self.output_size - 1)
         self.fc = nn.Sequential(
