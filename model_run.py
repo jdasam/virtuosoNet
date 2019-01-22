@@ -809,7 +809,7 @@ if args.sessMode == 'train':
                 key = key_lists[i]
                 temp_train_x = key_augmentation(train_x, key)
                 slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers)
-                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.08
+                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.005
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
