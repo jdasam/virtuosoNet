@@ -645,12 +645,12 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
 
 
-def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
+def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index, tempo_in_note_level=False):
     previous_beat = -1
+
     num_notes = pred_x.shape[1]
     start_beat = note_locations[start_index].beat
     num_beats = note_locations[num_notes+start_index-1].beat - start_beat + 1
-
 
     pred_beat_tempo = torch.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
     true_beat_tempo = torch.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
@@ -658,6 +658,13 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
         current_beat = note_locations[i+start_index].beat
         if current_beat > previous_beat:
             previous_beat = current_beat
+            # if tempo_in_note_level:
+            #     for j in range(i, num_notes):
+            #         if note_locations[j+start_index].beat > current_beat:
+            #             break
+            #     pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM])
+            #     true_beat_tempo[current_beat - start_beat] = torch.mean(true_x[0, i:j, QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM])
+            # else:
             pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
             true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
 
@@ -809,7 +816,7 @@ if args.sessMode == 'train':
                 key = key_lists[i]
                 temp_train_x = key_augmentation(train_x, key)
                 slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers)
-                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.005
+                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.08
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
@@ -958,6 +965,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             pickle.dump(perform_z, f, protocol=2)
 
     elif args.sessMode =='evaluate':
+        MODEL.sequence_iteration = 10
         test_data_name = args.dataName + "_test.dat"
         if not os.path.isfile(test_data_name):
             training_data_name = '/mnt/ssd1/jdasam_data/' + test_data_name
@@ -974,6 +982,10 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             trill_loss_total = []
             pedal_loss_total = []
             kld_total = []
+
+            prev_perf_x =[]
+            piece_wise_loss = None
+
             for xy_tuple in complete_xy:
                 test_x = xy_tuple[0]
                 test_y = xy_tuple[1]
@@ -983,6 +995,23 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
                 graphs = edges_to_matrix(edges, len(test_x))
                 if LOSS_TYPE == 'CE':
                     test_y = categorize_value_to_vector(test_y, BINS)
+
+                if test_x[0][0:4] == prev_perf_x:
+                    piece_changed = False
+                else:
+                    piece_changed = True
+                    prev_perf_x = test_x[0][0:4]
+                    if piece_wise_loss:
+                        piece_wise_loss_mean = np.mean(np.asarray(piece_wise_loss), axis=0)
+                        print(piece_wise_loss_mean)
+                        tempo_loss_total.append(piece_wise_loss_mean[0])
+                        vel_loss_total.append(piece_wise_loss_mean[1])
+                        deviation_loss_total.append(piece_wise_loss_mean[2])
+                        pedal_loss_total.append(piece_wise_loss_mean[3])
+                        trill_loss_total.append(piece_wise_loss_mean[4])
+                        kld_total.append(piece_wise_loss_mean[5])
+                    piece_wise_loss = []
+
 
                 batch_x = torch.Tensor(test_x).view((1, -1, SCORE_INPUT)).to(DEVICE)
                 batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
@@ -1017,13 +1046,14 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
                     piece_kld.append(kld)
                 piece_kld = torch.mean(torch.stack(piece_kld))
 
-                # valid_loss_total.append(valid_loss.item())
-                tempo_loss_total.append(tempo_loss.item())
-                vel_loss_total.append(vel_loss.item())
-                deviation_loss_total.append(deviation_loss.item())
-                pedal_loss_total.append(pedal_loss.item())
-                trill_loss_total.append(trill_loss.item())
-                kld_total.append(piece_kld.item())
+
+                piece_wise_loss.append((tempo_loss.item(), vel_loss.item(), deviation_loss.item(), pedal_loss.item(), trill_loss.item(), piece_kld.item()))
+                # tempo_loss_total.append(tempo_loss.item())
+                # vel_loss_total.append(vel_loss.item())
+                # deviation_loss_total.append(deviation_loss.item())
+                # pedal_loss_total.append(pedal_loss.item())
+                # trill_loss_total.append(trill_loss.item())
+                # kld_total.append(piece_kld.item())
 
             mean_tempo_loss = np.mean(tempo_loss_total)
             mean_vel_loss = np.mean(vel_loss_total)
@@ -1037,86 +1067,3 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             print("Test Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}"
                   .format(mean_valid_loss, mean_tempo_loss, mean_vel_loss,
                           mean_deviation_loss, mean_pedal_loss, mean_trill_loss, mean_kld_loss))
-# elif args.sessMode=='plot':
-#     if os.path.isfile(args.resume):
-#         print("=> loading checkpoint '{}'".format(args.resume))
-#         checkpoint = torch.load(args.resume)
-#         # args.start_epoch = checkpoint['epoch']
-#         best_valid_loss = checkpoint['best_valid_loss']
-#         MODEL.load_state_dict(checkpoint['state_dict'])
-#         optimizer.load_state_dict(checkpoint['optimizer'])
-#         print("=> loaded checkpoint '{}' (epoch {})"
-#               .format(args.resume, checkpoint['epoch']))
-#     else:
-#         print("=> no checkpoint found at '{}'".format(args.resume))
-#
-#
-#     with open(args.dataName + ".dat", "rb") as f:
-#         u = pickle._Unpickler(f)
-#         u.encoding = 'latin1'
-#         # p = u.load()
-#         # complete_xy = pickle.load(f)
-#         complete_xy = u.load()
-#
-#     with open(args.dataName + "_stat.dat", "rb") as f:
-#         u = pickle._Unpickler(f)
-#         u.encoding = 'latin1'
-#         MEANS, STDS = u.load()
-#
-#     perform_num = len(complete_xy)
-#     tempo_stats = [MEANS[1][0], STDS[1][0]]
-#
-#     train_perf_num = int(perform_num * training_ratio)
-#     train_xy = complete_xy[:train_perf_num]
-#     test_xy = complete_xy[train_perf_num:]
-#
-#     n_tuple = 0
-#     for xy_tuple in test_xy:
-#         n_tuple += 1
-#         train_x = xy_tuple[0]
-#         train_y = xy_tuple[1]
-#         prev_feature = xy_tuple[2]
-#         note_locations = xy_tuple[3]
-#
-#         data_size = len(train_x)
-#         total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
-#         batch_size=1
-#         for step in range(total_batch_num - 1):
-#             batch_start = step * batch_size * TIME_STEPS
-#             batch_end = (step + 1) * batch_size * TIME_STEPS
-#             batch_x = Variable(
-#                 torch.Tensor(train_x[batch_start:batch_end]))
-#             batch_y = train_y[batch_start:batch_end]
-#             # print(batch_x.shape, batch_y.shape)
-#             # input_y = Variable(
-#             #     torch.Tensor(prev_feature[step * batch_size * time_steps:(step + 1) * batch_size * time_steps]))
-#             # input_y = torch.cat((zero_tensor, batch_y[0:batch_size * time_steps-1]), 0).view((batch_size, time_steps,num_output)).to(device)
-#             batch_x = batch_x.view((batch_size, TIME_STEPS, SCORE_INPUT)).to(DEVICE)
-#             # is_beat_batch = is_beat_list[batch_start:batch_end]
-#             # batch_y = batch_y.view((batch_size, time_steps, num_output)).to(device)
-#             # input_y = input_y.view((batch_size, time_steps, num_output)).to(device)
-#
-#             # hidden = model.init_hidden(1)
-#             # final_hidden = model.init_final_layer(1)
-#             # outputs, hidden, final_hidden = model(batch_x, input_y, hidden, final_hidden)
-#             #
-#             if args.trainTrill:
-#                 input_y = torch.zeros(1, 1, TOTAL_OUTPUT)
-#             else:
-#                 input_y = torch.zeros(1, 1, TOTAL_OUTPUT - num_trill_param)
-#
-#             input_y[0] = batch_y[0][0]
-#             input_y = input_y.view((1, 1, TOTAL_OUTPUT)).to(DEVICE)
-#             outputs = perform_xml(batch_x, input_y, note_locations, tempo_stats)
-#             outputs = torch.Tensor(outputs).view((1, -1, TOTAL_OUTPUT))
-#
-#             outputs = outputs.cpu().detach().numpy()
-#             # batch_y = batch_y.cpu().detach().numpy()
-#             batch_y = np.asarray(batch_y).reshape((1, -1, TOTAL_OUTPUT))
-#             plt.figure(figsize=(10, 7))
-#             for i in range(4):
-#                 plt.subplot(411+i)
-#                 plt.plot(batch_y[0, :, i])
-#                 plt.plot(outputs[0, :, i])
-#             plt.savefig('images/piece{:d},seg{:d}.png'.format(n_tuple, step))
-#             plt.close()

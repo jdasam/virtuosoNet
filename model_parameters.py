@@ -119,14 +119,14 @@ def initialize_model_parameters_by_code(model_code):
         net_param.note.layer = 2
         net_param.note.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 32
-        net_param.final.margin = 32
+        net_param.measure.size = 64
+        net_param.final.margin = 64
         net_param.encoder.size = 32
         net_param.encoder.layer = 2
 
-        net_param.time_reg.size = 64
-        net_param.graph_iteration = 5
-        net_param.sequence_iteration = 5
+        net_param.time_reg.size = 128
+        net_param.graph_iteration = 3
+        net_param.sequence_iteration = 3
 
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
