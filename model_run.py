@@ -743,7 +743,7 @@ if args.sessMode == 'train':
             print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
             # model_codes = ['prime', 'trill']
             filename = 'prime_' + args.modelCode + args.resume
-            checkpoint = torch.load(filename)
+            checkpoint = torch.load(filename,  map_location=DEVICE)
             # args.start_epoch = checkpoint['epoch']
             # best_valid_loss = checkpoint['best_valid_loss']
             MODEL.load_state_dict(checkpoint['state_dict'])
@@ -821,15 +821,11 @@ if args.sessMode == 'train':
                 key = key_lists[i]
                 temp_train_x = key_augmentation(train_x, key)
                 slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers)
-                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.08
+                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.01
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
                         batch_time_step_run(temp_train_x, train_y, graphs, note_locations, align_matched, slice_idx, model=train_model, kld_weight=kld_weight)
-                    # optimizer.zero_grad()
-                    # loss.backward()
-                    # optimizer.step()
-                    # print(tempo_loss)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     dev_loss_total.append(dev_loss.item())
@@ -931,13 +927,12 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
         # model_codes = ['prime', 'trill']
         filename = 'prime_' + args.modelCode + args.resume
-        checkpoint = torch.load(filename)
+        checkpoint = torch.load(filename, map_location=DEVICE)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(filename, checkpoint['epoch']))
-        MODEL.device = DEVICE
         trill_filename = 'trill_' + args.trillCode + args.resume
         checkpoint = torch.load(trill_filename, DEVICE)
         trill_model.load_state_dict(checkpoint['state_dict'])
