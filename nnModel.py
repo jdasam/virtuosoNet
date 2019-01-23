@@ -461,6 +461,7 @@ class HAN_Integrated(nn.Module):
         self.is_graph = network_parameters.is_graph
         self.is_teacher_force = network_parameters.is_teacher_force
         self.is_baseline = network_parameters.is_baseline
+        self.num_graph_iteration = network_parameters.graph_iteration
 
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
@@ -768,9 +769,9 @@ class HAN_Integrated(nn.Module):
 
     def run_graph_network(self, nodes, graph_matrix):
         # 1. Run feed-forward network by note level
-        notes_hidden = self.graph_1st(nodes, graph_matrix)
+        notes_hidden = self.graph_1st(nodes, graph_matrix, iteration=self.num_graph_iteration)
         notes_between = self.graph_between(notes_hidden)
-        notes_hidden_second = self.graph_2nd(notes_between, graph_matrix)
+        notes_hidden_second = self.graph_2nd(notes_between, graph_matrix, iteration=self.num_graph_iteration)
         notes_hidden = torch.cat((notes_hidden, notes_hidden_second),-1)
 
         return notes_hidden

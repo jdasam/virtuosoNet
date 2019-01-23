@@ -21,10 +21,8 @@ import model_parameters as param
 import model_constants as cons
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
-# parser.add_argument("-model", "--nnModel", type=str, default="cnn", help="cnn or fcn")
+parser.add_argument("-mode", "--sessMode", type=str, default='test', help="train or test or testAll")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
-# parser.add_argument("-tset", "--trainingSet", type=str, default="dataOneHot", help="training set folder path")
 parser.add_argument("-data", "--dataName", type=str, default="very_short", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
@@ -33,7 +31,7 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceEdge", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='isgn_test', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='han_ar_graph', help="code name for saving the model")
 parser.add_argument("-tCode", "--trillCode", type=str, default='default', help="code name for loading trill model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
@@ -600,7 +598,7 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
                 pedal_loss = criterion(out[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:],
                                        align_matched)
 
-                prime_loss += (tempo_loss + vel_loss + dev_loss / 2 + pedal_loss * 8) / 10.5
+                prime_loss += (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
             prime_loss /= len(total_out_list)
         else:
             tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
@@ -610,7 +608,7 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
                                  prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
             pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:], align_matched)
 
-            prime_loss = (tempo_loss + vel_loss + dev_loss / 2 + pedal_loss * 8) / 10.5
+            prime_loss = (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
 
         if isinstance(perform_mu, bool):
             perform_kld = torch.zeros(1)
@@ -816,7 +814,7 @@ if args.sessMode == 'train':
                 key = key_lists[i]
                 temp_train_x = key_augmentation(train_x, key)
                 slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers)
-                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.08
+                kld_weight = sigmoid((NUM_UPDATED - 9e4) / 9e3) * 0.02
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
@@ -946,7 +944,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
     if args.sessMode == 'test':
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
-        MODEL.sequence_iteration = 10
+        MODEL.sequence_iteration = 20
         path_list = cons.emotion_data_path
         emotion_list = cons.emotion_key_list
         perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
@@ -965,7 +963,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             pickle.dump(perform_z, f, protocol=2)
 
     elif args.sessMode =='evaluate':
-        MODEL.sequence_iteration = 10
+        MODEL.sequence_iteration = 20
         test_data_name = args.dataName + "_test.dat"
         if not os.path.isfile(test_data_name):
             training_data_name = '/mnt/ssd1/jdasam_data/' + test_data_name
@@ -1003,7 +1001,6 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
                     prev_perf_x = test_x[0][0:4]
                     if piece_wise_loss:
                         piece_wise_loss_mean = np.mean(np.asarray(piece_wise_loss), axis=0)
-                        print(piece_wise_loss_mean)
                         tempo_loss_total.append(piece_wise_loss_mean[0])
                         vel_loss_total.append(piece_wise_loss_mean[1])
                         deviation_loss_total.append(piece_wise_loss_mean[2])

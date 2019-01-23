@@ -119,12 +119,12 @@ def initialize_model_parameters_by_code(model_code):
         net_param.note.layer = 2
         net_param.note.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 64
-        net_param.final.margin = 64
+        net_param.measure.size = 32
+        net_param.final.margin = 32
         net_param.encoder.size = 32
         net_param.encoder.layer = 2
 
-        net_param.time_reg.size = 128
+        net_param.time_reg.size = 64
         net_param.graph_iteration = 3
         net_param.sequence_iteration = 3
 
@@ -137,16 +137,16 @@ def initialize_model_parameters_by_code(model_code):
             net_param.encoder.input += net_param.note.size
 
     elif 'han' in model_code:
-        net_param.note.layer = 3
-        net_param.note.size = 256
-        # net_param.beat.layer = 2
-        # net_param.beat.size = 128
-        # net_param.measure.layer = 1
-        # net_param.measure.size = 64
+        net_param.note.layer = 2
+        net_param.note.size = 128
+        net_param.beat.layer = 2
+        net_param.beat.size = 128
+        net_param.measure.layer = 1
+        net_param.measure.size = 128
         net_param.final.layer = 1
         net_param.final.size = 128
-        # net_param.voice.layer = 2
-        # net_param.voice.size = 128
+        net_param.voice.layer = 2
+        net_param.voice.size = 128
         # net_param.sum.layer = 2
         # net_param.sum.size = 64
 
@@ -164,7 +164,7 @@ def initialize_model_parameters_by_code(model_code):
             net_param.final.input += net_param.output_size
         if 'graph' in model_code:
             net_param.is_graph = True
-            net_param.graph_iteration = 5
+            net_param.graph_iteration = 3
 
         if 'teacher' in model_code:
             net_param.is_teacher_force = True
