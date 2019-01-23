@@ -568,8 +568,8 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
         # feature.dynamic = keyword_into_onehot(dynamic_words, dynamics_merged_keys)
         feature.dynamic = dynamic_embedding(dynamic_words, dynamic_embed_table, len_vec=4)
-        if dynamic_words and feature.dynamic[0] == 0:
-            print('dynamic vector zero index value is zero:',dynamic_words.encode('utf-8'))
+        # if dynamic_words and feature.dynamic[0] == 0:
+        #     print('dynamic vector zero index value is zero:',dynamic_words.encode('utf-8'))
         if feature.dynamic[1] != 0:
             for rel in note.dynamic.relative:
                 for word in cresc_words:
