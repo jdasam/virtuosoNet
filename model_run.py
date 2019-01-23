@@ -110,10 +110,12 @@ torch.cuda.set_device(args.device)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if not args.trainTrill:
-    if args.sessMode == 'train':
+    if args.sessMode == 'train' and not args.resumeTraining:
         NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
         NET_PARAM.num_edge_types = N_EDGE_TYPE
         param.save_parameters(NET_PARAM, args.modelCode + '_param')
+    elif args.resumeTraining:
+        NET_PARAM = param.load_parameters(args.modelCode + '_param')
     else:
         NET_PARAM = param.load_parameters(args.modelCode + '_param')
         TrillNET_Param = param.load_parameters(args.trillCode + '_trill_param')
@@ -643,7 +645,7 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
 
 
-def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index, tempo_in_note_level=False):
+def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
 
     num_notes = pred_x.shape[1]
@@ -656,17 +658,19 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index, tempo_in
         current_beat = note_locations[i+start_index].beat
         if current_beat > previous_beat:
             previous_beat = current_beat
-            # if tempo_in_note_level:
-            #     for j in range(i, num_notes):
-            #         if note_locations[j+start_index].beat > current_beat:
-            #             break
-            #     pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM])
-            #     true_beat_tempo[current_beat - start_beat] = torch.mean(true_x[0, i:j, QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM])
-            # else:
-            pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
-            true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
+            if 'baseline' in args.modelCode:
+                for j in range(i, num_notes):
+                    if note_locations[j+start_index].beat > current_beat:
+                        break
+                if not i == j:
+                    pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, QPM_INDEX])
+                    true_beat_tempo[current_beat - start_beat] = torch.mean(true_x[0, i:j, QPM_INDEX])
+            else:
+                pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
+                true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
+
     return tempo_loss
 
 
@@ -737,10 +741,11 @@ if args.sessMode == 'train':
             print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
             # model_codes = ['prime', 'trill']
             filename = 'prime_' + args.modelCode + args.resume
-            checkpoint = torch.load(filename)
+            checkpoint = torch.load(filename,  map_location=DEVICE)
             # args.start_epoch = checkpoint['epoch']
             # best_valid_loss = checkpoint['best_valid_loss']
             MODEL.load_state_dict(checkpoint['state_dict'])
+            MODEL.device = DEVICE
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(filename, checkpoint['epoch']))
@@ -819,10 +824,6 @@ if args.sessMode == 'train':
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
                         batch_time_step_run(temp_train_x, train_y, graphs, note_locations, align_matched, slice_idx, model=train_model, kld_weight=kld_weight)
-                    # optimizer.zero_grad()
-                    # loss.backward()
-                    # optimizer.step()
-                    # print(tempo_loss)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     dev_loss_total.append(dev_loss.item())
@@ -924,13 +925,12 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
         # model_codes = ['prime', 'trill']
         filename = 'prime_' + args.modelCode + args.resume
-        checkpoint = torch.load(filename)
+        checkpoint = torch.load(filename, map_location=DEVICE)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(filename, checkpoint['epoch']))
-
         trill_filename = 'trill_' + args.trillCode + args.resume
         checkpoint = torch.load(trill_filename, DEVICE)
         trill_model.load_state_dict(checkpoint['state_dict'])

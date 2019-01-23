@@ -118,7 +118,7 @@ def initialize_model_parameters_by_code(model_code):
     elif 'sequential_ggnn' in model_code or 'sggnn' in model_code or 'isgn' in model_code:
         net_param.note.layer = 2
         net_param.note.size = 128
-        net_param.measure.layer = 1
+        net_param.measure.layer = 2
         net_param.measure.size = 32
         net_param.final.margin = 32
         net_param.encoder.size = 32
