@@ -7,7 +7,7 @@ import xml_matching
 import pickle
 import score_as_graph as score_graph
 
-xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
+# xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
@@ -146,6 +146,8 @@ measure_positions = xml_matching.extract_measure_position(XMLDocument)
 # for i in range(len(measure_positions)-1):
 #     print('measure ' + str(i+1) + ' position is ' + str(measure_positions[i]) + ' and length is' + str(measure_positions[i+1]-measure_positions[i]))
 features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perform_pairs, perform_midi_notes, measure_positions)
+for feat in features:
+    print(feat.xml_deviation)
 
 
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)

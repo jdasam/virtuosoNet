@@ -21,7 +21,7 @@ import model_parameters as param
 import model_constants as cons
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='test', help="train or test or testAll")
+parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
 parser.add_argument("-data", "--dataName", type=str, default="very_short", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
@@ -46,8 +46,8 @@ LOSS_TYPE = args.trainingLoss
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 500
-VALID_STEPS = 3000
+TIME_STEPS = 300
+VALID_STEPS = 2000
 NUM_UPDATED = 0
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 100
@@ -944,7 +944,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
     if args.sessMode == 'test':
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
-        MODEL.sequence_iteration = 20
+        MODEL.sequence_iteration = 10
         path_list = cons.emotion_data_path
         emotion_list = cons.emotion_key_list
         perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
@@ -963,7 +963,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             pickle.dump(perform_z, f, protocol=2)
 
     elif args.sessMode =='evaluate':
-        MODEL.sequence_iteration = 20
+        MODEL.sequence_iteration = 10
         test_data_name = args.dataName + "_test.dat"
         if not os.path.isfile(test_data_name):
             training_data_name = '/mnt/ssd1/jdasam_data/' + test_data_name

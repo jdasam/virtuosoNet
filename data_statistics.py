@@ -61,5 +61,7 @@ def calculate_ratio_of_feature_true(indexes):
                 idx0, idx1, key, num_feature_true, num_feature_false, num_feature_true/(num_feature_false+num_feature_true)*100
             ))
 
-target_indexes = [(0,12), (0,13), (0,-11), (0,15)]
-calculate_ratio_of_feature_true(target_indexes)
+
+
+# target_indexes = [(0,12), (0,13), (0,-11), (0,15)]
+# calculate_ratio_of_feature_true(target_indexes)
