@@ -23,7 +23,7 @@ import model_constants as cons
 parser = argparse.ArgumentParser()
 parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/mozart545-1/", help="folder path of test mat")
-parser.add_argument("-data", "--dataName", type=str, default="very_short", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="hierarchy_test", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
@@ -31,7 +31,7 @@ parser.add_argument("--beatTempo", type=bool, default=True, help="cal tempo from
 parser.add_argument("-voice", "--voiceEdge", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='han_ar_graph', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='han_note_ar', help="code name for saving the model")
 parser.add_argument("-tCode", "--trillCode", type=str, default='default', help="code name for loading trill model")
 parser.add_argument("-comp", "--composer", type=str, default='Chopin', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
@@ -39,26 +39,40 @@ parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).
 parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
 parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (str(x).lower() == 'true'), help='resume training after loading model')
 parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help='resume training after loading model')
+parser.add_argument("-delta", "--deltaLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
+parser.add_argument("-hCode", "--hierCode", type=str, default='han_measure', help="code name for loading trill model")
 
 
 args = parser.parse_args()
 LOSS_TYPE = args.trainingLoss
+HIERARCHY = False
+IN_HIER = False
+
+if 'measure' in args.modelCode or 'section' in args.modelCode:
+    HIERARCHY = True
+elif 'note' in args.modelCode:
+    IN_HIER = True  # In hierarchy mode
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 300
-VALID_STEPS = 2000
+TIME_STEPS = 2000
+VALID_STEPS = 4000
 NUM_UPDATED = 0
 print('Learning Rate and Time Steps are ', learning_rate, TIME_STEPS)
 num_epochs = 100
 num_key_augmentation = 1
 
-
 SCORE_INPUT = 77 #score information only
 DROP_OUT = 0.5
-TOTAL_OUTPUT = 16
+if HIERARCHY:
+    TOTAL_OUTPUT = 2
+    NUM_PRIME_PARAM = 2
+else:
+    TOTAL_OUTPUT = 16
+    NUM_PRIME_PARAM = 11
+if IN_HIER:
+    SCORE_INPUT += 2
 
-NUM_PRIME_PARAM = 11
 NUM_TEMPO_PARAM = 1
 VEL_PARAM_IDX = 1
 DEV_PARAM_IDX = 2
@@ -119,10 +133,10 @@ if not args.trainTrill:
     else:
         NET_PARAM = param.load_parameters(args.modelCode + '_param')
         TrillNET_Param = param.load_parameters(args.trillCode + '_trill_param')
-        if not hasattr(NET_PARAM, 'num_edge_types'):
-            NET_PARAM.num_edge_types = 10
-        if not hasattr(TrillNET_Param, 'num_edge_types'):
-            TrillNET_Param.num_edge_types = 10
+        # if not hasattr(NET_PARAM, 'num_edge_types'):
+        #     NET_PARAM.num_edge_types = 10
+        # if not hasattr(TrillNET_Param, 'num_edge_types'):
+        #     TrillNET_Param.num_edge_types = 10
 
         trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
 
@@ -338,10 +352,25 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
     else:
         initial_z = [z] * NET_PARAM.encoder.size
 
-    batch_x = batch_x.to(DEVICE).view(1, -1, SCORE_INPUT)
-    graph = edges_to_matrix(edges, batch_x.shape[1])
-    MODEL.is_teacher_force = False
-    prediction, _ = perform_xml(batch_x, input_y, graph, note_locations, initial_z=initial_z)
+    if IN_HIER:
+        batch_x = batch_x.to(DEVICE).view(1, -1, SCORE_INPUT - 2)
+        graph = edges_to_matrix(edges, batch_x.shape[1])
+        MODEL.is_teacher_force = False
+        hier_z = [z] * HIER_MODEL_PARAM.encoder.size
+        hier_output, _ = perform_xml(batch_x, input_y, graph, note_locations, initial_z=hier_z, model=HIER_MODEL)
+        if 'measure' in args.hierCode:
+            hierarchy_numbers = [x.measure for x in note_locations]
+        else:
+            hierarchy_numbers = [x.section for x in note_locations]
+        hier_output_spanned = HIER_MODEL.span_beat_to_note_num(hier_output, hierarchy_numbers, len(test_x), 0)
+        combined_x = torch.cat((batch_x, hier_output_spanned), 2)
+        prediction, _ = perform_xml(combined_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
+    else:
+        batch_x = batch_x.to(DEVICE).view(1, -1, SCORE_INPUT)
+        graph = edges_to_matrix(edges, batch_x.shape[1])
+        MODEL.is_teacher_force = False
+        prediction, _ = perform_xml(batch_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
+
 
     prediction = np.squeeze(np.asarray(prediction))
     num_notes = len(prediction)
@@ -467,12 +496,12 @@ def encode_all_emotionNet_data(path_list, style_keywords):
         #     pickle.dump(mean_perform_z, f, protocol=2)
 
 
-def perform_xml(input, input_y, edges, note_locations, initial_z=False):
+def perform_xml(input, input_y, edges, note_locations, initial_z=False, model=MODEL):
     num_notes = input.shape[1]
     total_valid_batch = int(math.ceil(num_notes / VALID_STEPS))
     with torch.no_grad():  # no need to track history in validation
         if not args.trainTrill:
-            model_eval = MODEL.eval()
+            model_eval = model.eval()
             if args.sessMode == 'test' or args.trainTrill:
                 trill_model_eval = trill_model.eval()
 
@@ -483,21 +512,28 @@ def perform_xml(input, input_y, edges, note_locations, initial_z=False):
                     prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, -1, NUM_PRIME_PARAM)
                 else:
                     prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
-                batch_graph = edges.to(DEVICE)
-                prime_outputs, perf_mu, perf_var, note_hidden_out = model_eval(input, prime_input_y, batch_graph,
+                if edges is not None:
+                    edges = edges.to(DEVICE)
+                prime_outputs, perf_mu, perf_var, note_hidden_out = model_eval(input, prime_input_y, edges,
                                                                   note_locations=note_locations, start_index=0,
                                                                   initial_z=initial_z)
                 # second_inputs = torch.cat((input,prime_outputs), 2)
                 # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
                 # model_eval = second_model.eval()
                 # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-                if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
-                    trill_inputs = torch.cat((input, prime_outputs), 2)
-                    trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                if HIERARCHY or model==HIER_MODEL:
+                    outputs = prime_outputs
                 else:
-                    trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(DEVICE)
+                    if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
+                        if input.shape[2] != 77:
+                            trill_inputs = torch.cat((input[:,:,:-2], prime_outputs), 2)
+                        else:
+                            trill_inputs = torch.cat((input, prime_outputs), 2)
+                        trill_outputs = trill_model_eval(trill_inputs, edges)
+                    else:
+                        trill_outputs = torch.zeros(1, num_notes, num_trill_param).to(DEVICE)
 
-                outputs = torch.cat((prime_outputs, trill_outputs), 2)
+                    outputs = torch.cat((prime_outputs, trill_outputs), 2)
                 total_z.append((perf_mu, perf_var))
             else:
                 for i in range(total_valid_batch):
@@ -511,19 +547,29 @@ def perform_xml(input, input_y, edges, note_locations, initial_z=False):
                     else:
                         prime_input_y = input_y[:, :, 0:NUM_PRIME_PARAM].view(1, 1, NUM_PRIME_PARAM)
                     batch_input = input[:,batch_start:batch_end,:]
-                    batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
+                    if edges:
+                        batch_graph = edges[:,batch_start:batch_end, batch_start:batch_end].to(DEVICE)
+                    else:
+                        batch_graph = None
                     prime_outputs, perf_mu, perf_var, note_hidden_out = model_eval(batch_input, prime_input_y, batch_graph, note_locations=note_locations, start_index=0, initial_z=initial_z)
                     # second_inputs = torch.cat((input,prime_outputs), 2)
                     # second_input_y = input_y[:,:,num_prime_param:num_prime_param+num_second_param].view(1,-1,num_second_param)
                     # model_eval = second_model.eval()
                     # second_outputs = model_eval(second_inputs, second_input_y, note_locations, 0, step_by_step=True)
-                    if args.sessMode == 'test' and torch.sum(input[:, :, is_trill_index_score]) > 0:
-                        trill_inputs = torch.cat((batch_input, prime_outputs), 2)
-                        trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                    if HIERARCHY or model==HIER_MODEL:
+                        temp_outputs = prime_outputs
                     else:
-                        trill_outputs = torch.zeros(1, batch_end-batch_start, num_trill_param).to(DEVICE)
+                        if args.sessMode == 'test' and torch.sum(batch_input[:, :, is_trill_index_score]) > 0:
+                            if batch_input.shape[2] != 77:
+                                trill_inputs = torch.cat((batch_input[:, :, :-2], prime_outputs), 2)
+                            else:
+                                trill_inputs = torch.cat((batch_input, prime_outputs), 2)
+                            trill_outputs = trill_model_eval(trill_inputs, batch_graph)
+                        else:
+                            trill_outputs = torch.zeros(1, batch_end - batch_start, num_trill_param).to(DEVICE)
 
-                    temp_outputs = torch.cat((prime_outputs, trill_outputs),2)
+                        temp_outputs = torch.cat((prime_outputs, trill_outputs), 2)
+                    total_z.append((perf_mu, perf_var))
                     total_output.append(temp_outputs)
                     total_z.append((perf_mu, perf_var))
                 outputs = torch.cat(total_output, 1)
@@ -566,51 +612,82 @@ def perform_xml(input, input_y, edges, note_locations, initial_z=False):
             return outputs, 0
 
 
-def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index, model, batch_size=batch_size, kld_weight=1):
+def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index, model, train_h=None, batch_size=batch_size, kld_weight=1):
     batch_start, batch_end = slice_index
     num_notes = batch_end - batch_start
     batch_x = torch.Tensor(x[batch_start:batch_end])
+    if train_h:
+        hierarchy_x = torch.Tensor(train_h[batch_start:batch_end])
+        batch_x = torch.cat((batch_x, hierarchy_x[:, 0:2]), 1)
     batch_y = torch.Tensor(y[batch_start:batch_end])
     align_matched = torch.Tensor(align_matched[batch_start:batch_end])
     batch_x = batch_x.view((batch_size, -1, SCORE_INPUT)).to(DEVICE)
-    batch_y = batch_y.view((batch_size, -1, TOTAL_OUTPUT)).to(DEVICE)
+    if 'measure' in args.modelCode:
+        batch_y = batch_y[:,0:2].view(batch_size, -1, 2).to(DEVICE)
+    elif 'section' in args.modelCode:
+        batch_y = batch_y[:, 2:4].view(batch_size, -1, 2).to(DEVICE)
+    else:
+        batch_y = batch_y.view((batch_size, -1, TOTAL_OUTPUT)).to(DEVICE)
     align_matched = align_matched.view((batch_size, -1, 1)).to(DEVICE)
-    batch_graph = edges[:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
+    if edges:
+        edges = edges[:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
 
     if not args.trainTrill:
         prime_batch_x = batch_x
-        prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
-
+        if HIERARCHY:
+            prime_batch_y = batch_y
+        else:
+            prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
 
         model_train = model.train()
         prime_outputs, perform_mu, perform_var, total_out_list \
-            = model_train(prime_batch_x, prime_batch_y, batch_graph, note_locations, batch_start)
+            = model_train(prime_batch_x, prime_batch_y, edges, note_locations, batch_start)
 
         # prime_outputs *= align_matched
         # prime_batch_y *= align_matched
 
-        if 'isgn' in args.modelCode:
-            prime_loss = torch.zeros(1).to(DEVICE)
-            for out in total_out_list:
-                tempo_loss = cal_tempo_loss_in_beat(out, prime_batch_y, note_locations, batch_start)
-                vel_loss = criterion(out[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
-                                     prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
-                dev_loss = criterion(out[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
-                                     prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
-                pedal_loss = criterion(out[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:],
-                                       align_matched)
+        if HIERARCHY:
+            if 'measure' in args.modelCode:
+                hierarchy_numbers = [x.measure for x in note_locations]
+            else:
+                hierarchy_numbers = [x.section for x in note_locations]
+            tempo_in_hierarchy = MODEL.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, batch_start, 0)
+            dynamics_in_hierarchy = MODEL.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, batch_start, 1)
+            tempo_loss = criterion(prime_outputs[:,:,0], tempo_in_hierarchy)
+            vel_loss = criterion(prime_outputs[:,:,1], dynamics_in_hierarchy)
+            if args.deltaLoss and prime_outputs.shape[1] > 1:
+                tempo_out_delta = prime_outputs[:, 1:, 0] - prime_outputs[:, :-1, 0]
+                tempo_true_delta = tempo_in_hierarchy[:,1:, :] - tempo_in_hierarchy[:, :-1, :]
+                vel_out_delta = prime_outputs[:, 1:, 1] - prime_outputs[:, :-1, 1]
+                vel_true_delta = dynamics_in_hierarchy[:, 1:, :] - dynamics_in_hierarchy[:, :-1, :]
 
-                prime_loss += (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
-            prime_loss /= len(total_out_list)
+                tempo_loss += criterion(tempo_out_delta, tempo_true_delta)
+                vel_loss += criterion(vel_true_delta, vel_out_delta)
+
+            prime_loss = tempo_loss + vel_loss
         else:
-            tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
-            vel_loss = criterion(prime_outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
-                                 prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
-            dev_loss = criterion(prime_outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
-                                 prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
-            pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:], align_matched)
+            if 'isgn' in args.modelCode:
+                prime_loss = torch.zeros(1).to(DEVICE)
+                for out in total_out_list:
+                    tempo_loss = cal_tempo_loss_in_beat(out, prime_batch_y, note_locations, batch_start)
+                    vel_loss = criterion(out[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
+                                         prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
+                    dev_loss = criterion(out[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
+                                         prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
+                    pedal_loss = criterion(out[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:],
+                                           align_matched)
 
-            prime_loss = (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
+                    prime_loss += (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
+                prime_loss /= len(total_out_list)
+            else:
+                tempo_loss = cal_tempo_loss_in_beat(prime_outputs, prime_batch_y, note_locations, batch_start)
+                vel_loss = criterion(prime_outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
+                                     prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
+                dev_loss = criterion(prime_outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
+                                     prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
+                pedal_loss = criterion(prime_outputs[:, :, PEDAL_PARAM_IDX:], prime_batch_y[:, :, PEDAL_PARAM_IDX:], align_matched)
+
+                prime_loss = (tempo_loss + vel_loss + dev_loss + pedal_loss * 8) / 11
 
         if isinstance(perform_mu, bool):
             perform_kld = torch.zeros(1)
@@ -622,7 +699,11 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
         optimizer.step()
 
-        return tempo_loss, vel_loss, dev_loss, pedal_loss, torch.zeros(1), perform_kld
+
+        if HIERARCHY:
+            return tempo_loss, vel_loss, torch.zeros(1), torch.zeros(1), torch.zeros(1), perform_kld
+        else:
+            return tempo_loss, vel_loss, dev_loss, pedal_loss, torch.zeros(1), perform_kld
 
     else:
         trill_bool = batch_x[:,:,is_trill_index_score:is_trill_index_score+1]
@@ -630,7 +711,7 @@ def batch_time_step_run(x, y, edges, note_locations, align_matched, slice_index,
             trill_batch_x = torch.cat((batch_x, batch_y[:,:, 0:NUM_PRIME_PARAM + num_second_param]), 2)
             trill_batch_y = batch_y[:,:,-num_trill_param:]
             model_train = model.train()
-            trill_output = model_train(trill_batch_x, batch_graph)
+            trill_output = model_train(trill_batch_x, edges)
             trill_loss = criterion(trill_output, trill_batch_y, trill_bool)
             trill_optimizer.zero_grad()
             trill_loss.backward()
@@ -670,6 +751,12 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
                 true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
 
     tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
+    if args.deltaLoss and pred_beat_tempo.shape[0] > 1:
+        prediction_delta = pred_beat_tempo[1:] - pred_beat_tempo[:-1]
+        true_delta = true_beat_tempo[1:] - true_beat_tempo[:-1]
+        delta_loss = criterion(prediction_delta, true_delta)
+
+        tempo_loss += delta_loss
 
     return tempo_loss
 
@@ -766,18 +853,10 @@ if args.sessMode == 'train':
         # complete_xy = pickle.load(f)
         complete_xy = u.load()
 
-    # perform_num = len(complete_xy)
-    if args.trainingLoss == 'MSE':
-        tempo_stats = [MEANS[1][0], STDS[1][0]]
-    else:
-        tempo_stats = [0,0]
-
-    # train_perf_num = int(perform_num * training_ratio)
     train_xy = complete_xy['train']
     test_xy = complete_xy['valid']
     print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
-
-    print(train_xy[0][0][0])
+    print('training sample example', train_xy[0][0][0])
 
     if args.trainTrill:
         train_model = trill_model
@@ -795,15 +874,25 @@ if args.sessMode == 'train':
         kld_total = []
         for xy_tuple in train_xy:
             train_x = xy_tuple[0]
-            train_y = xy_tuple[1]
+            if HIERARCHY:
+                train_y = xy_tuple[2]
+            else:
+                train_y = xy_tuple[1]
+            if IN_HIER:
+                train_h = xy_tuple[2]
+            else:
+                train_h = None
             if args.trainingLoss == 'CE':
                 train_y = categorize_value_to_vector(train_y, BINS)
-            note_locations = xy_tuple[2]
-            align_matched = xy_tuple[3]
-            edges = xy_tuple[4]
+            note_locations = xy_tuple[3]
+            align_matched = xy_tuple[4]
+            edges = xy_tuple[5]
 
-            data_size = len(train_x)
-            graphs = edges_to_matrix(edges, data_size)
+            data_size = len(note_locations)
+            if MODEL.is_graph:
+                graphs = edges_to_matrix(edges, data_size)
+            else:
+                graphs = None
             measure_numbers = [x.measure for x in note_locations]
             # graphs = edges_to_sparse_tensor(edges)
             total_batch_num = int(math.ceil(data_size / (TIME_STEPS * batch_size)))
@@ -823,7 +912,7 @@ if args.sessMode == 'train':
 
                 for slice_idx in slice_indexes:
                     tempo_loss, vel_loss, dev_loss, pedal_loss, trill_loss, kld = \
-                        batch_time_step_run(temp_train_x, train_y, graphs, note_locations, align_matched, slice_idx, model=train_model, kld_weight=kld_weight)
+                        batch_time_step_run(temp_train_x, train_y, graphs, note_locations, align_matched, slice_idx, train_h=train_h, model=train_model, kld_weight=kld_weight)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     dev_loss_total.append(dev_loss.item())
@@ -845,34 +934,77 @@ if args.sessMode == 'train':
         pedal_loss_total = []
         for xy_tuple in test_xy:
             test_x = xy_tuple[0]
-            test_y = xy_tuple[1]
-            note_locations = xy_tuple[2]
-            align_matched = xy_tuple[3]
-            edges = xy_tuple[4]
-            graphs = edges_to_matrix(edges, len(test_x))
+            if HIERARCHY:
+                test_y = xy_tuple[2]
+            else:
+                test_y = xy_tuple[1]
+            if IN_HIER:
+                test_h = xy_tuple[2]
+                batch_x = torch.Tensor(test_x)
+                batch_h = torch.Tensor(test_h)
+                batch_x = torch.cat((batch_x, batch_h[:,0:2]), 1).view(1, -1, SCORE_INPUT).to(DEVICE)
+            else:
+                batch_x = torch.Tensor(test_x).view((1, -1, SCORE_INPUT)).to(DEVICE)
+            note_locations = xy_tuple[3]
+            align_matched = xy_tuple[4]
+            edges = xy_tuple[5]
+            if MODEL.is_graph:
+                graphs = edges_to_matrix(edges, len(test_x))
+            else:
+                graphs = None
             if LOSS_TYPE == 'CE':
                 test_y = categorize_value_to_vector(test_y, BINS)
 
-            batch_x = torch.Tensor(test_x).view((1, -1, SCORE_INPUT)).to(DEVICE)
-            batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
+            if HIERARCHY:
+                batch_y = torch.Tensor(test_y)
+                if 'measure' in args.modelCode:
+                    batch_y = batch_y[:,0:2].view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
+                else:
+                    batch_y = batch_y[:,2:4].view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
+            else:
+                batch_y = torch.Tensor(test_y).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
             # input_y = torch.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
             align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
             outputs, _ = perform_xml(batch_x, batch_y, graphs, note_locations)
 
             # valid_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:-num_trill_param], batch_y[:,:,NUM_TEMPO_PARAM:-num_trill_param], align_matched)
-            tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
-            if LOSS_TYPE =='CE':
-                vel_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:NUM_TEMPO_PARAM+len(BINS[1])], batch_y[:,:,NUM_TEMPO_PARAM:NUM_TEMPO_PARAM+len(BINS[1])], align_matched)
-                deviation_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM+len(BINS[1]):NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2])],
-                                        batch_y[:,:,NUM_TEMPO_PARAM+len(BINS[1]):NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2])])
-                pedal_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2]):-num_trill_param],
-                                        batch_y[:,:,NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2]):-num_trill_param])
-                trill_loss = criterion(outputs[:,:,-num_trill_param:], batch_y[:,:,-num_trill_param:])
+            if HIERARCHY:
+                if 'measure' in args.modelCode:
+                    hierarchy_numbers = [x.measure for x in note_locations]
+                else:
+                    hierarchy_numbers = [x.section for x in note_locations]
+                tempo_y = MODEL.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, 0, 0)
+                vel_y = MODEL.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, 0, 1)
+
+                tempo_loss = criterion(outputs[:,:,0], tempo_y)
+                vel_loss = criterion(outputs[:,:,1], vel_y)
+                if args.deltaLoss:
+                    tempo_out_delta = outputs[:, 1:, 0] - outputs[:, :-1, 0]
+                    tempo_true_delta = tempo_y[:, 1:, :] - tempo_y[:, :-1, :]
+                    vel_out_delta = outputs[:, 1:, 1] - outputs[:, :-1, 1]
+                    vel_true_delta = vel_y[:, 1:, :] - vel_y[:, :-1, :]
+
+                    tempo_loss += criterion(tempo_out_delta, tempo_true_delta)
+                    vel_loss += criterion(vel_true_delta, vel_out_delta)
+
+                deviation_loss = torch.zeros(1)
+                pedal_loss = torch.zeros(1)
+                trill_loss = torch.zeros(1)
+
             else:
-                vel_loss = criterion(outputs[:, :, 1], batch_y[:, :, 1], align_matched)
-                deviation_loss = criterion(outputs[:, :, 2], batch_y[:, :, 2], align_matched)
-                pedal_loss = criterion(outputs[:, :, 3:-num_trill_param], batch_y[:, :, 3:-num_trill_param], align_matched)
-                trill_loss = criterion(outputs[:, :, -num_trill_param:], batch_y[:, :, -num_trill_param:], align_matched)
+                tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
+                if LOSS_TYPE =='CE':
+                    vel_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:NUM_TEMPO_PARAM+len(BINS[1])], batch_y[:,:,NUM_TEMPO_PARAM:NUM_TEMPO_PARAM+len(BINS[1])], align_matched)
+                    deviation_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM+len(BINS[1]):NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2])],
+                                            batch_y[:,:,NUM_TEMPO_PARAM+len(BINS[1]):NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2])])
+                    pedal_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2]):-num_trill_param],
+                                            batch_y[:,:,NUM_TEMPO_PARAM+len(BINS[1])+len(BINS[2]):-num_trill_param])
+                    trill_loss = criterion(outputs[:,:,-num_trill_param:], batch_y[:,:,-num_trill_param:])
+                else:
+                    vel_loss = criterion(outputs[:, :, 1], batch_y[:, :, 1], align_matched)
+                    deviation_loss = criterion(outputs[:, :, 2], batch_y[:, :, 2], align_matched)
+                    pedal_loss = criterion(outputs[:, :, 3:-num_trill_param], batch_y[:, :, 3:-num_trill_param], align_matched)
+                    trill_loss = criterion(outputs[:, :, -num_trill_param:], batch_y[:, :, -num_trill_param:], align_matched)
 
             # valid_loss_total.append(valid_loss.item())
             tempo_loss_total.append(tempo_loss.item())
@@ -925,6 +1057,8 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
         # model_codes = ['prime', 'trill']
         filename = 'prime_' + args.modelCode + args.resume
+        print('device is ', args.device)
+        torch.cuda.set_device(args.device)
         checkpoint = torch.load(filename, map_location=DEVICE)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
@@ -938,13 +1072,23 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(trill_filename, checkpoint['epoch']))
 
+        if IN_HIER:
+            HIER_MODEL_PARAM = param.load_parameters(args.hierCode + '_param')
+            HIER_MODEL = nnModel.HAN_Integrated(HIER_MODEL_PARAM, DEVICE, True).to(DEVICE)
+            filename = 'prime_' + args.hierCode + args.resume
+            checkpoint = torch.load(filename, map_location=DEVICE)
+            HIER_MODEL.load_state_dict(checkpoint['state_dict'])
+            print("=> high-level model loaded checkpoint '{}' (epoch {})"
+                  .format(trill_filename, checkpoint['epoch']))
+
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
+
 
     if args.sessMode == 'test':
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
-        MODEL.sequence_iteration = 10
+        MODEL.num_sequence_iteration = 10
         path_list = cons.emotion_data_path
         emotion_list = cons.emotion_key_list
         perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
@@ -963,11 +1107,12 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             pickle.dump(perform_z, f, protocol=2)
 
     elif args.sessMode =='evaluate':
-        MODEL.sequence_iteration = 10
+        print('original num sequence itration is ', MODEL.num_sequence_iteration)
+        # MODEL.num_sequence_iteration = 3
         test_data_name = args.dataName + "_test.dat"
         if not os.path.isfile(test_data_name):
-            training_data_name = '/mnt/ssd1/jdasam_data/' + test_data_name
-        with open(training_data_name, "rb") as f:
+            test_data_name = '/mnt/ssd1/jdasam_data/' + test_data_name
+        with open(test_data_name, "rb") as f:
             u = pickle._Unpickler(f)
             u.encoding = 'latin1'
             # p = u.load()

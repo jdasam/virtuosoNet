@@ -14,6 +14,7 @@ class NetParams:
         self.onset = self.Param()
         self.beat = self.Param()
         self.measure = self.Param()
+        self.section = self.Param()
         self.final = self.Param()
         self.voice = self.Param()
         self.sum = self.Param()
@@ -29,6 +30,7 @@ class NetParams:
         self.is_graph = False
         self.is_teacher_force = False
         self.is_baseline = False
+        self.hierarchy_level = None
 
 
 def save_parameters(param, save_name):
@@ -117,16 +119,16 @@ def initialize_model_parameters_by_code(model_code):
                                   + cons.NUM_PRIME_PARAM
     elif 'sequential_ggnn' in model_code or 'sggnn' in model_code or 'isgn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 256
+        net_param.note.size = 128
         net_param.measure.layer = 2
-        net_param.measure.size = 64
+        net_param.measure.size = 32
         net_param.final.margin = 32
-        net_param.encoder.size = 32
+        net_param.encoder.size = 16
         net_param.encoder.layer = 2
 
-        net_param.time_reg.size = 64
-        net_param.graph_iteration = 3
-        net_param.sequence_iteration = 3
+        net_param.time_reg.size = 32
+        net_param.graph_iteration = 1
+        net_param.sequence_iteration = 10
 
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
@@ -140,17 +142,17 @@ def initialize_model_parameters_by_code(model_code):
         net_param.note.layer = 2
         net_param.note.size = 128
         net_param.beat.layer = 2
-        net_param.beat.size = 128
+        net_param.beat.size = 64
         net_param.measure.layer = 1
-        net_param.measure.size = 128
+        net_param.measure.size = 64
         net_param.final.layer = 1
-        net_param.final.size = 128
+        net_param.final.size = 64
         net_param.voice.layer = 2
         net_param.voice.size = 128
-        # net_param.sum.layer = 2
-        # net_param.sum.size = 64
+        net_param.section.layer = 1
+        net_param.section.size = 32
 
-        net_param.encoder.size = 32
+        net_param.encoder.size = 8
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
@@ -171,7 +173,20 @@ def initialize_model_parameters_by_code(model_code):
         if 'baseline' in model_code:
             net_param.is_baseline = True
 
+
+
     else:
         print('Unclassified model code')
+
+    if 'measure' in model_code:
+        net_param.hierarchy_level = 'measure'
+        net_param.output_size = 2
+        net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
+    elif 'section' in model_code:
+        net_param.hierarchy_level = 'section'
+        net_param.output_size = 2
+        net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
+    elif 'note' in model_code:
+        net_param.input_size += 2
 
     return net_param

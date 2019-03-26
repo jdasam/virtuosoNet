@@ -14,7 +14,7 @@ args = parser.parse_args()
 
 
 NUM_TRILL_PARAM = 5
-NUM_NORMALIZE_FEATURE = [8, 15, 15]
+NUM_NORMALIZE_FEATURE = [8, 15, 4]
 REGRESSION = args.regression
 print('Data type is regression: ', args.regression)
 
@@ -30,6 +30,7 @@ def save_features_as_vector(dataset, num_train, num_valid, save_name):
             num_perform +=1
             train_x = []
             train_y = []
+            train_h = []
             align_matched_status = []
             # is_beat_list = []
             # beat_numbers = []
@@ -44,45 +45,25 @@ def save_features_as_vector(dataset, num_train, num_valid, save_name):
             for feature in features:
                 total_notes += 1
                 if not feature.qpm == None:
-                    # train_x.append(
-                    #     [feature.pitch_interval, feature.duration,
-                    #      feature.duration_ratio, feature.beat_position, feature.measure_length,
-                    #      feature.following_rest, feature.distance_from_abs_dynamic,
-                    #      feature.xml_position, feature.grace_order, feature.time_sig_num,
-                    #      feature.time_sig_den, feature.no_following_note] #12
-                    #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation)
-                    # train_x.append(
-                    #     [feature.pitch_interval, feature.duration,
-                    #      feature.duration_ratio, feature.beat_position, feature.measure_length,
-                    #      feature.qpm_primo, feature.following_rest, feature.mean_piano_vel, feature.mean_forte_vel,
-                    #      feature.mean_piano_mark, feature.mean_forte_mark, feature.distance_from_abs_dynamic,
-                    #      feature.xml_position, feature.grace_order, feature.time_sig_num,
-                    #      feature.time_sig_den, feature.no_following_note]  # 17
-                    #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation + feature.tempo_primo)
                     train_x.append(
                             [feature.midi_pitch, feature.duration, feature.beat_importance, feature.measure_length,
                              feature.qpm_primo, feature.following_rest, feature.distance_from_abs_dynamic,
-                             feature.distance_from_recent_tempo,
-                             feature.beat_position, feature.xml_position, feature.grace_order,
-                            feature.preceded_by_grace_note]
-                            + feature.pitch + feature.tempo + feature.dynamic + feature.time_sig_vec + feature.slur_beam_vec + composer_vec + feature.notation + feature.tempo_primo)
-                    # train_x.append(
-                    #     [feature.pitch_interval, feature.duration,
-                    #      feature.duration_ratio, feature.beat_position, feature.measure_length,
-                    #     feature.following_rest, feature.distance_from_abs_dynamic,
-                    #      feature.xml_position, feature.grace_order, feature.time_sig_num,
-                    #      feature.time_sig_den, feature.no_following_note]  # 12
-                    #     + feature.pitch + feature.tempo + feature.dynamic + feature.notation)
+                             feature.distance_from_recent_tempo, feature.beat_position, feature.xml_position,
+                             feature.grace_order, feature.preceded_by_grace_note]
+                            + feature.pitch + feature.tempo + feature.dynamic + feature.time_sig_vec +
+                            feature.slur_beam_vec + composer_vec + feature.notation + feature.tempo_primo)
 
+                    # temp_y = [feature.qpm, feature.velocity, feature.xml_deviation,
+                    #           feature.articulation, feature.pedal_refresh_time, feature.pedal_cut_time,
+                    #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
+                    #           feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
                     temp_y = [feature.qpm, feature.velocity, feature.xml_deviation,
                               feature.articulation, feature.pedal_refresh_time, feature.pedal_cut_time,
                               feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
                               feature.pedal_refresh, feature.pedal_cut] + feature.trill_param
-                    # temp_y = [feature.passed_second, feature.duration_second, feature.velocity,
-                    #           feature.pedal_refresh_time, feature.pedal_cut_time,
-                    #           feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
-                    #           feature.pedal_refresh, feature.pedal_cut]
                     train_y.append(temp_y)
+                    temp_h = [feature.measure_tempo, feature.measure_dynamic, feature.section_tempo, feature.section_dynamic]
+                    train_h.append(temp_h)
                     align_matched_status.append(feature.align_matched)
                     # prev_feat[0] = feature.previous_tempo
                     num_total_datapoint += 1
@@ -94,7 +75,7 @@ def save_features_as_vector(dataset, num_train, num_valid, save_name):
                     # voice_numbers.append(feature.voice)
             # windowed_train_x = make_windowed_data(train_x, input_length )
             # complete_xy.append([train_x, train_y, previous_y, beat_numbers, measure_numbers, voice_numbers])
-            complete_xy.append([train_x, train_y, note_locations, align_matched_status, score_graph, score])
+            complete_xy.append([train_x, train_y, train_h, note_locations, align_matched_status, score_graph, score])
             # key_changed_num = []
             # for i in range(3):
             #     key_change = 0
@@ -112,6 +93,7 @@ def save_features_as_vector(dataset, num_train, num_valid, save_name):
 
     print(train_x[0])
     print(train_y[0])
+    print(train_h[0])
 
     if REGRESSION:
         complete_xy_normalized, means, stds = normalize_features(complete_xy, num_input, num_output, x_only=False)
@@ -130,7 +112,7 @@ def save_features_as_vector(dataset, num_train, num_valid, save_name):
     # random.shuffle(complete_xy_valid)
     # random.shuffle(complete_xy_test)
 
-    for index1 in (0,1):
+    for index1 in (0,1,2):
         for index2 in range(len(stds[index1])):
             std = stds[index1][index2]
             if std == 0:
@@ -181,7 +163,7 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
     if x_only:
         index_list = [0]
     else:
-        index_list = [0,1]
+        index_list = [0, 1, 2]
 
     for i1 in index_list:
         for i2 in range(NUM_NORMALIZE_FEATURE[i1]):
@@ -190,7 +172,6 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
             stds[i1].append(std_value)
     print(means)
     print(stds)
-
 
     for performance in complete_xy:
         complete_xy_normalized.append([])
@@ -216,9 +197,9 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
         if x_only:
             complete_xy_normalized[-1].append(performance[1])
 
-        complete_xy_normalized[-1].append(performance[2])
         complete_xy_normalized[-1].append(performance[3])
         complete_xy_normalized[-1].append(performance[4])
+        complete_xy_normalized[-1].append(performance[5])
 
     return complete_xy_normalized, means, stds
 
@@ -293,5 +274,5 @@ def key_augmentation(data_x, key_change):
 
 
 # xml_matching.check_data_split('chopin_cleaned/')
-chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_clean')
+chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Beethoven/Piano_Sonatas/1-1')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'hierarchy_test')

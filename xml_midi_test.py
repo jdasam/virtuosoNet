@@ -11,9 +11,9 @@ import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/18-2/'
+folderDir = 'chopin_cleaned/Chopin/Etudes_op_10/3/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'Schmitt01'
+artistName = 'SunMeiting08'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -43,6 +43,8 @@ perform_midi_notes = perform_midi.instruments[0].notes
 corresp = xml_matching.read_corresp(folderDir + artistName + "_infer_corresp.txt")
 score_pairs, perform_pairs = xml_matching.match_xml_midi_perform(melody_notes,score_midi_notes, perform_midi_notes, corresp)
 xml_matching.check_pairs(score_pairs)
+# for pair in score_pairs:
+#     print([pair['xml'].pitch, pair['xml'].note_duration.xml_position, pair['xml'].measure_number], pair['midi'])
 
 # for pair in perform_pairs:
 #     if not pair ==[]:
@@ -93,7 +95,7 @@ directions, time_signatures = xml_matching.extract_directions(XMLDocument)
 melody_notes = xml_matching.apply_directions_to_notes(melody_notes, directions, time_signatures)
 for note in melody_notes:
     if note.note_notations.is_trill:
-        print(note)
+        print('trill note', note, note.measure_number)
 #
 # for note in melody_notes:
 #     # print(note.pitch, note.note_duration.xml_position, note.dynamic.absolute, note.tempo)
@@ -147,8 +149,7 @@ measure_positions = xml_matching.extract_measure_position(XMLDocument)
 #     print('measure ' + str(i+1) + ' position is ' + str(measure_positions[i]) + ' and length is' + str(measure_positions[i+1]-measure_positions[i]))
 features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perform_pairs, perform_midi_notes, measure_positions)
 for feat in features:
-    print(feat.xml_deviation)
-
+    print('dynamics', feat.beat_dynamic, feat.measure_dynamic, feat.section_dynamic)
 
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)
 
