@@ -283,7 +283,7 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
         notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.grace_order, -x.pitch[1]))
         notes = check_overlapped_notes(notes)
         notes = apply_rest_to_note(notes, rests)
-        notes = omit_trill_notes(notes)
+        notes = omit_trill_notes(notes, xml_Doc)
         notes = extract_and_apply_slurs(notes)
         notes = rearrange_chord_index(notes)
     # for note in notes:
@@ -481,6 +481,8 @@ class MusicFeature():
         self.pedal_cut = None
         self.pedal_cut_time = None
         self.soft_pedal = None
+        self.articulation_loss_weight = 1
+
 
         self.mean_piano_vel = None
         self.mean_piano_mark = None
@@ -723,6 +725,15 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.pedal_cut = pedal_sigmoid(pairs[i]['midi'].pedal_cut)
             feature.pedal_cut_time = pairs[i]['midi'].pedal_cut_time
             feature.soft_pedal = pedal_sigmoid(pairs[i]['midi'].soft_pedal)
+
+            if feature.pedal_at_end > 70:
+                feature.articulation_loss_weight = 0.1
+            elif feature.pedal_at_end > 60:
+                feature.articulation_loss_weight = 0.5
+            else:
+                feature.articulation_loss_weight = 1
+
+
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
 
             if previous_second is None:
@@ -753,6 +764,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.pedal_cut_time = 0
             feature.soft_pedal = prev_soft_pedal
             feature.midi_start = prev_start
+            feature.articulation_loss_weight = 0
 
         feature.previous_tempo = math.log(previous_qpm, 10)
         feature.qpm_primo = qpm_primo
@@ -2605,11 +2617,9 @@ def check_overlapped_notes(xml_notes):
 
 def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
     xml_name = path_name + 'musicxml_cleaned.musicxml'
-    midi_name = path_name + 'midi_cleaned.mid'
 
     if not os.path.isfile(xml_name):
         xml_name = path_name + 'xml.xml'
-        midi_name = path_name + 'midi.mid'
 
     xml_object = MusicXMLDocument(xml_name)
     beats = cal_beat_positions_of_piece(xml_object)
@@ -2661,7 +2671,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
                     (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
                   (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7] ,
                   feat.beat_position, feat.xml_position, feat.grace_order,
-                    feat.preceded_by_grace_note] \
+                    feat.preceded_by_grace_note, feat.followed_by_fermata_rest] \
                    + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
         # temp_x.append(feat.is_beat)
         test_x.append(temp_x)
@@ -3294,7 +3304,7 @@ def define_tempo_embedding_table():
     return embed_table
 
 
-def omit_trill_notes(xml_notes):
+def omit_trill_notes(xml_notes, xml_doc):
     num_notes = len(xml_notes)
     omit_index = []
     trill_sign = []
@@ -3303,6 +3313,14 @@ def omit_trill_notes(xml_notes):
         note = xml_notes[i]
         if not note.is_print_object:
             omit_index.append(i)
+            if note.accidental:
+                # TODO: handle non-printable accidental
+                if note.accidental == 'natural':
+                    pass
+                elif note.accidental == 'sharp':
+                    pass
+                elif note.accidental == 'flat':
+                    pass
             if note.note_notations.is_trill:
                 trill = {'xml_pos': note.note_duration.xml_position, 'pitch': note.pitch[1]}
                 trill_sign.append(trill)
@@ -3817,6 +3835,7 @@ def read_score_perform_pair(path, perf_name, composer_name, means, stds):
 
     test_x = []
     test_y = []
+    test_h = []
     note_locations = []
     for feat in features:
         temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
@@ -3825,19 +3844,23 @@ def read_score_perform_pair(path, perf_name, composer_name, means, stds):
                   (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
                   (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7],
                   feat.beat_position, feat.xml_position, feat.grace_order,
-                  feat.preceded_by_grace_note] \
+                  feat.preceded_by_grace_note, feat.followed_by_fermata_rest] \
                  + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
         temp_y = [feat.qpm, feat.velocity, feat.xml_deviation,
                   feat.articulation, feat.pedal_refresh_time, feat.pedal_cut_time,
                   feat.pedal_at_start, feat.pedal_at_end, feat.soft_pedal,
                   feat.pedal_refresh, feat.pedal_cut] + feat.trill_param
+        temp_h = [feat.measure_tempo, feat.measure_dynamic, feat.section_tempo, feat.section_dynamic]
         for i in range(11):
             temp_y[i] = (temp_y[i] - means[1][i]) / stds[1][i]
+        for i in range(4):
+            temp_h[i] = (temp_h[i] - means[2][i]) / stds[2][i]
         test_x.append(temp_x)
         test_y.append(temp_y)
+        test_h.append(temp_h)
         note_locations.append(feat.note_location)
 
-    return test_x, test_y, edges, note_locations
+    return test_x, test_y, test_h, edges, note_locations
 
 
 def check_data_split(path):

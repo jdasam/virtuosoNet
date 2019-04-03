@@ -11,9 +11,9 @@ import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Chopin/Etudes_op_10/3/'
+folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/1-1/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'SunMeiting08'
+artistName = 'KimG01'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -148,8 +148,6 @@ measure_positions = xml_matching.extract_measure_position(XMLDocument)
 # for i in range(len(measure_positions)-1):
 #     print('measure ' + str(i+1) + ' position is ' + str(measure_positions[i]) + ' and length is' + str(measure_positions[i+1]-measure_positions[i]))
 features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perform_pairs, perform_midi_notes, measure_positions)
-for feat in features:
-    print('dynamics', feat.beat_dynamic, feat.measure_dynamic, feat.section_dynamic)
 
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)
 

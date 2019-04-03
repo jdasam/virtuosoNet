@@ -1,5 +1,5 @@
-SCORE_INPUT = 77 #score information only
-DROP_OUT = 0.5
+SCORE_INPUT = 78 #score information only
+DROP_OUT = 0.2
 TOTAL_OUTPUT = 16
 
 NUM_PRIME_PARAM = 11
@@ -15,6 +15,9 @@ num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, for
 is_trill_index_score = -11
 is_trill_index_concated = -11 - (NUM_PRIME_PARAM + num_second_param)
 
+
+MEAS_TEMPO_IDX = 11
+BEAT_TEMPO_IDX = 13
 
 # test_piece_list = [('schumann', 'Schumann'),
 #                 ('mozart545-1', 'Mozart'),

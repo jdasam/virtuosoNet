@@ -467,6 +467,7 @@ class HAN_Integrated(nn.Module):
         self.is_baseline = network_parameters.is_baseline
         self.num_graph_iteration = network_parameters.graph_iteration
         self.hierarchy = network_parameters.hierarchy_level
+        # self.is_simplified_note = network_parameters.is_simplified
 
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
@@ -675,8 +676,10 @@ class HAN_Integrated(nn.Module):
                 if self.is_teacher_force:
                     true_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
 
-                prev_out = y[0, 0, :]
-                prev_tempo = y[:, 0, QPM_INDEX]
+                # prev_out = y[0, 0, :]
+                # prev_tempo = y[:, 0, QPM_INDEX]
+                prev_out = torch.zeros(self.output_size).to(self.device)
+                prev_tempo = prev_out[QPM_INDEX:QPM_INDEX+1]
                 prev_beat = -1
                 prev_beat_end = 0
                 out_total = torch.zeros(num_notes, self.output_size).to(self.device)

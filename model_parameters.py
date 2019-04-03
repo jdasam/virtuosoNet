@@ -31,6 +31,7 @@ class NetParams:
         self.is_teacher_force = False
         self.is_baseline = False
         self.hierarchy_level = None
+        self.is_simplified = False
 
 
 def save_parameters(param, save_name):
@@ -152,7 +153,7 @@ def initialize_model_parameters_by_code(model_code):
         net_param.section.layer = 1
         net_param.section.size = 32
 
-        net_param.encoder.size = 8
+        net_param.encoder.size = 16
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
