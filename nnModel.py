@@ -5,6 +5,7 @@ import time
 from torch.autograd import Variable
 import random
 import math
+import model_constants as cons
 
 
 DROP_OUT = 0.1
@@ -467,6 +468,10 @@ class HAN_Integrated(nn.Module):
         self.is_baseline = network_parameters.is_baseline
         self.num_graph_iteration = network_parameters.graph_iteration
         self.hierarchy = network_parameters.hierarchy_level
+        if hasattr(network_parameters, 'is_test_version') and network_parameters.is_test_version:
+            self.test_version = True
+        else:
+            self.test_version = False
         # self.is_simplified_note = network_parameters.is_simplified
 
         self.input_size = network_parameters.input_size
@@ -477,13 +482,13 @@ class HAN_Integrated(nn.Module):
         self.beat_hidden_size = network_parameters.beat.size
         self.num_measure_layers = network_parameters.measure.layer
         self.measure_hidden_size = network_parameters.measure.size
-        self.num_section_layers = network_parameters.section.layer
-        self.section_hidden_size = network_parameters.section.size
 
         self.final_hidden_size = network_parameters.final.size
         self.num_voice_layers = network_parameters.voice.layer
         self.voice_hidden_size = network_parameters.voice.size
         self.final_input = network_parameters.final.input
+        if self.test_version:
+            self.final_input -= 1
         self.encoder_size = network_parameters.encoder.size
         self.encoder_input_size = network_parameters.encoder.input
         self.encoder_layer_num = network_parameters.encoder.layer
@@ -515,17 +520,20 @@ class HAN_Integrated(nn.Module):
                 self.beat_rnn = nn.LSTM((self.hidden_size + self.voice_hidden_size) * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
             self.measure_attention = ContextAttention(self.beat_hidden_size*2, self.num_attention_head)
             self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
-            self.section_attention = ContextAttention(self.measure_hidden_size * 2, self.num_attention_head)
-            self.section_rnn = nn.LSTM(self.measure_hidden_size * 2, self.section_hidden_size, self.num_section_layers, batch_first=True, bidirectional=True)
             if self.hierarchy == 'measure':
                 self.output_lstm = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size + self.output_size, self.final_hidden_size, num_layers=1, batch_first=True)
-            elif self.hierarchy == 'section':
-                self.output_lstm = nn.LSTM(self.section_hidden_size * 2 + self.encoder_size + self.output_size, self.final_hidden_size, num_layers=1, batch_first=True)
+            elif self.hierarchy == 'beat':
+                self.output_lstm = nn.LSTM((self.beat_hidden_size + self.measure_hidden_size) * 2 + self.encoder_size + self.output_size, self.final_hidden_size, num_layers=1, batch_first=True)
             else:
                 if self.step_by_step:
-                    self.beat_tempo_forward = nn.LSTM(
-                        (self.beat_hidden_size + self.measure_hidden_size) * 2  + 5 + 3 + self.output_size + self.encoder_size, self.beat_hidden_size,
-                        num_layers=1, batch_first=True, bidirectional=False)
+                    if self.test_version:
+                        self.beat_tempo_forward = nn.LSTM(
+                            (self.beat_hidden_size + self.measure_hidden_size) * 2 + 2 - 1 + self.output_size + self.encoder_size, self.beat_hidden_size,
+                            num_layers=1, batch_first=True, bidirectional=False)
+                    else:
+                        self.beat_tempo_forward = nn.LSTM(
+                            (self.beat_hidden_size + self.measure_hidden_size) * 2 + 5 + 3 + self.output_size + self.encoder_size, self.beat_hidden_size,
+                            num_layers=1, batch_first=True, bidirectional=False)
                     self.result_for_tempo_attention = ContextAttention(self.output_size - 1, 1)
                 else:
                     self.beat_tempo_forward = nn.LSTM((self.beat_hidden_size + self.measure_hidden_size) * 2 + 3 + 3 + self.encoder_size,
@@ -578,7 +586,6 @@ class HAN_Integrated(nn.Module):
         beat_numbers = [x.beat for x in note_locations]
         measure_numbers = [x.measure for x in note_locations]
         voice_numbers = [x.voice for x in note_locations]
-        section_numbers = [x.section for x in note_locations]
 
         num_notes = x.size(1)
 
@@ -586,8 +593,8 @@ class HAN_Integrated(nn.Module):
             note_out = self.note_fc(x)
             note_out, _ = self.lstm(note_out)
         else:
-            note_out, beat_hidden_out, measure_hidden_out, section_hidden_out = \
-                self.run_offline_score_model(x, edges, beat_numbers, measure_numbers, section_numbers, voice_numbers, start_index)
+            note_out, beat_hidden_out, measure_hidden_out = \
+                self.run_offline_score_model(x, edges, beat_numbers, measure_numbers, voice_numbers, start_index)
             beat_out_spanned = self.span_beat_to_note_num(beat_hidden_out, beat_numbers, num_notes, start_index)
             measure_out_spanned = self.span_beat_to_note_num(measure_hidden_out, measure_numbers, num_notes,
                                                              start_index)
@@ -645,13 +652,16 @@ class HAN_Integrated(nn.Module):
             if self.hierarchy == 'measure':
                 hierarchy_numbers = measure_numbers
                 hierarchy_nodes = measure_hidden_out
-            elif self.hierarchy == 'section':
-                hierarchy_numbers = section_numbers
-                hierarchy_nodes = section_hidden_out
-
+            elif self.hierarchy == 'beat':
+                hierarchy_numbers = beat_numbers
+                beat_measure_concated = torch.cat((beat_out_spanned, measure_out_spanned),2)
+                hierarchy_nodes = self.note_tempo_infos_to_beat(beat_measure_concated, hierarchy_numbers, start_index)
             num_hierarchy_nodes = hierarchy_nodes.shape[1]
-            perform_z_batched = perform_z.repeat(num_hierarchy_nodes, 1).view(1, num_hierarchy_nodes, -1)
-            hierarchy_nodes_latent_combined = torch.cat((hierarchy_nodes, perform_z_batched),2)
+            if self.test_version:
+                hierarchy_nodes_latent_combined = torch.cat((hierarchy_nodes, measure_perform_style), 2)
+            else:
+                perform_z_batched = perform_z.repeat(num_hierarchy_nodes, 1).view(1, num_hierarchy_nodes, -1)
+                hierarchy_nodes_latent_combined = torch.cat((hierarchy_nodes, perform_z_batched),2)
 
             out_hidden_state = self.init_hidden(1,1,x.size(0), self.final_hidden_size)
             prev_out = torch.zeros(1,1,self.output_size).to(self.device)
@@ -664,7 +674,6 @@ class HAN_Integrated(nn.Module):
                 out = self.fc(out)
                 out_total[:,i,:] = out
                 prev_out = out.view(1,1,-1)
-
             return out_total, perform_mu, perform_var, note_out
 
         else:
@@ -717,11 +726,18 @@ class HAN_Integrated(nn.Module):
                                 prev_tempo = true_tempos[0,current_beat-1,:]
 
                             tempos = torch.zeros(1, num_beats, 1).to(self.device)
-                            beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 5]
-                            beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :], measure_hidden_out[0, current_measure,:], prev_tempo,
-                                                        qpm_primo, tempo_primo, beat_tempo_vec,
-                                                        result_nodes[current_beat, :], measure_perform_style_spanned[0, current_measure, :])).view(1, 1, -1)
+                            if self.test_version:
+                                beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :],
+                                                            measure_hidden_out[0, current_measure, :], prev_tempo, x[0,i,self.input_size-2:self.input_size-1],
+                                                            result_nodes[current_beat, :],
+                                                            measure_perform_style[0, current_measure, :])).view(1, 1, -1)
+                            else:
+                                beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 5]
+                                beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :], measure_hidden_out[0, current_measure,:], prev_tempo,
+                                                            qpm_primo, tempo_primo, beat_tempo_vec,
+                                                            result_nodes[current_beat, :], measure_perform_style_spanned[0, current_measure, :])).view(1, 1, -1)
                             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+
                             tmp_tempos = self.beat_tempo_fc(beat_forward)
 
                             prev_beat_end = i
@@ -733,10 +749,16 @@ class HAN_Integrated(nn.Module):
                         if self.is_teacher_force and i > 0 and random.random() < rand_threshold:
                             prev_out = torch.cat((prev_tempo, y[0, i - 1, 1:]))
 
-                        out_combined = torch.cat(
-                            (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
-                             measure_hidden_out[0, current_measure, :],
-                             prev_out, qpm_primo, tempo_primo, perform_z)).view(1, 1, -1)
+                        if self.test_version:
+                            out_combined = torch.cat(
+                                (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
+                                 measure_hidden_out[0, current_measure, :],
+                                 prev_out, x[0,i,self.input_size-2:], measure_perform_style[0, current_measure,:])).view(1, 1, -1)
+                        else:
+                            out_combined = torch.cat(
+                                (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
+                                 measure_hidden_out[0, current_measure, :],
+                                 prev_out, qpm_primo, tempo_primo, perform_z)).view(1, 1, -1)
 
                         out, final_hidden = self.output_lstm(out_combined, final_hidden)
                         # out = torch.cat((out, out_combined), 2)
@@ -791,11 +813,10 @@ class HAN_Integrated(nn.Module):
 
                 return out, perform_mu, perform_var, score_combined
 
-    def run_offline_score_model(self, x, edges, beat_numbers, measure_numbers, section_numbers, voice_numbers, start_index):
+    def run_offline_score_model(self, x, edges, beat_numbers, measure_numbers, voice_numbers, start_index):
         hidden = self.init_hidden(self.num_layers, 2, x.size(0), self.hidden_size)
         beat_hidden = self.init_hidden(self.num_beat_layers, 2, x.size(0), self.beat_hidden_size)
         measure_hidden = self.init_hidden(self.num_measure_layers, 2, x.size(0), self.measure_hidden_size)
-        section_hidden = self.init_hidden(self.num_section_layers, 2, x.size(0), self.section_hidden_size)
 
         x = self.note_fc(x)
 
@@ -815,10 +836,8 @@ class HAN_Integrated(nn.Module):
         beat_hidden_out, beat_hidden = self.beat_rnn(beat_nodes, beat_hidden)
         measure_nodes = self.make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers, start_index)
         measure_hidden_out, measure_hidden = self.measure_rnn(measure_nodes, measure_hidden)
-        section_nodes = self.make_higher_node(measure_hidden_out, self.section_attention, measure_numbers, section_numbers, start_index)
-        section_hidden_out, _ = self.section_rnn(section_nodes, section_hidden)
 
-        return hidden_out, beat_hidden_out, measure_hidden_out, section_hidden_out
+        return hidden_out, beat_hidden_out, measure_hidden_out
 
     def run_graph_network(self, nodes, graph_matrix):
         # 1. Run feed-forward network by note level
@@ -912,7 +931,7 @@ class HAN_Integrated(nn.Module):
             if cur_beat > prev_beat:
                 if index is None:
                     beat_tempos.append(y[0,i,:])
-                if index == TEMPO_IDX:
+                elif index == TEMPO_IDX:
                     beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
                 else:
                     beat_tempos.append(y[0,i,index])
@@ -957,6 +976,51 @@ class HAN_Integrated(nn.Module):
             layers.append((h0, h0))
         return layers
 
+
+
+class TrillRNN(nn.Module):
+    def __init__(self, network_parameters, device):
+        super(TrillRNN, self).__init__()
+        self.hidden_size = network_parameters.note.size
+        self.num_layers = network_parameters.note.layer
+        self.input_size = network_parameters.input_size
+        self.output_size = network_parameters.output_size
+        self.device = device
+        self.is_graph = False
+        self.loss_type = 'MSE'
+
+        # self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+        # self.fc = nn.Linear(hidden_size * 2, num_output)  # 2 for
+
+        self.note_fc = nn.Sequential(
+            nn.Linear(self.input_size, self.hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.ReLU(),
+        )
+        self.note_lstm = nn.LSTM(self.hidden_size, self.hidden_size, num_layers=self.num_layers, bidirectional=True, batch_first=True)
+
+        self.out_fc = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.ReLU(),
+            nn.Dropout(DROP_OUT),
+            nn.Linear(self.hidden_size, self.output_size),
+        )
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x, y, edges, note_locations, start_index, initial_z=0):
+        note_contracted = self.note_fc(x)
+        hidden_out, _ = self.note_lstm(note_contracted)
+
+        out = self.out_fc(hidden_out)
+
+        if self.loss_type == 'MSE':
+            up_trill = self.sigmoid(out[:,:,-1])
+            out[:,:,-1] = up_trill
+        else:
+            out = self.sigmoid(out)
+        return out, False, False, torch.zeros(1)
 
 
 class TrillGraph(nn.Module):

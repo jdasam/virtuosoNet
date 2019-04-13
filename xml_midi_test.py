@@ -8,7 +8,7 @@ import pickle
 import score_as_graph as score_graph
 
 # xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
-
+xml_matching.check_data_split('chopin_cleaned/')
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
 folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/1-1/'

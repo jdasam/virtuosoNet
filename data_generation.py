@@ -139,7 +139,7 @@ def get_mean_and_sd(performances, target_data, target_dimension):
         samples = perf[target_data]
         for sample in samples:
             value = sample[target_dimension]
-            if target_data == 1 and 10< target_dimension <15 and value == 0:
+            if target_data == 1 and 14 < target_dimension < 19 and value == 0:
                 continue
             sum += value
             squared_sum += value * value
@@ -178,7 +178,7 @@ def normalize_features(complete_xy, num_input, num_output, x_only=False):
                 new_sample = []
                 for index2 in range(NUM_NORMALIZE_FEATURE[index1]):
                     if not (stds[index1][index2] == 0 or isinstance(stds[index1][index2], complex)):
-                        if index1 == 1 and 10 < index2 < 15 and sample[index2] == 0:
+                        if index1 == 1 and 14 < index2 < 19 and sample[index2] == 0:
                             new_sample.append(0)
                         else:
                             new_sample.append((sample[index2] - means[index1][index2]) / stds[index1][index2])
@@ -271,5 +271,5 @@ def key_augmentation(data_x, key_change):
     return data_x_aug
 
 # xml_matching.check_data_split('chopin_cleaned/')
-chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/Mozart/Piano_Sonatas/')
-save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'hierarchy_test')
+chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'count_number')

@@ -16,8 +16,8 @@ is_trill_index_score = -11
 is_trill_index_concated = -11 - (NUM_PRIME_PARAM + num_second_param)
 
 
-MEAS_TEMPO_IDX = 11
-BEAT_TEMPO_IDX = 13
+MEAS_TEMPO_IDX = 13
+BEAT_TEMPO_IDX = 11
 
 # test_piece_list = [('schumann', 'Schumann'),
 #                 ('mozart545-1', 'Mozart'),
@@ -28,25 +28,34 @@ BEAT_TEMPO_IDX = 13
 #                 ('bohemian_rhapsody', 'Liszt')
 #                 ]
 
-test_piece_list = [('chopin_etude_10_2', 'Chopin'),
-                ('chopin_barcarolle', 'Chopin'),
-                ('chopin_scherzo', 'Chopin'),
-                ('haydn_keyboard_31_1', 'Haydn'),
-                ('haydn_keyboard_49_1', 'Haydn'),
+test_piece_list = [
                 ('bps_5_1', 'Beethoven'),
-                ('bps_7_2', 'Beethoven'),
                 ('bps_27_1', 'Beethoven'),
+                ('bps_7_2', 'Beethoven'),
                 ('bps_31_2', 'Beethoven'),
-                ('schubert_impromptu', 'Schubert'),
+                ('bwv_858', 'Bach'),
+                ('bwv_891', 'Bach'),
                 ('schubert_ps', 'Schubert'),
-                ('liszt_5', 'Liszt'),
-                ('liszt_9', 'Liszt'),
+                ('schubert_impromptu', 'Schubert'),
+                ('mozart545-1', 'Mozart'),
+                ('mozart_symphony', 'Mozart'),
                 ('liszt_pag', 'Liszt'),
+                ('chopin_etude_10_2', 'Chopin'),
+                ('chopin_waltz_69_2', 'Chopin'),
+                ('chopin_nocturne', 'Chopin'),
+                ('chopin_noc_9_1', 'Chopin'),
                 ('chopin_prelude_1', 'Chopin'),
                 ('chopin_prelude_4', 'Chopin'),
                 ('chopin_prelude_5', 'Chopin'),
                 ('chopin_prelude_6', 'Chopin'),
-                ('chopin_prelude_8', 'Chopin')]
+                ('chopin_prelude_8', 'Chopin'),
+                ('chopin_prelude_15', 'Chopin'),
+                ('kiss_the_rain', 'Chopin'),
+                ('bohemian_rhapsody', 'Liszt'),
+                ('chopin_nocturne', 'Chopin'),
+                ('chopin_fantasie_impromptu', 'Chopin'),
+                ('schumann', 'Schumann'),
+                   ]
 
 emotion_folder_path = 'test_pieces/emotionNet/'
 emotion_key_list = ['OR', 'Anger', 'Enjoy', 'Relax', 'Sad']

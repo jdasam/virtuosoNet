@@ -32,6 +32,7 @@ class NetParams:
         self.is_baseline = False
         self.hierarchy_level = None
         self.is_simplified = False
+        self.is_test_version = False
 
 
 def save_parameters(param, save_name):
@@ -150,8 +151,6 @@ def initialize_model_parameters_by_code(model_code):
         net_param.final.size = 64
         net_param.voice.layer = 2
         net_param.voice.size = 128
-        net_param.section.layer = 1
-        net_param.section.size = 32
 
         net_param.encoder.size = 16
         net_param.encoder.layer = 2
@@ -173,8 +172,14 @@ def initialize_model_parameters_by_code(model_code):
             net_param.is_teacher_force = True
         if 'baseline' in model_code:
             net_param.is_baseline = True
+            net_param.encoder.input = net_param.note.size * 2 + cons.NUM_PRIME_PARAM
+            net_param.final.input =  net_param.note.size * 2 + net_param.encoder.size + num_tempo_info + num_dynamic_info + net_param.output_size
 
-
+    elif 'trill' in model_code:
+        net_param.input_size = cons.SCORE_INPUT + cons.NUM_PRIME_PARAM
+        net_param.output_size = cons.num_trill_param
+        net_param.note.layer = 2
+        net_param.note.size = 32
 
     else:
         print('Unclassified model code')
@@ -183,11 +188,15 @@ def initialize_model_parameters_by_code(model_code):
         net_param.hierarchy_level = 'measure'
         net_param.output_size = 2
         net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
-    elif 'section' in model_code:
-        net_param.hierarchy_level = 'section'
+    elif 'beat' in model_code:
+        net_param.hierarchy_level = 'beat'
         net_param.output_size = 2
         net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
     elif 'note' in model_code:
         net_param.input_size += 2
 
+    if 'altv' in model_code:
+        net_param.is_test_version = True
+
     return net_param
+
