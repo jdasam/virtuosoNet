@@ -343,14 +343,14 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         for j in range(len(STDS[i])):
             if STDS[i][j] < 1e-4:
                 STDS[i][j] = 1
-
+    num_notes = len(test_x)
     if args.startTempo == 0:
         start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
         start_tempo = math.log(start_tempo, 10)
         # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
     else:
         start_tempo = math.log(args.startTempo, 10)
-    input_y = torch.zeros(1, 1, NUM_OUTPUT).to(DEVICE)
+    input_y = torch.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
 
     #
     # if LOSS_TYPE == 'MSE':
@@ -382,7 +382,7 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         else:
             hier_z = [z] * HIER_MODEL_PARAM.encoder.size
             final_z = initial_z
-        hier_input_y = torch.zeros(1,1, HIER_MODEL.output_size)
+        hier_input_y = torch.zeros(1, num_notes, HIER_MODEL.output_size)
         hier_output, _ = run_model_in_steps(batch_x, hier_input_y, graph, note_locations, initial_z=hier_z, model=HIER_MODEL)
         if 'measure' in args.hierCode:
             hierarchy_numbers = [x.measure for x in note_locations]
@@ -402,7 +402,7 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
 
 
     trill_batch_x = torch.cat((batch_x, prediction), 2)
-    trill_prediction, _ = run_model_in_steps(trill_batch_x, torch.zeros(1,1, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
+    trill_prediction, _ = run_model_in_steps(trill_batch_x, torch.zeros(1, num_notes, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
 
     prediction = torch.cat((prediction, trill_prediction), 2)
 

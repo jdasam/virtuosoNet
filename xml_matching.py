@@ -2395,7 +2395,6 @@ def get_tempos(directions):
         if not hasattr(rel, 'end_xml_position'):
             rel.end_xml_position = float("inf")
 
-
     return absolute_tempos, relative_tempos
 
 
