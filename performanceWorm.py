@@ -1,4 +1,3 @@
-import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -49,19 +48,14 @@ def cal_tempo_and_velocity_by_beat(features):
 
 def plot_performance_worm(features, save_name='images/performance_worm.png'):
     tempos, velocities = cal_tempo_and_velocity_by_beat(features)
-    # data_points = []
-    # num_data = len(tempos)
-    #
-    # for i in range(num_data):
-    #     data = [tempos[i], velocities[i]]
-    #     data_points.append(data)
-    # plot data
     num_beat = len(tempos)
     plt.figure(figsize=(10, 7))
     for i in range(num_beat):
+        color = 'green'
         ratio = i / num_beat
-        plt.plot(tempos[i], velocities[i], markersize=(7 + 7*ratio), marker='o', color='green', alpha=0.05+ratio*0.8)
+        alpha = 0.05+ratio*0.8
+        plt.plot(tempos[i], velocities[i], markersize=(7 + 7*ratio), marker='o', color=color, alpha=alpha)
         if i > 0:
-            plt.plot(tempos[i-1:i+1], velocities[i-1:i+1], color='green', alpha=0.05+ratio*0.8)
+            plt.plot(tempos[i-1:i+1], velocities[i-1:i+1], color=color, alpha=alpha)
     plt.savefig(save_name)
     plt.close()
