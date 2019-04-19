@@ -32,13 +32,14 @@ relative_tempos_keywords = ['animato', 'pesante', 'veloce', 'agitato',
 relative_long_tempo_keywords = ['meno mosso', 'meno vivo', 'più mosso', 'animato', 'langsamer', 'schneller',
                                 'stretto', 'bewegter', 'tranquillo', 'agitato', 'appassionato']
 tempo_primo_words = ['tempo i', 'tempo primo', 'erstes tempo', '1er mouvement', '1er mouvt', 'au mouvtdu début', 'au mouvement', 'au mouvt', '1o tempo']
-absolute_tempos_keywords += tempo_primo_words
 
+absolute_tempos_keywords += tempo_primo_words
 tempos_keywords = absolute_tempos_keywords + relative_tempos_keywords
-tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
-                     'presto', 'prestissimo', 'animato', 'maestoso', 'pesante', 'veloce', 'tempo i', 'lullaby', 'agitato',
-                     ['acc', 'accel', 'accelerando'],['rit', 'ritardando', 'rall', 'rallentando'], 'ritenuto',
-                    'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando' ]
+
+# tempos_merged_key = ['adagio', 'lento', 'andante', 'andantino', 'moderato', 'allegretto', 'allegro', 'vivace',
+#                      'presto', 'prestissimo', 'animato', 'maestoso', 'pesante', 'veloce', 'tempo i', 'lullaby', 'agitato',
+#                      ['acc', 'accel', 'accelerando'],['rit', 'ritardando', 'rall', 'rallentando'], 'ritenuto',
+#                     'a tempo', 'stretto', 'slentando', 'meno mosso', 'più mosso', 'allargando' ]
 
 
 absolute_dynamics_keywords = ['pppp','ppp', 'pp', 'p', 'piano', 'mp', 'mf', 'f', 'forte', 'ff', 'fff', 'fp', 'ffp']
@@ -263,13 +264,13 @@ def match_xml_midi_perform(xml_notes, midi_notes, perform_notes, corresp):
     return score_pairs, perform_pairs
 
 
-def extract_notes(xml_Doc, melody_only = False, grace_note = False):
-    # parts = xml_Doc.parts[0]
+def extract_notes(xml_doc, melody_only=False, grace_note=False):
     notes = []
     previous_grace_notes = []
     rests = []
-    instrument_index = 0
-    for part in xml_Doc.parts:
+    num_parts = len(xml_doc.parts)
+    for instrument_index in range(num_parts):
+        part = xml_doc.parts[instrument_index]
         measure_number = 1
         for measure in part.measures:
             for note in measure.notes:
@@ -277,9 +278,9 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
                 note.voice += instrument_index * 10
                 if melody_only:
                     if note.voice == 1:
-                        notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
+                        notes, previous_grace_notes, rests = check_note_status_and_append(note, notes, previous_grace_notes, rests, grace_note)
                 else:
-                    notes, previous_grace_notes, rests = check_notes_and_append(note, notes, previous_grace_notes, rests, grace_note)
+                    notes, previous_grace_notes, rests = check_note_status_and_append(note, notes, previous_grace_notes, rests, grace_note)
 
             measure_number += 1
         notes = apply_after_grace_note_to_chord_notes(notes)
@@ -289,17 +290,80 @@ def extract_notes(xml_Doc, melody_only = False, grace_note = False):
         notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.grace_order, -x.pitch[1]))
         notes = check_overlapped_notes(notes)
         notes = apply_rest_to_note(notes, rests)
-        notes = omit_trill_notes(notes, xml_Doc)
+        notes = omit_trill_notes(notes, xml_doc)
         notes = extract_and_apply_slurs(notes)
         notes = rearrange_chord_index(notes)
-    # for note in notes:
-    #     print(note.staff, note.voice, note.note_duration.xml_position, note.note_duration.duration, note.pitch[1], note.chord_index)
-        instrument_index += 1
 
     return notes
 
 
-def check_notes_and_append(note, notes, previous_grace_notes, rests, include_grace_note):
+def omit_trill_notes(xml_notes):
+    num_notes = len(xml_notes)
+    omit_index = []
+    trill_sign = []
+    wavy_lines = []
+    for i in range(num_notes):
+        note = xml_notes[i]
+        if not note.is_print_object:
+            omit_index.append(i)
+            if note.accidental:
+                # TODO: handle accidentals in non-print notes
+                if note.accidental == 'natural':
+                    pass
+                elif note.accidental == 'sharp':
+                    pass
+                elif note.accidental == 'flat':
+                    pass
+            if note.note_notations.is_trill:
+                trill = {'xml_pos': note.note_duration.xml_position, 'pitch': note.pitch[1]}
+                trill_sign.append(trill)
+        if note.note_notations.wavy_line:
+            wavy_line = note.note_notations.wavy_line
+            wavy_line.xml_position = note.note_duration.xml_position
+            wavy_line.pitch = note.pitch
+            wavy_lines.append(wavy_line)
+
+        # move trill mark to the highest notes of the onset
+        if note.note_notations.is_trill:
+            notes_in_trill_onset = []
+            current_position = note.note_duration.xml_position
+
+            search_index = i
+            while search_index +1 < num_notes and xml_notes[search_index+1].note_duration.xml_position == current_position:
+                search_index += 1
+                notes_in_trill_onset.append(xml_notes[search_index])
+            search_index = i
+
+            while search_index - 1 >= 0 and xml_notes[search_index-1].note_duration.xml_position == current_position:
+                search_index -= 1
+                notes_in_trill_onset.append(xml_notes[search_index])
+
+            for other_note in notes_in_trill_onset:
+                highest_note = note
+                if other_note.voice == note.voice and other_note.pitch[1] > highest_note.pitch[1] and not other_note.note_duration.is_grace_note:
+                    highest_note.note_notations.is_trill = False
+                    other_note.note_notations.is_trill = True
+
+    wavy_lines = combine_wavy_lines(wavy_lines)
+
+    for index in reversed(omit_index):
+        note = xml_notes[index]
+        xml_notes.remove(note)
+
+    if len(trill_sign) > 0:
+        for trill in trill_sign:
+            for note in xml_notes:
+                if note.note_duration.xml_position == trill['xml_pos'] and abs(note.pitch[1] - trill['pitch']) <4 \
+                        and not note.note_duration.is_grace_note:
+                    note.note_notations.is_trill = True
+                    break
+
+    xml_notes = apply_wavy_lines(xml_notes, wavy_lines)
+
+    return xml_notes
+
+
+def check_note_status_and_append(note, notes, previous_grace_notes, rests, include_grace_note):
     if note.note_duration.is_grace_note:
         previous_grace_notes.append(note)
         if include_grace_note:
@@ -3343,69 +3407,6 @@ def define_tempo_embedding_table():
 
     return embed_table
 
-
-def omit_trill_notes(xml_notes, xml_doc):
-    num_notes = len(xml_notes)
-    omit_index = []
-    trill_sign = []
-    wavy_lines = []
-    for i in range(num_notes):
-        note = xml_notes[i]
-        if not note.is_print_object:
-            omit_index.append(i)
-            if note.accidental:
-                # TODO: handle non-printable accidental
-                if note.accidental == 'natural':
-                    pass
-                elif note.accidental == 'sharp':
-                    pass
-                elif note.accidental == 'flat':
-                    pass
-            if note.note_notations.is_trill:
-                trill = {'xml_pos': note.note_duration.xml_position, 'pitch': note.pitch[1]}
-                trill_sign.append(trill)
-        if note.note_notations.wavy_line:
-            wavy_line = note.note_notations.wavy_line
-            wavy_line.xml_position = note.note_duration.xml_position
-            wavy_line.pitch = note.pitch
-            wavy_lines.append(wavy_line)
-        if note.note_notations.is_trill:
-            onset_notes = []
-            current_position = note.note_duration.xml_position
-
-            search_index = i
-            while search_index +1 < num_notes and xml_notes[search_index+1].note_duration.xml_position == current_position:
-                search_index += 1
-                onset_notes.append(xml_notes[search_index])
-            search_index = i
-
-            while search_index - 1 >= 0 and xml_notes[search_index-1].note_duration.xml_position == current_position:
-                search_index -= 1
-                onset_notes.append(xml_notes[search_index])
-
-            for other_note in onset_notes:
-                highest_note = note
-                if other_note.voice == note.voice and other_note.pitch[1] > highest_note.pitch[1] and not other_note.note_duration.is_grace_note:
-                    highest_note.note_notations.is_trill = False
-                    other_note.note_notations.is_trill = True
-
-    wavy_lines = combine_wavy_lines(wavy_lines)
-
-    for index in reversed(omit_index):
-        note = xml_notes[index]
-        xml_notes.remove(note)
-
-    if len(trill_sign) > 0:
-        for trill in trill_sign:
-            for note in xml_notes:
-                if note.note_duration.xml_position == trill['xml_pos'] and abs(note.pitch[1] - trill['pitch']) <4 \
-                        and not note.note_duration.is_grace_note:
-                    note.note_notations.is_trill = True
-                    break
-
-    xml_notes = apply_wavy_lines(xml_notes, wavy_lines)
-
-    return xml_notes
 
 
 def find_corresp_trill_notes_from_midi(xml_doc, xml_notes, pairs, perf_midi, accidentals, index):
