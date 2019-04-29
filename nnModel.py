@@ -760,7 +760,7 @@ class HAN_Integrated(nn.Module):
                             out_combined = torch.cat(
                                 (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
                                  measure_hidden_out[0, current_measure, :],
-                                 prev_out, qpm_primo, tempo_primo, perform_z)).view(1, 1, -1)
+                                 prev_out, qpm_primo, tempo_primo, measure_perform_style[0, current_measure,:])).view(1, 1, -1)
 
                         out, final_hidden = self.output_lstm(out_combined, final_hidden)
                         # out = torch.cat((out, out_combined), 2)
