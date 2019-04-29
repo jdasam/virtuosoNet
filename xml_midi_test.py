@@ -7,8 +7,10 @@ import xml_matching
 import pickle
 import score_as_graph as score_graph
 
+
+corr = xml_matching.cal_correlation_of_pairs_in_folder('chopin_cleaned/Beethoven/Piano_Sonatas/2-1/')
 # xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
-xml_matching.check_data_split('chopin_cleaned/')
+# xml_matching.check_data_split('chopin_cleaned/')
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
 folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/1-1/'

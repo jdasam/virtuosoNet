@@ -2,7 +2,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-def cal_tempo_and_velocity_by_beat(features):
+
+def cal_tempo_and_velocity_by_beat(features, note_locations=None, momentum=0.8):
     tempos = []
     velocities = []
     prev_beat = 0
@@ -11,11 +12,22 @@ def cal_tempo_and_velocity_by_beat(features):
     num_added = 0
     max_velocity = 0
     velocity_saved = 0
-    momentum = 0.8
-    for feat in features:
-        if feat.qpm is None:
-            continue
-        cur_beat = feat.beat_index
+
+    num_notes = len(features)
+
+    for i in range(num_notes):
+        feat = features[i]
+        if note_locations:
+            cur_note_tempo = feat[0]
+            cur_note_vel = feat[1]
+            cur_beat = note_locations[i].beat
+        else:
+            if feat.qpm is None:
+                continue
+            else:
+                cur_note_tempo = feat.qpm
+                cur_note_vel = feat.velocity
+            cur_beat = feat.note_location.beat
         if cur_beat > prev_beat and num_added > 0:
             tempo = tempo_saved / num_added
             velocity = (velocity_saved / num_added + max_velocity) / 2
@@ -30,11 +42,10 @@ def cal_tempo_and_velocity_by_beat(features):
             max_velocity = 0
             velocity_saved = 0
 
-
-        tempo_saved += 10 ** feat.qpm
-        velocity_saved += feat.velocity
+        tempo_saved += 10 ** cur_note_tempo
+        velocity_saved += cur_note_vel
         num_added += 1
-        max_velocity = max(max_velocity, feat.velocity)
+        max_velocity = max(max_velocity, cur_note_vel)
         prev_beat = cur_beat
 
     if num_added > 0:

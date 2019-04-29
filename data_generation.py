@@ -6,6 +6,8 @@ import copy
 import pandas
 import numpy as np
 import argparse
+import os
+import model_constants as cons
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--regression', default=True, type=lambda x: (str(x).lower() == 'true'))
@@ -17,6 +19,9 @@ NUM_TRILL_PARAM = 5
 NUM_NORMALIZE_FEATURE = [8, 19, 4]
 REGRESSION = args.regression
 print('Data type is regression: ', args.regression)
+
+VALID_LIST = cons.VALID_LIST
+TEST_LIST = cons.TEST_LIST
 
 def save_features_as_vector(dataset, num_train, num_valid, save_name):
     complete_xy = []
@@ -270,6 +275,70 @@ def key_augmentation(data_x, key_change):
 
     return data_x_aug
 
+
+def load_entire_subfolder(path):
+    entire_pairs = []
+    num_train_pairs = 0
+    num_valid_pairs = 0
+    num_test_pairs = 0
+
+    midi_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(path) for f in filenames if
+              f == 'midi_cleaned.mid']
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        skip = False
+        for valid_piece in VALID_LIST:
+            if valid_piece in foldername:
+                skip = True
+                break
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
+                skip = True
+                break
+        if not skip:
+            xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+            if os.path.isfile(xml_name):
+                print(foldername)
+                piece_pairs = xml_matching.load_pairs_from_folder(foldername)
+                if piece_pairs is not None:
+                    entire_pairs.append(piece_pairs)
+                    num_train_pairs += len(piece_pairs)
+
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        for valid_piece in VALID_LIST:
+            if valid_piece in foldername:
+                xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+                if os.path.isfile(xml_name):
+                    print(foldername)
+                    piece_pairs = xml_matching.load_pairs_from_folder(foldername)
+                    if piece_pairs is not None:
+                        entire_pairs.append(piece_pairs)
+                        num_valid_pairs += len(piece_pairs)
+                        print('num valid pairs', num_valid_pairs)
+
+    for midifile in midi_list:
+        foldername = os.path.split(midifile)[0] + '/'
+        for test_piece in TEST_LIST:
+            if test_piece in foldername:
+                xml_name = foldername + 'musicxml_cleaned.musicxml'
+
+                if os.path.isfile(xml_name):
+                    print(foldername)
+                    piece_pairs = xml_matching.load_pairs_from_folder(foldername)
+                    if piece_pairs is not None:
+                        entire_pairs.append(piece_pairs)
+                        num_test_pairs += len(piece_pairs)
+
+    print('Number of train pairs: ', num_train_pairs, 'valid pairs: ', num_valid_pairs, 'test pairs: ', num_test_pairs)
+    # print('Number of total score notes, performance notes, non matched notes, excluded notes: ', NUM_SCORE_NOTES, NUM_PERF_NOTES, NUM_NON_MATCHED_NOTES, NUM_EXCLUDED_NOTES)
+    return entire_pairs, num_train_pairs, num_valid_pairs, num_test_pairs
+
+
+
+
 # xml_matching.check_data_split('chopin_cleaned/')
-chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = xml_matching.load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'count_number')
+chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = load_entire_subfolder('chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_camera')

@@ -155,6 +155,8 @@ class ISGN(nn.Module):
         self.device = device
         self.num_graph_iteration = network_parameters.graph_iteration
         self.num_sequence_iteration = network_parameters.sequence_iteration
+        self.is_graph = True
+        self.is_baseline = False
 
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size

@@ -42,6 +42,8 @@ parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help=
 parser.add_argument("-delta", "--deltaLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-hCode", "--hierCode", type=str, default='han_measure', help="code name for loading hierarchy model")
 
+random.seed(30)
+
 
 args = parser.parse_args()
 LOSS_TYPE = args.trainingLoss
@@ -67,8 +69,8 @@ if args.trainTrill:
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 500
-VALID_STEPS = 10000
+TIME_STEPS = 400
+VALID_STEPS = 3000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}'.format(learning_rate, TIME_STEPS, DELTA_WEIGHT))
@@ -122,7 +124,8 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 QPM_INDEX = 0
 # VOICE_IDX = 11
 TEMPO_IDX = 26
-PITCH_IDX = 13
+PITCH_VEC_IDX = 13
+PITCH_SCL_IDX = 0
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest', 'slur']
@@ -245,7 +248,7 @@ def key_augmentation(data_x, key_change):
     if key_change == 0:
         return data_x
     data_x_aug = copy.deepcopy(data_x)
-    pitch_start_index = PITCH_IDX
+    pitch_start_index = PITCH_VEC_IDX
     # while key_change == 0:
     #     key_change = random.randrange(-5, 7)
     for data in data_x_aug:
@@ -264,7 +267,7 @@ def key_augmentation(data_x, key_change):
         new_pitch_vec[new_pitch+1] = 1
 
         data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
-        data[0] = data[0] + key_change
+        data[PITCH_SCL_IDX] = data[PITCH_SCL_IDX] + key_change
 
     return data_x_aug
 
@@ -397,7 +400,6 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
             initial_z = initial_z[0]
         batch_x = batch_x.to(DEVICE).view(1, -1, NUM_INPUT)
         graph = edges_to_matrix(edges, batch_x.shape[1])
-        MODEL.is_teacher_force = False
         prediction, _ = run_model_in_steps(batch_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
 
 
@@ -447,8 +449,8 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         feat.pedal_refresh = pred[9]
         feat.pedal_cut = pred[10]
 
-        feat.beat_index = note_locations[i].beat
-        feat.measure_index = note_locations[i].measure
+        feat.note_location.beat = note_locations[i].beat
+        feat.note_location.measure = note_locations[i].measure
 
         feat.trill_param = pred[11:16]
         feat.trill_param[0] = feat.trill_param[0]
@@ -506,14 +508,6 @@ def load_file_and_encode_style(path, perf_name, composer_name):
 def encode_performance_style_vector(input, input_y, edges, note_locations, model=MODEL):
     with torch.no_grad():
         model_eval = model.eval()
-        # if model == HIER_MODEL:
-        #     if HIER_MEAS:
-        #         target_idx = cons.MEAS_TEMPO_IDX
-        #     elif HIER_BEAT:
-        #         target_idx = cons.BEAT_TEMPO_IDX
-        #     corresp_input_y = input_y[:, :, target_idx:target_idx+num_output].view(1, -1, num_output)
-        # else:
-        #     corresp_input_y = input_y[:, :, 0:num_output].view(1, -1, num_output)
         if edges is not None:
             edges = edges.to(DEVICE)
         encoded_z = model_eval(input, input_y, edges,
@@ -609,7 +603,7 @@ def batch_time_step_run(data, model, batch_size=batch_size):
     align_matched = torch.Tensor(data['align_matched'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
     pedal_status = torch.Tensor(data['pedal_status'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
 
-    if training_data['graphs']:
+    if training_data['graphs'].type() == 'torch.FloatTensor':
         edges = training_data['graphs'][:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
     else:
         edges = training_data['graphs']
@@ -1062,7 +1056,7 @@ if args.sessMode == 'train':
     #end of epoch
 
 
-elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
+elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'correlation']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -1094,7 +1088,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
 
     else:
         print("=> no checkpoint found at '{}'".format(args.resume))
-
+    MODEL.is_teacher_force = False
 
     if args.sessMode == 'test':
         load_file_and_generate_performance(args.testPath)
@@ -1128,110 +1122,159 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate']:
             # complete_xy = pickle.load(f)
             complete_xy = u.load()
 
-            tempo_loss_total = []
-            vel_loss_total = []
-            deviation_loss_total = []
-            trill_loss_total = []
-            articul_loss_total = []
-            pedal_loss_total = []
-            kld_total = []
+        tempo_loss_total = []
+        vel_loss_total = []
+        deviation_loss_total = []
+        trill_loss_total = []
+        articul_loss_total = []
+        pedal_loss_total = []
+        kld_total = []
 
-            prev_perf_x =[]
-            piece_wise_loss = None
+        prev_perf_x = complete_xy[0][0]
+        prev_perfs_worm_data = []
+        piece_wise_loss = []
+        human_correlation_total = []
+        human_correlation_results = xml_matching.CorrelationResult()
+        model_correlation_total = []
+        model_correlation_results = xml_matching.CorrelationResult()
 
-            for xy_tuple in complete_xy:
-                test_x = xy_tuple[0]
-                test_y = xy_tuple[1]
-                note_locations = xy_tuple[2]
-                align_matched = xy_tuple[3]
-                pedal_status = xy_tuple[4]
-                edges = xy_tuple[5]
-                graphs = edges_to_matrix(edges, len(test_x))
-                if LOSS_TYPE == 'CE':
-                    test_y = categorize_value_to_vector(test_y, BINS)
 
-                if test_x[0][0:4] == prev_perf_x:
-                    piece_changed = False
-                else:
-                    piece_changed = True
-                    prev_perf_x = test_x[0][0:4]
-                    if piece_wise_loss:
-                        piece_wise_loss_mean = np.mean(np.asarray(piece_wise_loss), axis=0)
-                        tempo_loss_total.append(piece_wise_loss_mean[0])
-                        vel_loss_total.append(piece_wise_loss_mean[1])
-                        deviation_loss_total.append(piece_wise_loss_mean[2])
-                        articul_loss_total.append(piece_wise_loss_mean[3])
-                        pedal_loss_total.append(piece_wise_loss_mean[4])
-                        trill_loss_total.append(piece_wise_loss_mean[5])
-                        kld_total.append(piece_wise_loss_mean[6])
-                    piece_wise_loss = []
+        for xy_tuple in complete_xy:
+            current_perf_index = complete_xy.index(xy_tuple)
+            test_x = xy_tuple[0]
+            test_y = xy_tuple[1]
+            note_locations = xy_tuple[2]
+            align_matched = xy_tuple[3]
+            pedal_status = xy_tuple[4]
+            edges = xy_tuple[5]
+            graphs = edges_to_matrix(edges, len(test_x))
+            if LOSS_TYPE == 'CE':
+                test_y = categorize_value_to_vector(test_y, BINS)
 
-                batch_x, batch_y = handle_data_in_tensor(test_x, test_y, hierarchy_test=IN_HIER)
-                align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
-                pedal_status = torch.Tensor(pedal_status).view(1, -1, 1).to(DEVICE)
+            if xml_matching.check_feature_pair_is_from_same_piece(prev_perf_x, test_x):
+                piece_changed = False
+                current_perf_worm_data = performanceWorm.cal_tempo_and_velocity_by_beat(test_y, note_locations=note_locations, momentum=0.2)
+                for prev_worm in prev_perfs_worm_data:
+                    tempo_r, _ = xml_matching.cal_correlation(current_perf_worm_data[0], prev_worm[0])
+                    dynamic_r, _ = xml_matching.cal_correlation(current_perf_worm_data[1], prev_worm[1])
+                    human_correlation_results.append_result(tempo_r, dynamic_r)
+                prev_perfs_worm_data.append(current_perf_worm_data)
+            else:
+                piece_changed = True
+                prev_perfs_worm_data = []
 
-                if IN_HIER:
-                    batch_x = batch_x.view((1, -1, HIER_MODEL.input_size))
-                    hier_y = batch_y[0].view(1, -1, HIER_MODEL.output_size)
-                    hier_outputs, _ = run_model_in_steps(batch_x, hier_y, graphs, note_locations, model=HIER_MODEL)
-                    if HIER_MEAS:
-                        hierarchy_numbers = [x.measure for x in note_locations]
-                    elif HIER_BEAT:
-                        hierarchy_numbers = [x.beat for x in note_locations]
-                    hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, batch_x.shape[1], 0)
-                    input_concat = torch.cat((batch_x, hier_outputs_spanned),2)
-                    batch_y = batch_y[1].view(1,-1, MODEL.output_size)
-                    outputs, perform_z = run_model_in_steps(input_concat, batch_y, graphs, note_locations, model=MODEL)
-                else:
-                    batch_x = batch_x.view((1, -1, NUM_INPUT))
-                    batch_y = batch_y.view((1, -1, NUM_OUTPUT))
-                    outputs, perform_z = run_model_in_steps(batch_x, batch_y, graphs, note_locations)
+            if piece_changed or current_perf_index == len(complete_xy)-1:
+                prev_perf_x = test_x
+                if piece_wise_loss:
+                    piece_wise_loss_mean = np.mean(np.asarray(piece_wise_loss), axis=0)
+                    tempo_loss_total.append(piece_wise_loss_mean[0])
+                    vel_loss_total.append(piece_wise_loss_mean[1])
+                    deviation_loss_total.append(piece_wise_loss_mean[2])
+                    articul_loss_total.append(piece_wise_loss_mean[3])
+                    pedal_loss_total.append(piece_wise_loss_mean[4])
+                    trill_loss_total.append(piece_wise_loss_mean[5])
+                    kld_total.append(piece_wise_loss_mean[6])
+                piece_wise_loss = []
+                human_correlation_total.append(human_correlation_results)
+                human_correlation_results = xml_matching.CorrelationResult()
+                model_correlation_total.append(model_correlation_results)
+                model_correlation_results = xml_matching.CorrelationResult()
 
-                # valid_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:-num_trill_param], batch_y[:,:,NUM_TEMPO_PARAM:-num_trill_param], align_matched)
-                if MODEL.is_baseline:
-                    tempo_loss = criterion(outputs[:, :, 0], batch_y[:, :, 0], align_matched)
-                else:
-                    tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
-                if LOSS_TYPE == 'CE':
-                    vel_loss = criterion(outputs[:, :, NUM_TEMPO_PARAM:NUM_TEMPO_PARAM + len(BINS[1])],
-                                         batch_y[:, :, NUM_TEMPO_PARAM:NUM_TEMPO_PARAM + len(BINS[1])], align_matched)
-                    deviation_loss = criterion(
-                        outputs[:, :, NUM_TEMPO_PARAM + len(BINS[1]):NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2])],
-                        batch_y[:, :, NUM_TEMPO_PARAM + len(BINS[1]):NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2])])
-                    pedal_loss = criterion(
-                        outputs[:, :, NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2]):-num_trill_param],
-                        batch_y[:, :, NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2]):-num_trill_param])
-                    trill_loss = criterion(outputs[:, :, -num_trill_param:], batch_y[:, :, -num_trill_param:])
-                else:
-                    vel_loss = criterion(outputs[:, :, VEL_PARAM_IDX], batch_y[:, :, VEL_PARAM_IDX], align_matched)
-                    deviation_loss = criterion(outputs[:, :, DEV_PARAM_IDX], batch_y[:, :, DEV_PARAM_IDX],
-                                               align_matched)
-                    articul_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX], batch_y[:, :, PEDAL_PARAM_IDX],
-                                             pedal_status)
-                    pedal_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX + 1:], batch_y[:, :, PEDAL_PARAM_IDX + 1:],
+            batch_x, batch_y = handle_data_in_tensor(test_x, test_y, hierarchy_test=IN_HIER)
+            align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
+            pedal_status = torch.Tensor(pedal_status).view(1, -1, 1).to(DEVICE)
+
+            if IN_HIER:
+                batch_x = batch_x.view((1, -1, HIER_MODEL.input_size))
+                hier_y = batch_y[0].view(1, -1, HIER_MODEL.output_size)
+                hier_outputs, _ = run_model_in_steps(batch_x, hier_y, graphs, note_locations, model=HIER_MODEL)
+                if HIER_MEAS:
+                    hierarchy_numbers = [x.measure for x in note_locations]
+                elif HIER_BEAT:
+                    hierarchy_numbers = [x.beat for x in note_locations]
+                hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, batch_x.shape[1], 0)
+                input_concat = torch.cat((batch_x, hier_outputs_spanned),2)
+                batch_y = batch_y[1].view(1,-1, MODEL.output_size)
+                outputs, perform_z = run_model_in_steps(input_concat, batch_y, graphs, note_locations, model=MODEL)
+            else:
+                batch_x = batch_x.view((1, -1, NUM_INPUT))
+                batch_y = batch_y.view((1, -1, NUM_OUTPUT))
+                outputs, perform_z = run_model_in_steps(batch_x, batch_y, graphs, note_locations)
+
+            output_as_feature = outputs.view(-1, NUM_OUTPUT).cpu().numpy()
+            predicted_perf_worm_data = performanceWorm.cal_tempo_and_velocity_by_beat(output_as_feature, note_locations,
+                                                                                    momentum=0.2)
+
+            # for prev_worm in prev_perfs_worm_data:
+            #     tempo_r, _ = xml_matching.cal_correlation(predicted_perf_worm_data[0], prev_worm[0])
+            #     dynamic_r, _ = xml_matching.cal_correlation(predicted_perf_worm_data[1], prev_worm[1])
+            #     model_correlation_results.append_result(tempo_r, dynamic_r)
+            # print('Model Correlation: ', model_correlation_results)
+
+            # valid_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:-num_trill_param], batch_y[:,:,NUM_TEMPO_PARAM:-num_trill_param], align_matched)
+            if MODEL.is_baseline:
+                tempo_loss = criterion(outputs[:, :, 0], batch_y[:, :, 0], align_matched)
+            else:
+                tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
+            if LOSS_TYPE == 'CE':
+                vel_loss = criterion(outputs[:, :, NUM_TEMPO_PARAM:NUM_TEMPO_PARAM + len(BINS[1])],
+                                     batch_y[:, :, NUM_TEMPO_PARAM:NUM_TEMPO_PARAM + len(BINS[1])], align_matched)
+                deviation_loss = criterion(
+                    outputs[:, :, NUM_TEMPO_PARAM + len(BINS[1]):NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2])],
+                    batch_y[:, :, NUM_TEMPO_PARAM + len(BINS[1]):NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2])])
+                pedal_loss = criterion(
+                    outputs[:, :, NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2]):-num_trill_param],
+                    batch_y[:, :, NUM_TEMPO_PARAM + len(BINS[1]) + len(BINS[2]):-num_trill_param])
+                trill_loss = criterion(outputs[:, :, -num_trill_param:], batch_y[:, :, -num_trill_param:])
+            else:
+                vel_loss = criterion(outputs[:, :, VEL_PARAM_IDX], batch_y[:, :, VEL_PARAM_IDX], align_matched)
+                deviation_loss = criterion(outputs[:, :, DEV_PARAM_IDX], batch_y[:, :, DEV_PARAM_IDX],
                                            align_matched)
-                    trill_loss = torch.zeros(1)
+                articul_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX], batch_y[:, :, PEDAL_PARAM_IDX],
+                                         pedal_status)
+                pedal_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX + 1:], batch_y[:, :, PEDAL_PARAM_IDX + 1:],
+                                       align_matched)
+                trill_loss = torch.zeros(1)
 
-                piece_kld = []
-                for z in perform_z:
-                    perform_mu, perform_var = z
-                    kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-                    piece_kld.append(kld)
-                piece_kld = torch.mean(torch.stack(piece_kld))
+            piece_kld = []
+            for z in perform_z:
+                perform_mu, perform_var = z
+                kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                piece_kld.append(kld)
+            piece_kld = torch.mean(torch.stack(piece_kld))
+
+            piece_wise_loss.append((tempo_loss.item(), vel_loss.item(), deviation_loss.item(), articul_loss.item(), pedal_loss.item(), trill_loss.item(), piece_kld.item()))
 
 
-                piece_wise_loss.append((tempo_loss.item(), vel_loss.item(), deviation_loss.item(), articul_loss.item(), pedal_loss.item(), trill_loss.item(), piece_kld.item()))
 
-            mean_tempo_loss = np.mean(tempo_loss_total)
-            mean_vel_loss = np.mean(vel_loss_total)
-            mean_deviation_loss = np.mean(deviation_loss_total)
-            mean_articul_loss = np.mean(articul_loss_total)
-            mean_pedal_loss = np.mean(pedal_loss_total)
-            mean_trill_loss = np.mean(trill_loss_total)
-            mean_kld_loss = np.mean(kld_total)
+        mean_tempo_loss = np.mean(tempo_loss_total)
+        mean_vel_loss = np.mean(vel_loss_total)
+        mean_deviation_loss = np.mean(deviation_loss_total)
+        mean_articul_loss = np.mean(articul_loss_total)
+        mean_pedal_loss = np.mean(pedal_loss_total)
+        mean_trill_loss = np.mean(trill_loss_total)
+        mean_kld_loss = np.mean(kld_total)
 
-            mean_valid_loss = (mean_tempo_loss + mean_vel_loss + mean_deviation_loss / 2 + mean_pedal_loss * 8) / 10.5
+        mean_valid_loss = (mean_tempo_loss + mean_vel_loss + mean_deviation_loss / 2 + mean_pedal_loss * 8) / 10.5
 
-            print("Test Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}"
-                  .format(mean_valid_loss, mean_tempo_loss, mean_vel_loss,
-                          mean_deviation_loss, mean_articul_loss, mean_pedal_loss, mean_trill_loss, mean_kld_loss))
+        print("Test Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}"
+              .format(mean_valid_loss, mean_tempo_loss, mean_vel_loss,
+                      mean_deviation_loss, mean_articul_loss, mean_pedal_loss, mean_trill_loss, mean_kld_loss))
+
+        # num_piece = len(model_correlation_total)
+        # for i in range(num_piece):
+        #     if len(human_correlation_total) > 0:
+        #         print('Human Correlation: ', human_correlation_total[i])
+        #         print('Model Correlation: ', model_correlation_total[i])
+
+
+    elif args.sessMode == 'correlation':
+        for path in cons.TEST_LIST:
+            path = 'chopin_cleaned/' + path
+            correlation = xml_matching.cal_correlation_of_pairs_in_folder(path)
+            composer_name = copy.copy(path).split('/')[1]
+            composer_name_vec = xml_matching.composer_name_to_vec(composer_name)
+            test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path, MEANS, STDS,
+                                                                                               args.startTempo,
+                                                                                               composer_name,
+                                                                                               None)
