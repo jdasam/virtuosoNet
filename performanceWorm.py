@@ -1,6 +1,7 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def cal_tempo_and_velocity_by_beat(features, note_locations=None, momentum=0.8):
@@ -61,12 +62,48 @@ def plot_performance_worm(features, save_name='images/performance_worm.png'):
     tempos, velocities = cal_tempo_and_velocity_by_beat(features)
     num_beat = len(tempos)
     plt.figure(figsize=(10, 7))
+    color = 'green'
     for i in range(num_beat):
-        color = 'green'
         ratio = i / num_beat
         alpha = 0.05+ratio*0.8
         plt.plot(tempos[i], velocities[i], markersize=(7 + 7*ratio), marker='o', color=color, alpha=alpha)
         if i > 0:
             plt.plot(tempos[i-1:i+1], velocities[i-1:i+1], color=color, alpha=alpha)
+    plt.savefig(save_name)
+    plt.close()
+
+
+def plot_normalized_feature(features_list, save_name='feature_test.png'):
+    plt.figure(figsize=(12, 7))
+    num_beat = len(features_list[0])
+
+    for features in features_list:
+        features = np.asarray(features)
+        normalized_features = features / np.mean(features)
+        # for i in range(1,num_beat):
+            # feat = normalized_features[i]
+        plt.plot(range(num_beat), normalized_features)
+
+    plt.savefig(save_name)
+    plt.close()
+
+
+def plot_human_model_features_compare(features_list, save_name='feature_test.png'):
+    plt.figure(figsize=(12, 7))
+    num_beat = len(features_list[0])
+    num_performance = len(features_list)
+
+    for i in range(num_performance-1):
+        features = features_list[i]
+        features = np.asarray(features)
+        normalized_features = features / np.mean(features)
+        # for i in range(1,num_beat):
+        # feat = normalized_features[i]
+        plt.plot(range(num_beat), normalized_features, color='gray')
+
+    model_features = np.asarray(features_list[-1])
+    normalized_features = model_features / np.mean(model_features)
+    plt.plot(range(num_beat), normalized_features, color='red')
+
     plt.savefig(save_name)
     plt.close()

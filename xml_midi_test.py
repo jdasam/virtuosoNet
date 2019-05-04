@@ -4,18 +4,31 @@
 from musicxml_parser.mxp import MusicXMLDocument
 import midi_utils.midi_utils as midi_utils
 import xml_matching
+import xml_midi_matching as matching
 import pickle
 import score_as_graph as score_graph
+import model_constants as cons
 
 
-corr = xml_matching.cal_correlation_of_pairs_in_folder('chopin_cleaned/Beethoven/Piano_Sonatas/2-1/')
+test_list = cons.TEST_LIST
+selected_corr = []
+for test_path in test_list:
+    print(test_path)
+    path = 'chopin_cleaned/' + test_path
+    piece_corr = xml_matching.cal_correlation_of_pairs_in_folder(path)
+    selected_corr.append(piece_corr)
+
+with open("selected_corr.dat", "wb") as f:
+    pickle.dump(selected_corr, f, protocol=2)
+
+# corr = xml_matching.cal_correlation_of_pairs_in_folder('chopin_cleaned/Beethoven/Piano_Sonatas/2-1/')
 # xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
 # xml_matching.check_data_split('chopin_cleaned/')
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Beethoven/Piano_Sonatas/1-1/'
+folderDir = 'chopin_cleaned/Chopin/Barcarolle/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'KimG01'
+artistName = 'Colafelice02'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
@@ -42,8 +55,8 @@ notes_graph = score_graph.make_edge(melody_notes)
 #         print(measure.first_ending_start, measure.first_ending_stop, measure.fine, measure.dacapo)
 
 perform_midi_notes = perform_midi.instruments[0].notes
-corresp = xml_matching.read_corresp(folderDir + artistName + "_infer_corresp.txt")
-score_pairs, perform_pairs = xml_matching.match_xml_midi_perform(melody_notes,score_midi_notes, perform_midi_notes, corresp)
+corresp = matching.read_corresp(folderDir + artistName + "_infer_corresp.txt")
+score_pairs, perform_pairs = matching.match_xml_midi_perform(melody_notes,score_midi_notes, perform_midi_notes, corresp)
 xml_matching.check_pairs(score_pairs)
 # for pair in score_pairs:
 #     print([pair['xml'].pitch, pair['xml'].note_duration.xml_position, pair['xml'].measure_number], pair['midi'])
@@ -145,12 +158,14 @@ for note in melody_notes:
 # ioi_list = [feat['IOI_ratio'] for feat in features ]
 
 
-measure_positions = xml_matching.extract_measure_position(XMLDocument)
+measure_positions = XMLDocument.get_measure_positions()
 # previous_pos=0
 # for i in range(len(measure_positions)-1):
 #     print('measure ' + str(i+1) + ' position is ' + str(measure_positions[i]) + ' and length is' + str(measure_positions[i+1]-measure_positions[i]))
 features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perform_pairs, perform_midi_notes, measure_positions)
-
+for feat in features:
+    if feat.grace_order != 0:
+        print(feat.xml_deviation)
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)
 
 # new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = perform_midi_notes[0].start)

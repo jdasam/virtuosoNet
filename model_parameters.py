@@ -33,6 +33,7 @@ class NetParams:
         self.hierarchy_level = None
         self.is_simplified = False
         self.is_test_version = False
+        self.training_args = None
 
 
 def save_parameters(param, save_name):
@@ -128,10 +129,10 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.size = 16
         net_param.encoder.layer = 2
 
+        net_param.time_reg.layer = 2
         net_param.time_reg.size = 32
-        net_param.graph_iteration = 5
+        net_param.graph_iteration = 3
         net_param.sequence_iteration = 3
-
 
         net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
         net_param.encoder.input = (net_param.note.size + net_param.measure.size * 2) * 2 \
@@ -140,15 +141,18 @@ def initialize_model_parameters_by_code(model_code):
             net_param.final.input += net_param.note.size
             net_param.encoder.input += net_param.note.size
 
+        if 'baseline' in model_code:
+            net_param.is_baseline = True
+
     elif 'han' in model_code:
-        net_param.note.layer = 2
-        net_param.note.size = 128
+        net_param.note.layer = 3
+        net_param.note.size = 256
         net_param.beat.layer = 2
-        net_param.beat.size = 64
+        net_param.beat.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 64
+        net_param.measure.size = 128
         net_param.final.layer = 1
-        net_param.final.size = 64
+        net_param.final.size = 128
         net_param.voice.layer = 2
         net_param.voice.size = 128
 
@@ -173,7 +177,7 @@ def initialize_model_parameters_by_code(model_code):
         if 'baseline' in model_code:
             net_param.is_baseline = True
             net_param.encoder.input = net_param.note.size * 2 + cons.NUM_PRIME_PARAM
-            net_param.final.input =  net_param.note.size * 2 + net_param.encoder.size + num_tempo_info + num_dynamic_info + net_param.output_size
+            net_param.final.input = net_param.note.size * 2 + net_param.encoder.size + num_tempo_info + num_dynamic_info + net_param.output_size
 
     elif 'trill' in model_code:
         net_param.input_size = cons.SCORE_INPUT + cons.NUM_PRIME_PARAM

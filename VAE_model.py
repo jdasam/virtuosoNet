@@ -12,7 +12,7 @@ import time
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import performanceWorm
+import perf_worm
 import copy
 import random
 import xml_matching
@@ -1115,7 +1115,7 @@ elif args.sessMode=='test':
         #         'pedal_cut': pred[10]}
         output_features.append(feat)
     num_notes = len(xml_notes)
-    performanceWorm.plot_performance_worm(output_features, path_name + 'perfWorm.png')
+    perf_worm.plot_performance_worm(output_features, path_name + 'perfWorm.png')
 
     # output_xml = xml_matching.apply_perform_features(xml_notes, output_features)
     output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time= 1, predicted=True)

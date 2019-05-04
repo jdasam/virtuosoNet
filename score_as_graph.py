@@ -50,6 +50,7 @@ def make_edge(xml_notes):
                         in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
                         if in_same_slur:
                             edge_list.append((i, i + j, 'slur'))
+                            edge_list.append((i, i + j, 'voice'))
                             edge_list.append((i, i + j, 'forward'))
                         else:
                             edge_list.append((i, i + j, 'voice'))
@@ -81,6 +82,7 @@ def make_edge(xml_notes):
                         if in_same_slur:
                             edge_list.append((i, i + j, 'slur'))
                             edge_list.append((i, i + j, 'forward'))
+                            edge_list.append((i, i + j, 'voice'))
                         else:
                             edge_list.append((i, i + j, 'voice'))
                             edge_list.append((i, i + j, 'forward'))

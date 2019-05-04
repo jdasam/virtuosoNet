@@ -19,6 +19,7 @@ import score_as_graph as score_graph
 import scipy.stats
 import numpy as np
 import performanceWorm as perf_worm
+import random
 
 NUM_SCORE_NOTES = 0
 NUM_PERF_NOTES = 0
@@ -1118,7 +1119,7 @@ def binaryIndex(alist, item):
         if currentElement < item:
             if alist[midpoint+1] > item:
                 return midpoint
-            else: first = midpoint +1;
+            else: first = midpoint +1
             if first == last and alist[last] > item:
                 return midpoint
         elif currentElement > item:
@@ -1129,6 +1130,38 @@ def binaryIndex(alist, item):
             while alist[midpoint+1] == item:
                 midpoint += 1
                 if midpoint + 1 == len(alist):
+                    return midpoint
+            return midpoint
+    return last
+
+
+def binary_index_for_edge(alist, item):
+    first = 0
+    last = len(alist) - 1
+    midpoint = 0
+
+    if (item < alist[first][0]):
+        return 0
+
+    while first < last:
+        midpoint = (first + last) // 2
+        currentElement = alist[midpoint][0]
+
+        if currentElement < item:
+            if alist[midpoint + 1][0] > item:
+                return midpoint
+            else:
+                first = midpoint + 1
+            if first == last and alist[last][0] > item:
+                return midpoint
+        elif currentElement > item:
+            last = midpoint - 1
+        else:
+            if midpoint + 1 == len(alist):
+                return midpoint
+            while midpoint >= 1 and alist[midpoint - 1][0] == item:
+                midpoint -= 1
+                if midpoint == 0:
                     return midpoint
             return midpoint
     return last
@@ -1755,13 +1788,13 @@ def make_new_note(note, time_a, time_b, articulation, loudness, default_velocity
 
     return note
 
+
 def cal_new_onset(note_start, time_a, time_b):
     index = binaryIndex(time_a, note_start)
     time_org = time_a[index]
     new_time = interpolation(note_start, time_a, time_b, index)
 
     return new_time
-
 
 
 def interpolation(a, list1, list2, index):
@@ -3005,11 +3038,16 @@ def check_feature_pair_is_from_same_piece(prev_feat, new_feat, num_check=10):
 
 
 class CorrelationResult:
-    def __init__(self):
+    def __init__(self, path=None, slc_idx=None):
         self.tempo_r = []
         self.dynamic_r = []
+        self.path_name = path
+        self.slice_index = slc_idx
+        self.tempo_features = []
+        self.dynamic_features = []
+        self.num_performance = 0
 
-    def append_result(self, tempo_r, velocity_r):
+    def _append_result(self, tempo_r, velocity_r):
         self.tempo_r.append(tempo_r)
         self.dynamic_r.append(velocity_r)
 
@@ -3022,6 +3060,14 @@ class CorrelationResult:
     def cal_maximum(self):
         return max(self.tempo_r), max(self.dynamic_r)
 
+    def _cal_correlation_of_features(self):
+        for i in range(self.num_performance-1):
+            for j in range(i+1, self.num_performance):
+                tempo_r, _ = cal_correlation(self.tempo_features[i], self.tempo_features[j])
+                dynamic_r, _ = cal_correlation(self.dynamic_features[i], self.dynamic_features[j])
+                self._append_result(tempo_r, dynamic_r)
+
+
     def __str__(self):
         if len(self.tempo_r) > 0:
             tempo_r_median, dynamic_r_median = self.cal_median()
@@ -3030,32 +3076,95 @@ class CorrelationResult:
         else:
             return 'No correlation'
 
-        return 'Tempo Med: {:.4f}, Min: {:.4f}, Max: {:.4f} - Dynamic Med: {:.4f}, Min: {:.4f}, Max: {:.4f}'\
-            .format(tempo_r_median, tempo_r_min, tempo_r_max, dynamic_r_median, dynamic_r_min, dynamic_r_max)
+        return 'Piece: {}, Note index : {}, Tempo Med: {:.4f}, Min: {:.4f}, Max: {:.4f} - Dynamic Med: {:.4f}, Min: {:.4f}, Max: {:.4f}'\
+            .format(self.path_name, self.slice_index, tempo_r_median, tempo_r_min, tempo_r_max, dynamic_r_median, dynamic_r_min, dynamic_r_max)
 
 
 def cal_correlation_of_pairs_in_folder(path):
     features_in_folder = load_pairs_from_folder(path)
+    if features_in_folder is None:
+        return None
     num_performance = len(features_in_folder)
+    if num_performance < 3:
+        print('Error: There are only {} performances in the folder'.format(num_performance))
+        return None
 
-    beat_tempos_by_performance = []
-    beat_dynamics_by_performance = []
+    num_notes = len(features_in_folder[0]['features'])
+    measure_numbers = [x.note_location.measure for x in features_in_folder[0]['features']]
+    slice_indexes = make_slicing_indexes_by_measure(num_notes, measure_numbers, 300, overlap=True)
+    correlation_result_total = []
 
-    correlation_result = CorrelationResult()
+    for slc_idx in slice_indexes:
+        correlation_result = CorrelationResult(path, slc_idx)
+        correlation_result.num_performance = num_performance
 
-    for features in features_in_folder:
-        tempos, dynamics = perf_worm.cal_tempo_and_velocity_by_beat(features['features'])
-        beat_tempos_by_performance.append(tempos)
-        beat_dynamics_by_performance.append(dynamics)
+        for features in features_in_folder:
+            sliced_features = features['features'][slc_idx[0]:slc_idx[1]]
+            tempos, dynamics = perf_worm.cal_tempo_and_velocity_by_beat(sliced_features)
+            correlation_result.tempo_features.append(tempos)
+            correlation_result.dynamic_features.append(dynamics)
+        correlation_result._cal_correlation_of_features()
 
-    for i in range(num_performance-1):
-        for j in range(i+1, num_performance):
-            tempo_r, _ = cal_correlation(beat_tempos_by_performance[i], beat_tempos_by_performance[j])
-            dynamic_r, _ = cal_correlation(beat_dynamics_by_performance[i], beat_dynamics_by_performance[j])
-            correlation_result.append_result(tempo_r, dynamic_r)
+        min_tempo_r, min_vel_r = correlation_result.cal_minimum()
+        if min_tempo_r > 0.75:
+            save_name = 'test_plot/' + path.replace('chopin_cleaned/', '').replace('/', '_', 10) + '_note{}-{}.png'.format(slc_idx[0], slc_idx[1])
+            perf_worm.plot_normalized_feature(correlation_result.tempo_features, save_name)
+            correlation_result_total.append(correlation_result)
 
-    return correlation_result
+    return correlation_result_total
 
+
+def make_slicing_indexes_by_measure(num_notes, measure_numbers, steps, overlap=True):
+    slice_indexes = []
+    if num_notes < steps:
+        slice_indexes.append((0, num_notes))
+    elif overlap:
+        first_end_measure = measure_numbers[steps]
+        last_measure = measure_numbers[-1]
+        if first_end_measure < last_measure - 1:
+            first_note_after_the_measure = measure_numbers.index(first_end_measure+1)
+            slice_indexes.append((0, first_note_after_the_measure))
+            second_end_start_measure = measure_numbers[num_notes - steps]
+            first_note_of_the_measure = measure_numbers.index(second_end_start_measure)
+            slice_indexes.append((first_note_of_the_measure, num_notes))
+
+            if num_notes > steps * 2:
+                first_start = random.randrange(int(steps/2), int(steps*1.5))
+                start_measure = measure_numbers[first_start]
+                end_measure = start_measure
+
+                while end_measure < second_end_start_measure:
+                    start_note = measure_numbers.index(start_measure)
+                    if start_note+steps < num_notes:
+                        end_measure = measure_numbers[start_note+steps]
+                    else:
+                        break
+                    end_note = measure_numbers.index(end_measure-1)
+                    slice_indexes.append((start_note, end_note))
+
+                    if end_measure > start_measure + 2:
+                        start_measure = end_measure - 2
+                    elif end_measure > start_measure + 1:
+                        start_measure = end_measure - 1
+                    else:
+                        start_measure = end_measure
+        else:
+            slice_indexes.append((0, num_notes))
+    else:
+        num_slice = math.ceil(num_notes / steps)
+        prev_end_index = 0
+        for i in range(num_slice):
+            if prev_end_index + steps >= num_notes:
+                slice_indexes.append((prev_end_index, num_notes))
+                break
+            end_measure = measure_numbers[prev_end_index + steps]
+            if end_measure >= measure_numbers[-1]:
+                slice_indexes.append((prev_end_index, num_notes))
+                break
+            first_note_after_the_measure = measure_numbers.index(end_measure + 1)
+            slice_indexes.append((prev_end_index, first_note_after_the_measure))
+            prev_end_index = first_note_after_the_measure
+    return slice_indexes
 
 
 def check_data_split(path):
