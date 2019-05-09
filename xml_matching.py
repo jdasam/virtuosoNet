@@ -245,7 +245,8 @@ def apply_after_grace_note_to_chord_notes(notes):
         if note.note_duration.preceded_by_grace_note:
             onset = note.note_duration.xml_position
             voice = note.voice
-            chords = find(lambda x: x.note_duration.xml_position == onset and x.voice == voice and not x.note_duration.is_grace_note, notes)
+            # chords = find(lambda x: x.note_duration.xml_position == onset and x.voice == voice and not x.note_duration.is_grace_note, notes)
+            chords = find(lambda x: x.note_duration.xml_position == onset and x.voice == voice, notes)
             for chd in chords:
                 chd.note_duration.preceded_by_grace_note = True
     return notes

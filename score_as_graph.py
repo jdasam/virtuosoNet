@@ -66,8 +66,8 @@ def make_edge(xml_notes):
                 next_note_start = next_note.note_duration.xml_position
                 next_voice = next_note.voice
                 next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
-                # if next_note.note_duration.duration == 0:
-                #     continue
+                if next_note.note_duration.duration == 0:
+                    continue
                 if next_note_start == note_position and not next_note.note_duration.duration == 0:  #same onset
                     edge_list.append((i, i + j, 'onset'))
                     same_onset_matrix[i].append(i+j)
@@ -77,9 +77,9 @@ def make_edge(xml_notes):
                     # melisma_note_matrix[i].append(i+j)
                     pedal_tone_matrix[i+j].append(i)
                 elif next_note_start == note_end_position and note_end_position == note_end_include_rest:
-                    if next_note.note_duration.duration == 0:
-                        edge_list.append((i, i + j, 'melisma'))
-                    elif next_voice == current_voice:
+                    # if next_note.note_duration.duration == 0:
+                    #     edge_list.append((i, i + j, 'melisma'))
+                    if next_voice == current_voice:
                         in_same_slur = check_in_same_slur(current_slur_indexes, next_note_slur_indexes)
                         if in_same_slur:
                             edge_list.append((i, i + j, 'slur'))
