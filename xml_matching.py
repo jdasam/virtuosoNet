@@ -3076,8 +3076,8 @@ def cal_correlation_of_pairs_in_folder(path):
         return None
 
     num_notes = len(features_in_folder[0]['features'])
-    measure_numbers = [x.note_location.measure for x in features_in_folder[0]['features']]
-    slice_indexes = make_slicing_indexes_by_measure(num_notes, measure_numbers, 300, overlap=True)
+    beat_numbers = [x.note_location.beat for x in features_in_folder[0]['features']]
+    slice_indexes = make_slicing_indexes_by_beat(beat_numbers, 30, overlap=True)
     correlation_result_total = []
 
     for slc_idx in slice_indexes:
@@ -3092,7 +3092,7 @@ def cal_correlation_of_pairs_in_folder(path):
         correlation_result._cal_correlation_of_features()
 
         min_tempo_r, min_vel_r = correlation_result.cal_minimum()
-        if min_tempo_r > 0.75:
+        if min_tempo_r > 0.7:
             save_name = 'test_plot/' + path.replace('chopin_cleaned/', '').replace('/', '_', 10) + '_note{}-{}.png'.format(slc_idx[0], slc_idx[1])
             perf_worm.plot_normalized_feature(correlation_result.tempo_features, save_name)
             correlation_result_total.append(correlation_result)
@@ -3152,6 +3152,47 @@ def make_slicing_indexes_by_measure(num_notes, measure_numbers, steps, overlap=T
             prev_end_index = first_note_after_the_measure
     return slice_indexes
 
+
+def make_slicing_indexes_by_beat(beat_numbers, beat_steps, overlap=True):
+    slice_indexes = []
+    num_notes = len(beat_numbers)
+    num_beats = beat_numbers[-1]
+    if num_beats < beat_steps:
+        slice_indexes.append((0, num_notes))
+    elif overlap:
+        first_end_beat = beat_steps
+        last_end_beat = num_beats
+
+        if first_end_beat < last_end_beat - 1:
+            first_note_after_the_beat = beat_numbers.index(first_end_beat + 1)
+            slice_indexes.append((0, first_note_after_the_beat))
+            second_end_start_beat = num_beats - beat_steps
+            first_note_of_the_beat = beat_numbers.index(second_end_start_beat)
+            slice_indexes.append((first_note_of_the_beat, num_notes))
+            if num_beats > beat_steps * 2:
+                first_start = random.randrange(int(beat_steps / 2), int(beat_steps * 1.5))
+                start_beat = first_start
+                end_beat = start_beat
+
+                while end_beat < second_end_start_beat:
+                    start_note = beat_numbers.index(start_beat)
+                    if start_beat + beat_steps < num_beats:
+                        end_beat = start_beat + beat_steps
+                    else:
+                        break
+                    end_note = beat_numbers.index(end_beat)
+                    slice_indexes.append((start_note, end_note))
+
+                    if end_beat > start_beat + 2:
+                        start_beat = end_beat - 2
+                    elif end_beat > start_beat + 1:
+                        start_beat = end_beat - 1
+                    else:
+                        start_beat = end_beat
+
+        else:
+            slice_indexes.append((0, num_notes))
+    return slice_indexes
 
 def cal_actual_note_articulation(path):
     features_in_folder = load_pairs_from_folder(path, pedal_elongate=True)
