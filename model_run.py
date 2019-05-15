@@ -43,7 +43,8 @@ parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help=
 parser.add_argument("-delta", "--deltaLoss", default=False, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-hCode", "--hierCode", type=str, default='han_measure', help="code name for loading hierarchy model")
 parser.add_argument("-intermd", "--intermediateLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
-parser.add_argument("-randtr", "--randomTrain", default=False, type=lambda x: (str(x).lower() == 'true'), help="use random train")
+parser.add_argument("-randtr", "--randomTrain", default=True, type=lambda x: (str(x).lower() == 'true'), help="use random train")
+parser.add_argument("-dskl", "--disklavier", default=True, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
 
 random.seed(30)
@@ -78,7 +79,12 @@ TIME_STEPS = 400
 VALID_STEPS = 3000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
-print('Learning Rate: {}, Time_steps: {}, Delta weight: {}'.format(learning_rate, TIME_STEPS, DELTA_WEIGHT))
+WEIGHT_DECAY = 1e-5
+GRAD_CLIP = 5
+KLD_MAX = 0.02
+KLD_SIG = 1.5e5
+print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
+      (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
 num_key_augmentation = 1
 
@@ -189,7 +195,7 @@ else:
     print('Error: Unclassified model code')
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
-optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 # else:
 #     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
@@ -394,12 +400,12 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
     return prediction
 
 
-def load_file_and_generate_performance(filename, composer=args.composer, z=args.latent, return_features=False):
+def load_file_and_generate_performance(filename, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
     path_name = filename
     composer_name = composer
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
     test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
-                                                                                       args.startTempo, composer_name,
+                                                                                       start_tempo, composer_name,
                                                                                        vel_pair)
     batch_x = torch.Tensor(test_x)
     for i in range(len(STDS)):
@@ -407,7 +413,7 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
             if STDS[i][j] < 1e-4:
                 STDS[i][j] = 1
     num_notes = len(test_x)
-    if args.startTempo == 0:
+    if start_tempo == 0:
         start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
         start_tempo = math.log(start_tempo, 10)
         # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
@@ -477,13 +483,13 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
 
     output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time=1,
                                                            predicted=True)
-    output_midi = xml_matching.xml_notes_to_midi(output_xml)
+    output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml)
     piece_name = path_name.split('/')
     save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
     perf_worm.plot_performance_worm(output_features, save_name + '.png')
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, save_name + '.mid',
-                                               bool_pedal=args.boolPedal, disklavier=True)
+    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
+                                               bool_pedal=args.boolPedal, disklavier=args.disklavier)
 
 
 def model_prediction_to_feature(prediction, note_locations):
@@ -695,10 +701,14 @@ def batch_time_step_run(data, model, batch_size=batch_size):
             return torch.zeros(1), torch.zeros(1), torch.zeros(1),  torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
 
     else:
-        if 'isgn' in args.modelCode:
+        if 'isgn' in args.modelCode and args.intermediateLoss:
             total_loss = torch.zeros(1).to(DEVICE)
             for out in total_out_list:
-                tempo_loss = cal_tempo_loss_in_beat(out, prime_batch_y, note_locations, batch_start)
+                if model.is_baseline:
+                    tempo_loss = criterion(out[:, :, 0:1],
+                                           prime_batch_y[:, :, 0:1], align_matched)
+                else:
+                    tempo_loss = cal_tempo_loss_in_beat(out, prime_batch_y, note_locations, batch_start)
                 vel_loss = criterion(out[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
                                      prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
                 dev_loss = criterion(out[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
@@ -711,7 +721,11 @@ def batch_time_step_run(data, model, batch_size=batch_size):
                 total_loss += (tempo_loss + vel_loss + dev_loss + articul_loss + pedal_loss * 7) / 11
             total_loss /= len(total_out_list)
         else:
-            tempo_loss = cal_tempo_loss_in_beat(outputs, prime_batch_y, note_locations, batch_start)
+            if model.is_baseline:
+                tempo_loss = criterion(outputs[:, :, 0:1],
+                                     prime_batch_y[:, :, 0:1], align_matched)
+            else:
+                tempo_loss = cal_tempo_loss_in_beat(outputs, prime_batch_y, note_locations, batch_start)
             vel_loss = criterion(outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
                                  prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
             dev_loss = criterion(outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
@@ -729,7 +743,7 @@ def batch_time_step_run(data, model, batch_size=batch_size):
         total_loss += perform_kld * kld_weight
     optimizer.zero_grad()
     total_loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
     optimizer.step()
 
     if HIERARCHY:
@@ -917,7 +931,7 @@ if args.sessMode == 'train':
                 for i in range(num_key_augmentation+1):
                     key = key_lists[i]
                     temp_train_x = key_augmentation(train_x, key)
-                    kld_weight = sigmoid((NUM_UPDATED - 15e4) / 15e3) * 0.02
+                    kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
                                      'note_locations': note_locations,
@@ -971,7 +985,7 @@ if args.sessMode == 'train':
                     key = key_lists[i]
                     temp_train_x = key_augmentation(train_x, key)
                     slice_indexes = xml_matching.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
-                    kld_weight = sigmoid((NUM_UPDATED - 15e4) / 15e3) * 0.02
+                    kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     for slice_idx in slice_indexes:
                         training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
@@ -1133,7 +1147,7 @@ if args.sessMode == 'train':
     #end of epoch
 
 
-elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'correlation']:
+elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -1149,7 +1163,8 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'co
               .format(filename, checkpoint['epoch']))
         # NUM_UPDATED = checkpoint['training_step']
         # optimizer.load_state_dict(checkpoint['optimizer'])
-        trill_filename = args.trillCode + args.resume
+        # trill_filename = args.trillCode + args.resume
+        trill_filename = args.trillCode + '_best.pth.tar'
         checkpoint = torch.load(trill_filename, DEVICE)
         TRILL_MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
@@ -1169,9 +1184,9 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'co
     MODEL.is_teacher_force = False
 
     if args.sessMode == 'test':
+        random.seed(30)
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
-        MODEL.num_sequence_iteration = 10
         path_list = cons.emotion_data_path
         emotion_list = cons.emotion_key_list
         perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
@@ -1181,6 +1196,13 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'co
             composer = piece[1]
             for perform_z_pair in perform_z_by_list:
                 load_file_and_generate_performance(path, composer, z=perform_z_pair)
+            load_file_and_generate_performance(path, composer, z=0)
+    elif args.sessMode == 'testAllzero':
+        test_list = cons.test_piece_list
+        for piece in test_list:
+            path = './test_pieces/' + piece[0] + '/'
+            composer = piece[1]
+            random.seed(100)
             load_file_and_generate_performance(path, composer, z=0)
 
     elif args.sessMode == 'encode':
@@ -1394,15 +1416,16 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'co
 
 
     elif args.sessMode == 'correlation':
-        with open('selected_corr.dat', "rb") as f:
+        with open('selected_corr_30.dat', "rb") as f:
             u = pickle._Unpickler(f)
             selected_corr = u.load()
+        model_cor = []
         for piece_corr in selected_corr:
             if piece_corr is None or piece_corr==[]:
                 continue
             path = piece_corr[0].path_name
             composer_name = copy.copy(path).split('/')[1]
-            output_features = load_file_and_generate_performance(path, composer_name, 'zero', True)
+            output_features = load_file_and_generate_performance(path, composer_name, 'zero', return_features=True)
             for slice_corr in piece_corr:
                 slc_idx = slice_corr.slice_index
                 sliced_features = output_features[slc_idx[0]:slc_idx[1]]
@@ -1424,4 +1447,7 @@ elif args.sessMode in ['test', 'testAll', 'encode', 'encodeAll', 'evaluate', 'co
 
                 save_name = 'test_plot/' + path.replace('chopin_cleaned/', '').replace('/', '_', 10) + '_note{}-{}_by_{}.png'.format(slc_idx[0], slc_idx[1], args.modelCode)
                 perf_worm.plot_human_model_features_compare(model_correlation_results.tempo_features, save_name)
+                model_cor.append(model_correlation_results)
 
+        with open(args.modelCode + "_cor.dat", "wb") as f:
+            pickle.dump(model_cor, f, protocol=2)
