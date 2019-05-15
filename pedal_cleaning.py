@@ -2,7 +2,7 @@ from binary_index import binary_index
 import pretty_midi
 THRESHOLD = 64
 OVERLAP_THR = 0.03
-BARELY_OFF = 35
+BARELY_OFF = 20
 BARELY_ON = 68
 PEDAL_OFF_TIME_MARGIN = 0.15
 
@@ -232,7 +232,7 @@ def add_pedal_offset_between_pedals(pedals, offsets):
             prev_pedal.value = BARELY_ON
             combined_pedal.append(off_pedal)
         elif off_pedal.time + PEDAL_OFF_TIME_MARGIN > next_pedal_on.time:
-            off_pedal.time = min(prev_pedal.time + OVERLAP_THR, off_pedal.time)
+            off_pedal.time = min(prev_pedal.time + OVERLAP_THR * 2, off_pedal.time)
             off_pedal.value = BARELY_OFF
             prev_pedal.value = BARELY_ON
             combined_pedal.append(off_pedal)
