@@ -340,4 +340,4 @@ def load_entire_subfolder(path):
 
 # xml_matching.check_data_split('chopin_cleaned/')
 chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_ready')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_grace')
