@@ -624,6 +624,8 @@ class HAN_Integrated(nn.Module):
                 self.beat_rnn = nn.LSTM((self.hidden_size + self.voice_hidden_size) * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
             self.measure_attention = ContextAttention(self.beat_hidden_size*2, self.num_attention_head)
             self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
+            self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+
             if self.hierarchy == 'measure':
                 self.output_lstm = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size + self.output_size, self.final_hidden_size, num_layers=1, batch_first=True)
             elif self.hierarchy == 'beat':
@@ -681,7 +683,7 @@ class HAN_Integrated(nn.Module):
         self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
 
-        self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+        # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
@@ -867,7 +869,6 @@ class HAN_Integrated(nn.Module):
                                 (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
                                  measure_hidden_out[0, current_measure, :],
                                  prev_out, qpm_primo, tempo_primo, measure_perform_style[0, current_measure,:])).view(1, 1, -1)
-
                         out, final_hidden = self.output_lstm(out_combined, final_hidden)
                         # out = torch.cat((out, out_combined), 2)
                         out = out.view(-1)

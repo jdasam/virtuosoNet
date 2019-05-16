@@ -107,3 +107,35 @@ def plot_human_model_features_compare(features_list, save_name='feature_test.png
 
     plt.savefig(save_name)
     plt.close()
+
+
+def plot_model_features_compare(features_list, num_models=4, save_name='feature_test.png'):
+    plt.figure(figsize=(12, 6))
+    matplotlib.rcParams.update({'font.size': 20})
+
+    plt.xlabel('Beat Index')
+    plt.ylabel('Relative Tempo')
+    num_beat = len(features_list[0])
+    num_performance = len(features_list)
+    code = ('ISGN', 'BL', 'HAN', 'G-HAN')
+
+    for i in range(num_performance-num_models):
+        features = features_list[i]
+        features = np.asarray(features)
+        normalized_features = features / np.mean(features)
+        # for i in range(1,num_beat):
+        # feat = normalized_features[i]
+        if i == 0:
+            plt.plot(range(num_beat), normalized_features, color='gray', label='Human')
+        else:
+            plt.plot(range(num_beat), normalized_features, color='gray')
+
+    for i in range(num_models):
+        model_features = np.asarray(features_list[-num_models + i])
+        normalized_features = model_features / np.mean(model_features)
+        plt.plot(range(num_beat), normalized_features, label=code[i], linewidth=2.0)
+
+    plt.legend()
+
+    plt.savefig(save_name)
+    plt.close()
