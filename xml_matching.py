@@ -12,7 +12,7 @@ from musicxml_parser.mxp import MusicXMLDocument
 # sys.setdefaultencoding('UTF8')
 import midi_utils.midi_utils as midi_utils
 import copy
-import evaluation
+import performance_evaluation
 import xml_midi_matching as matching
 import xml_direction_encoding as dir_enc
 import score_as_graph as score_graph

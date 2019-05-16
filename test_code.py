@@ -7,19 +7,7 @@ import xml_matching
 import xml_midi_matching as matching
 import pickle
 import score_as_graph as score_graph
-import model_constants as cons
 
-
-test_list = cons.TEST_LIST
-selected_corr = []
-for test_path in test_list:
-    print(test_path)
-    path = 'chopin_cleaned/' + test_path
-    piece_corr = xml_matching.cal_correlation_of_pairs_in_folder(path)
-    selected_corr.append(piece_corr)
-
-with open("selected_corr_30.dat", "wb") as f:
-    pickle.dump(selected_corr, f, protocol=2)
 
 # corr = xml_matching.cal_correlation_of_pairs_in_folder('chopin_cleaned/Beethoven/Piano_Sonatas/2-1/')
 # xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
