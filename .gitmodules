@@ -1,0 +1,3 @@
+[submodule "pyScoreParser"]
+	path = pyScoreParser
+	url = https://github.com/jdasam/pyScoreParser.git

@@ -1,6 +1,4 @@
 import torch
-import torch.nn as nn
-from torch.autograd import Variable
 import pickle
 import argparse
 import math
@@ -15,7 +13,7 @@ import matplotlib.pyplot as plt
 import performanceWorm as perf_worm
 import copy
 import random
-import xml_matching
+import pyScoreParser.xml_matching as xml_matching
 import nnModel
 import model_parameters as param
 import model_constants as cons
