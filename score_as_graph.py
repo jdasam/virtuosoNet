@@ -1,9 +1,3 @@
-import xml_matching
-import musicxml_parser.mxp
-import numpy as np
-
-
-
 def make_edge(xml_notes):
     num_notes = len(xml_notes)
     edge_list =[]

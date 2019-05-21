@@ -5,22 +5,23 @@ from __future__ import division
 import math
 import os
 import pretty_midi
-from musicxml_parser.mxp import MusicXMLDocument
+import copy
+import scipy.stats
+import numpy as np
+import random
+
+
+from .musicxml_parser import MusicXMLDocument
+from .midi_utils import midi_utils
+from . import performanceWorm as perf_worm, xml_direction_encoding as dir_enc, \
+    score_as_graph as score_graph, xml_midi_matching as matching
+from . import pedal_cleaning
 # import sys
 # # sys.setdefaultencoding() does not exist, here!
 # reload(sys)  # Reload does the trick!
 # sys.setdefaultencoding('UTF8')
-import midi_utils.midi_utils as midi_utils
-import copy
-import performance_evaluation
-import xml_midi_matching as matching
-import xml_direction_encoding as dir_enc
-import score_as_graph as score_graph
-import scipy.stats
-import numpy as np
-import performanceWorm as perf_worm
-import random
-import pedal_cleaning
+# from . import midi_utils
+# import performance_evaluation
 from binary_index import binary_index
 
 NUM_SCORE_NOTES = 0
@@ -30,7 +31,6 @@ NUM_EXCLUDED_NOTES = 0
 
 DYN_EMB_TAB = dir_enc.define_dyanmic_embedding_table()
 TEM_EMB_TAB = dir_enc.define_tempo_embedding_table()
-
 
 
 class MusicFeature():
@@ -119,7 +119,7 @@ def get_direction_encoded_notes(xml_object):
 
 def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0, vel_standard=False):
     xml_length = len(xml_notes)
-    melody_notes = extract_melody_only_from_notes(xml_notes)
+    # melody_notes = extract_melody_only_from_notes(xml_notes)
     features = []
 
     if qpm_primo == 0:
@@ -174,7 +174,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
         feature.grace_order = note.note_duration.grace_order
         feature.is_grace_note = int(note.note_duration.is_grace_note)
         feature.preceded_by_grace_note = int(note.note_duration.preceded_by_grace_note)
-        feature.melody = int(note in melody_notes)
+        # feature.melody = int(note in melody_notes)
 
         feature.slur_beam_vec = [int(note.note_notations.is_slur_start), int(note.note_notations.is_slur_continue),
                                  int(note.note_notations.is_slur_stop), int(note.note_notations.is_beam_start),
@@ -388,7 +388,7 @@ def extract_melody_only_from_notes(xml_notes):
     for note in xml_notes:
         if note.voice == 1 and not note.note_duration.is_grace_note:
             melody_notes.append(note)
-    melody_notes = MusicXMLDocument().delete_chord_notes_for_melody(melody_notes)
+    melody_notes = MusicXMLDocument.delete_chord_notes_for_melody(MusicXMLDocument, melody_notes=melody_notes)
 
     return melody_notes
 
@@ -501,6 +501,7 @@ def cal_pitch_interval_and_duration_ratio(xml_notes, index):
 
     return None, 0
 
+
 def pitch_interval_into_vector(pitch_interval):
     vec_itv= [0, 0, 1] # [direction, octave, whether the next note exists]
     if pitch_interval == None:
@@ -521,6 +522,7 @@ def pitch_interval_into_vector(pitch_interval):
     vec_itv += semiton_vec
 
     return vec_itv
+
 
 def pitch_into_vector(pitch):
     pitch_vec = [0] * 13 #octave + pitch class
@@ -554,39 +556,6 @@ def calculate_pitch_interval(xml_notes, index):
     #     pitch_interval = None
     # return pitch_interval
     return 0
-
-def calculate_duration_ratio(xml_notes, index):
-    search_index = 1
-    num_notes = len(xml_notes)
-    note = xml_notes[index]
-    if note.note_duration.is_grace_note:
-        return 0
-    while index+search_index <num_notes:
-        next_note = xml_notes[index+search_index]
-        if next_note.voice == note.voice and next_note.chord_index == note.chord_index\
-                and not next_note.note_duration.is_grace_note:
-            # check whether the next note is directly following the previous note
-            if note.note_duration.xml_position + note.note_duration.duration == next_note.note_duration.xml_position:
-                return math.log(
-                    xml_notes[index + search_index].note_duration.duration / xml_notes[index].note_duration.duration,
-                    10)
-            # the closes next note is too far from the note
-            else:
-                return 0
-
-        search_index += 1
-    # if index < len(xml_notes)-1:
-    #     pitch_interval = xml_notes[index+1].pitch[1] - xml_notes[index].pitch[1]
-    # else:
-    #     pitch_interval = None
-    # return pitch_interval
-    return 0
-    #
-    # if index < len(xml_notes)-1:
-    #     duration_ratio = math.log(xml_notes[index+1].note_duration.duration / xml_notes[index].note_duration.duration, 10)
-    # else:
-    #     duration_ratio = None
-    # return duration_ratio
 
 
 def find_corresp_tempo(note, tempos):
