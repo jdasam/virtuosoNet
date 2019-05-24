@@ -1688,7 +1688,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
 
     xml_object = MusicXMLDocument(xml_name)
     xml_notes = get_direction_encoded_notes(xml_object)
-    beats = xml_object.get_beat_positions
+    beats = xml_object.get_beat_positions()
     measure_positions = xml_object.get_measure_positions()
     features = extract_score_features(xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
     features = make_index_continuous(features, score=True)
