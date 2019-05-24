@@ -3,20 +3,20 @@ import pickle
 import argparse
 import math
 import numpy as np
-import asyncio
 import shutil
 import os
-import time
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import performanceWorm as perf_worm
+
+import pyScoreParser.xml_matching as xml_matching
+import pyScoreParser.performanceWorm as perf_worm
 import copy
 import random
-import pyScoreParser.xml_matching as xml_matching
 import nnModel
 import model_parameters as param
 import model_constants as cons
+import sys
+sys.modules['xml_matching'] = xml_matching
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
