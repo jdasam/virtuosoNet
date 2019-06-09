@@ -73,13 +73,13 @@ if args.trainTrill:
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 400
-VALID_STEPS = 3000
+TIME_STEPS = 500
+VALID_STEPS = 3500
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.02
+KLD_MAX = 0.003
 KLD_SIG = 1.5e5
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
