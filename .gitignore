@@ -1,5 +1,8 @@
-musicXML_parser/
+musicxml_parser/
 .idea/
 chopin_cleaned/
 midi_utils/
 test_pieces/
+mscx_files/
+*.pyc
+**/.DS_Store
