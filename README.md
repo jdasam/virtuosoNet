@@ -59,7 +59,7 @@ If the MIDI player cannot handle pedal, the articulation of our notes will sound
 We have uploaded toy training set (icml_haydn_set.dat, icml_haydn_set_stat.dat, icml_haydn_set_test.dat).
 You can train model by selecting this data set and training mode.
 You can change model parameters in model_parameters.py
-> python3 model_run.py -mode=train -code=isgn -data=icml_haydn_set)
+> python3 model_run.py -mode=train -code=isgn_test -data=icml_haydn_set)
 
 
 
