@@ -3,7 +3,7 @@
 Our research project is developing a system for generating expressive piano perfomrance, or simply 'AI Pianist'. The system reads a given music score in MusicX
 ML and generates a human-like performance MIDI file.
 
-This repository contains PyTorch code and pre-trained model for [__Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance__ (ICML 2019)](http://proceedings.mlr.press/v97/jeong19a.html), and [__VirtuosoNet: A Hierarchical RNN-based system for modeling expressive piano performance__ (ISMIR 2019)]
+This repository contains PyTorch code and pre-trained model for [__Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance__ (ICML 2019)](http://proceedings.mlr.press/v97/jeong19a.html), and __VirtuosoNet: A Hierarchical RNN-based system for modeling expressive piano performance__ (ISMIR 2019)
 
 This documentation is currently a work in progress.
 contact: jdasam@kaist.ac.kr
