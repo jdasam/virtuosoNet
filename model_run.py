@@ -73,13 +73,13 @@ if args.trainTrill:
 ### parameters
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 3500
+VALID_STEPS = 4000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.003
-KLD_SIG = 1.5e5
+KLD_MAX = 0.01
+KLD_SIG = 2e5
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -193,6 +193,7 @@ else:
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
 optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
+# optimizer = torch.optim.Adadelta(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 # else:
 #     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
@@ -1152,7 +1153,12 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         filename = 'prime_' + args.modelCode + args.resume
         print('device is ', args.device)
         torch.cuda.set_device(args.device)
-        checkpoint = torch.load(filename, map_location=DEVICE)
+        print('model run 1156', DEVICE )
+        if torch.cuda.is_available():
+            map_location = lambda storage, loc: storage.cuda()
+        else:
+            map_location = 'cpu'
+        checkpoint = torch.load(filename, map_location=map_location)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
@@ -1162,7 +1168,7 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         # optimizer.load_state_dict(checkpoint['optimizer'])
         # trill_filename = args.trillCode + args.resume
         trill_filename = args.trillCode + '_best.pth.tar'
-        checkpoint = torch.load(trill_filename, DEVICE)
+        checkpoint = torch.load(trill_filename, map_location=map_location)
         TRILL_MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(trill_filename, checkpoint['epoch']))
