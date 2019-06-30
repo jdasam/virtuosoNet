@@ -1082,7 +1082,7 @@ class HAN_Integrated(nn.Module):
         layers = []
         for i in range(max_voice):
             # h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(device)
-            h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.hidden_size).to(self.device)
+            h0 = torch.zeros(self.num_voice_layers * 2, batch_size, self.voice_hidden_size).to(self.device)
             layers.append((h0, h0))
         return layers
 
