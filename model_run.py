@@ -73,13 +73,13 @@ if args.trainTrill:
 ### parameters
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 3500
+VALID_STEPS = 4000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.003
-KLD_SIG = 1.5e5
+KLD_MAX = 0.01
+KLD_SIG = 2e5
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -193,6 +193,7 @@ else:
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
 optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
+# optimizer = torch.optim.Adadelta(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
 # second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
 # else:
 #     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
@@ -500,7 +501,6 @@ def model_prediction_to_feature(prediction, note_locations):
         feat.velocity = pred[1]
         feat.xml_deviation = pred[2]
         feat.articulation = pred[3]
-        # feat.xml_deviation = 0
         feat.pedal_refresh_time = pred[4]
         feat.pedal_cut_time = pred[5]
         feat.pedal_at_start = pred[6]
@@ -1152,17 +1152,22 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         filename = 'prime_' + args.modelCode + args.resume
         print('device is ', args.device)
         torch.cuda.set_device(args.device)
-        checkpoint = torch.load(filename, map_location=DEVICE)
+        if torch.cuda.is_available():
+            map_location = lambda storage, loc: storage.cuda()
+        else:
+            map_location = 'cpu'
+        checkpoint = torch.load(filename, map_location=map_location)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
+        # MODEL.num_graph_iteration = 10
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(filename, checkpoint['epoch']))
         # NUM_UPDATED = checkpoint['training_step']
         # optimizer.load_state_dict(checkpoint['optimizer'])
         # trill_filename = args.trillCode + args.resume
         trill_filename = args.trillCode + '_best.pth.tar'
-        checkpoint = torch.load(trill_filename, DEVICE)
+        checkpoint = torch.load(trill_filename, map_location=map_location)
         TRILL_MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(trill_filename, checkpoint['epoch']))
