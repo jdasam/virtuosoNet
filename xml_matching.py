@@ -668,7 +668,12 @@ def load_pairs_from_folder(path, pedal_elongate=False):
 
     xml_name = path+'musicxml_cleaned.musicxml'
     score_midi_name = path+'midi_cleaned.mid'
-    composer_name = copy.copy(path).split('/')[1]
+    path_split = copy.copy(path).split('/')
+    if path_split[0] == 'chopin_cleaned':
+        composer_name = copy.copy(path).split('/')[1]
+    else:
+        dataset_folder_name_index = path_split.index('chopin_cleaned')
+        composer_name = copy.copy(path).split('/')[dataset_folder_name_index+1]
     composer_name_vec = composer_name_to_vec(composer_name)
 
     XMLDocument = MusicXMLDocument(xml_name)

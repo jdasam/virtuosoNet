@@ -1,13 +1,14 @@
 from __future__ import division
 import pickle
 import random
-import xml_matching
 import copy
 import pandas
 import numpy as np
 import argparse
 import os
-import model_constants as cons
+
+from . import xml_matching as xml_matching
+from . import dataset_split as split
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--regression', default=True, type=lambda x: (str(x).lower() == 'true'))
@@ -20,8 +21,8 @@ NUM_NORMALIZE_FEATURE = [8, 19, 4]
 REGRESSION = args.regression
 print('Data type is regression: ', args.regression)
 
-VALID_LIST = cons.VALID_LIST
-TEST_LIST = cons.TEST_LIST
+VALID_LIST = split.VALID_LIST
+TEST_LIST = split.TEST_LIST
 
 def save_features_as_vector(dataset, num_train, num_valid, save_name):
     complete_xy = []
@@ -340,5 +341,5 @@ def load_entire_subfolder(path):
 
 
 # xml_matching.check_data_split('chopin_cleaned/')
-chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = load_entire_subfolder('chopin_cleaned/')
-save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'icml_grace')
+chopin_pairs, num_train_pairs, num_valid_pairs, num_test_pairs = load_entire_subfolder('pyScoreParser/chopin_cleaned/')
+save_features_as_vector(chopin_pairs, num_train_pairs, num_valid_pairs, 'dataset')
