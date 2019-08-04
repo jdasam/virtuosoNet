@@ -1,49 +1,41 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from musicxml_parser.mxp import MusicXMLDocument
-import midi_utils.midi_utils as midi_utils
-import xml_matching
-import xml_midi_matching as matching
+from .musicxml_parser import MusicXMLDocument
+from .midi_utils import midi_utils as midi_utils
+from . import xml_matching
+from . import xml_midi_matching as matching
+from . import score_as_graph as score_graph
 import pickle
-import score_as_graph as score_graph
 
 
-# corr = xml_matching.cal_correlation_of_pairs_in_folder('chopin_cleaned/Beethoven/Piano_Sonatas/2-1/')
-# xml_matching.read_all_tempo_vector('chopin_cleaned/Chopin/')
-# xml_matching.check_data_split('chopin_cleaned/')
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
-folderDir = 'chopin_cleaned/Chopin/Barcarolle/'
+folderDir = 'pyScoreParser/chopin_cleaned/Schubert/Piano_Sonatas/664-1/'
 # folderDir = 'mxp/testdata/dummy/chopin_ballade3/'
-artistName = 'Colafelice02'
+artistName = 'BuiJL06'
 # artistName = 'CHEN03'
 xmlname = 'musicxml_cleaned.musicxml'
 # xmlname = 'xml.xml'
 midiname= 'midi_cleaned.mid'
 
 
-# XMLDocument = MusicXMLDocument(folderDir + xmlname)
-XMLDocument = MusicXMLDocument('grace_graph_test.musicxml')
-melody_notes = xml_matching.extract_notes(XMLDocument, melody_only=False, grace_note=True)
-melody_notes.sort(key=lambda x: x.note_duration.time_position)
+XMLDocument = MusicXMLDocument(folderDir + xmlname)
+melody_notes = xml_matching.get_direction_encoded_notes(XMLDocument)
 
 # for note in melody_notes:
 #     print(note.note_notations.is_beam_start, note.note_duration.xml_position, note.pitch)
-# score_midi = midi_utils.to_midi_zero(folderDir + midiname)
-# perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
-# perform_midi = midi_utils.elongate_offset_by_pedal(perform_midi)
-# perform_midi = midi_utils.add_pedal_inf_to_notes(perform_midi)
-# score_midi_notes = score_midi.instruments[0].notes
-# score_midi_notes.sort(key=lambda note: note.start)
+score_midi = midi_utils.to_midi_zero(folderDir + midiname)
+perform_midi = midi_utils.to_midi_zero(folderDir + artistName + '.mid')
+perform_midi = midi_utils.elongate_offset_by_pedal(perform_midi)
+perform_midi = midi_utils.add_pedal_inf_to_notes(perform_midi)
+score_midi_notes = score_midi.instruments[0].notes
+score_midi_notes.sort(key=lambda note: note.start)
 
 
 notes_graph = score_graph.make_edge(melody_notes)
 
-for note in melody_notes:
-    print(note.note_duration.preceded_by_grace_note)
-for grp in notes_graph:
-    print(grp)
+
 
 # for part in XMLDocument.parts:
 #     for measure in part.measures:
@@ -53,56 +45,8 @@ perform_midi_notes = perform_midi.instruments[0].notes
 corresp = matching.read_corresp(folderDir + artistName + "_infer_corresp.txt")
 score_pairs, perform_pairs = matching.match_xml_midi_perform(melody_notes,score_midi_notes, perform_midi_notes, corresp)
 xml_matching.check_pairs(score_pairs)
-# for pair in score_pairs:
-#     print([pair['xml'].pitch, pair['xml'].note_duration.xml_position, pair['xml'].measure_number], pair['midi'])
-
-# for pair in perform_pairs:
-#     if not pair ==[]:
-#         print(pair['midi'])
-#         print(pair['xml'])
-
-# for note in perform_midi_notes:
-#     print(note.pedal_at_start, note.pedal_at_end, note.pedal_refresh, note.pedal_cut)
-
-# for note in melody_notes:
-#     print(note.dynamic.cresciuto)
-    # if note.note_notations.slurs:
-    #     print(note)
-    #     print(note.measure_number, note.note_notations.slurs[0].index, note.note_notations.slurs[0].xml_position ,note.note_notations.slurs[0].end_xml_position)
-    # print(note.note_duration.is_grace_note, note.note_duration.grace_order)
-
-# Check xml notes
-#  for i in range(len(melody_notes)-1):
-#     # diff = (melody_notes[i+1].note_duration.time_position - melody_notes[i].note_duration.time_position) * 10000
-#     # print(diff, melody_notes[i].note_duration.xml_position)
-#     print(melody_notes[i].pitch, melody_notes[i].note_duration.xml_position,  melody_notes[i].note_duration.time_position)
-#
-# for i in range(100):
-#     print(melody_notes[i].note_duration.time_position, score_midi_notes[i].start, melody_notes[i].note_duration.time_position - score_midi_notes[i].start)
-# Check xml_midi_pairs
-# for note in perform_midi_notes:
-#     print [note.pedal_at_start, note.pedal_at_end, note.pedal_refresh, note.pedal_refresh_before,
-#            note.soft_pedal,
-#            note.sostenuto_at_start, note.sostenuto_at_end, note.sostenuto_refresh, note.sostenuto_refresh_before]
 
 
-# non_matched_count = 0
-# for i in range(len(perform_pairs)):
-#     pair = perform_pairs[i]
-#     if pair ==[]:
-#         non_matched_count += 1
-#         print(melody_notes[i])
-#     #     print (pair)
-#     # else:
-#     #     print('XML Note pitch:', pair['xml'].pitch , ' and time: ', pair['xml'].note_duration.time_position , '-- MIDI: ', pair['midi'])
-# print('Number of non matched XML notes: ', non_matched_count)
-
-directions, time_signatures = xml_matching.extract_directions(XMLDocument)
-# for dir in directions:
-#     print(dir)
-
-
-melody_notes = xml_matching.apply_directions_to_notes(melody_notes, directions, time_signatures)
 for note in melody_notes:
     if note.note_notations.is_trill:
         print('trill note', note, note.measure_number)
@@ -161,6 +105,8 @@ features = xml_matching.extract_perform_features(XMLDocument, melody_notes, perf
 for feat in features:
     if feat.grace_order != 0:
         print(feat.xml_deviation)
+
+print(features[1000].note_location.measure, features[1176].note_location.measure)
 # new_midi = xml_matching.applyIOI(melody_notes, score_midi_notes, features, feature_list)
 
 # new_xml = xml_matching.apply_tempo_perform_features(XMLDocument, melody_notes, features, start_time = perform_midi_notes[0].start)
@@ -172,7 +118,7 @@ new_midi = xml_matching.xml_notes_to_midi(melody_notes)
 # for note in new_midi:
 #     print(note)
 #
-xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
+# xml_matching.save_midi_notes_as_piano_midi(new_midi, 'my_first_midi.mid', bool_pedal=True)
 
 
 # load and save data

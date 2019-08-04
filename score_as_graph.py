@@ -58,6 +58,7 @@ def make_edge(xml_notes):
             for j in range(1,num_notes-i):
                 next_note = xml_notes[i+j]
                 next_note_start = next_note.note_duration.xml_position
+                # next_note_end = next_note_start + next_note.note_duration.duration
                 next_voice = next_note.voice
                 next_note_slur_indexes = [slur.index for slur in next_note.note_notations.slurs]
                 # if next_note.note_duration.duration == 0:
@@ -67,6 +68,7 @@ def make_edge(xml_notes):
                     same_onset_matrix[i].append(i+j)
                     same_onset_matrix[i+j].append(i)
                 elif next_note_start < note_end_position:
+                # elif next_note_start < note_end_position and next_note_end <= note_end_position:
                     edge_list.append((i, i + j, 'melisma'))
                     # melisma_note_matrix[i].append(i+j)
                     pedal_tone_matrix[i+j].append(i)
