@@ -501,7 +501,6 @@ def model_prediction_to_feature(prediction, note_locations):
         feat.velocity = pred[1]
         feat.xml_deviation = pred[2]
         feat.articulation = pred[3]
-        # feat.xml_deviation = 0
         feat.pedal_refresh_time = pred[4]
         feat.pedal_cut_time = pred[5]
         feat.pedal_at_start = pred[6]
@@ -1153,7 +1152,6 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         filename = 'prime_' + args.modelCode + args.resume
         print('device is ', args.device)
         torch.cuda.set_device(args.device)
-        print('model run 1156', DEVICE )
         if torch.cuda.is_available():
             map_location = lambda storage, loc: storage.cuda()
         else:
@@ -1162,6 +1160,7 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
+        # MODEL.num_graph_iteration = 10
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(filename, checkpoint['epoch']))
         # NUM_UPDATED = checkpoint['training_step']
