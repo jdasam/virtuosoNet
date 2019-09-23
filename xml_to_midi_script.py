@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from musicxml_parser.mxp import MusicXMLDocument
-import midi_utils.midi_utils as midi_utils
-import xml_matching
+from .musicxml_parser.mxp import MusicXMLDocument
+from .midi_utils import midi_utils as midi_utils
+from . import xml_matching as xml_matching, score_as_graph as score_graph
+
 import pickle
-import score_as_graph as score_graph
 
 # folderDir = 'mxp/testdata/chopin10-3/'
 # folderDir = 'chopin/Chopin_Polonaises/61/'
