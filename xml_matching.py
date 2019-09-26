@@ -321,7 +321,7 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             feature.soft_pedal = pedal_sigmoid(pairs[i]['midi'].soft_pedal)
 
             if feature.pedal_at_end > 70:
-                feature.articulation_loss_weight = 0.1
+                feature.articulation_loss_weight = 0.05
             elif feature.pedal_at_end > 60:
                 feature.articulation_loss_weight = 0.5
             else:
