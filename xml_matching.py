@@ -16,12 +16,6 @@ from .midi_utils import midi_utils
 from . import performanceWorm as perf_worm, xml_direction_encoding as dir_enc, \
     score_as_graph as score_graph, xml_midi_matching as matching
 from . import pedal_cleaning
-# import sys
-# # sys.setdefaultencoding() does not exist, here!
-# reload(sys)  # Reload does the trick!
-# sys.setdefaultencoding('UTF8')
-# from . import midi_utils
-# import performance_evaluation
 from binary_index import binary_index
 
 NUM_SCORE_NOTES = 0
@@ -333,6 +327,9 @@ def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_posit
             else:
                 feature.articulation_loss_weight = 1
 
+            if feature.pedal_at_end > 64 and feature.pedal_refresh < 64:
+                # pedal refresh occurs in the note
+                feature.articulation_loss_weight = 1
 
             feature.midi_start = pairs[i]['midi'].start # just for reproducing and testing perform features
 
@@ -666,7 +663,6 @@ def load_pairs_from_folder(path, pedal_elongate=False):
     global NUM_NON_MATCHED_NOTES
     global NUM_PERF_NOTES
 
-    xml_name = path+'musicxml_cleaned.musicxml'
     score_midi_name = path+'midi_cleaned.mid'
     path_split = copy.copy(path).split('/')
     if path_split[0] == 'chopin_cleaned':
@@ -676,8 +672,7 @@ def load_pairs_from_folder(path, pedal_elongate=False):
         composer_name = copy.copy(path).split('/')[dataset_folder_name_index+1]
     composer_name_vec = composer_name_to_vec(composer_name)
 
-    XMLDocument = MusicXMLDocument(xml_name)
-    xml_notes = get_direction_encoded_notes(XMLDocument)
+    XMLDocument, xml_notes = read_xml_to_notes(path)
     score_midi = midi_utils.to_midi_zero(score_midi_name)
     score_midi_notes = score_midi.instruments[0].notes
     score_midi_notes.sort(key=lambda x:x.start)
@@ -726,6 +721,29 @@ def load_pairs_from_folder(path, pedal_elongate=False):
     if perform_features_piece == []:
         return None
     return perform_features_piece
+
+
+def convert_features_to_vector(features, composer_vec):
+    score_features = []
+    perform_features = []
+    for feature in features:
+        score_features.append(
+            [feature.midi_pitch, feature.duration, feature.beat_importance, feature.measure_length,
+             feature.qpm_primo, feature.following_rest, feature.distance_from_abs_dynamic,
+             feature.distance_from_recent_tempo, feature.beat_position, feature.xml_position,
+             feature.grace_order, feature.preceded_by_grace_note, feature.followed_by_fermata_rest]
+            + feature.pitch + feature.tempo + feature.dynamic + feature.time_sig_vec +
+            feature.slur_beam_vec + composer_vec + feature.notation + feature.tempo_primo)
+
+        perform_features.append(
+            [feature.qpm, feature.velocity, feature.xml_deviation,
+             feature.articulation, feature.pedal_refresh_time, feature.pedal_cut_time,
+             feature.pedal_at_start, feature.pedal_at_end, feature.soft_pedal,
+             feature.pedal_refresh,
+             feature.pedal_cut, feature.qpm, feature.beat_dynamic, feature.measure_tempo, feature.measure_dynamic] \
+            + feature.trill_param)
+
+    return score_features, perform_features
 
 
 def make_midi_measure_seconds(pairs, measure_positions):
@@ -916,6 +934,48 @@ def applyIOI(xml_notes, midi_notes, features, feature_list):
 #             betw_note.note_duration.seconds = max(offset_time - betw_note.note_duration.time_position, 0.05)
 #
 #     return xml_notes
+
+
+def model_prediction_to_feature(prediction):
+    output_features = []
+    num_notes = len(prediction)
+    for i in range(num_notes):
+        pred = prediction[i]
+        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
+        feat = MusicFeature()
+        feat.qpm = pred[0]
+        feat.velocity = pred[1]
+        feat.xml_deviation = pred[2]
+        feat.articulation = pred[3]
+        feat.pedal_refresh_time = pred[4]
+        feat.pedal_cut_time = pred[5]
+        feat.pedal_at_start = pred[6]
+        feat.pedal_at_end = pred[7]
+        feat.soft_pedal = pred[8]
+        feat.pedal_refresh = pred[9]
+        feat.pedal_cut = pred[10]
+
+        feat.trill_param = pred[11:16]
+        feat.trill_param[0] = feat.trill_param[0]
+        feat.trill_param[1] = (feat.trill_param[1])
+        feat.trill_param[2] = (feat.trill_param[2])
+        feat.trill_param[3] = (feat.trill_param[3])
+        feat.trill_param[4] = round(feat.trill_param[4])
+
+        # if test_x[i][is_trill_index_score] == 1:
+        #     print(feat.trill_param)
+        output_features.append(feat)
+
+    return output_features
+
+
+def add_note_location_to_features(features, note_locations):
+    for feat, loc in zip(features, note_locations):
+        feat.note_location.beat = loc.beat
+        feat.note_location.measure = loc.measure
+    return features
+
+
 
 def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, predicted=False):
     beats = xml_doc.get_beat_positions()
@@ -1396,6 +1456,7 @@ def apply_feat_to_a_note(note, feat, prev_vel):
         note.pedal.soft = int(round(feat.soft_pedal))
     return note, prev_vel
 
+
 def make_new_note(note, time_a, time_b, articulation, loudness, default_velocity):
     index = binary_index(time_a, note.start)
     new_onset = cal_new_onset(note.start, time_a, time_b)
@@ -1647,13 +1708,13 @@ def time_signature_to_vector(time_signature):
 def xml_notes_to_midi(xml_notes):
     midi_notes = []
     for note in xml_notes:
-        if note.is_overlapped: # ignore overlapped notes.
+        if note.is_overlapped:  # ignore overlapped notes.
             continue
 
         pitch = note.pitch[1]
         start = note.note_duration.time_position
         end = start + note.note_duration.seconds
-        if note.note_duration.seconds <0.005:
+        if note.note_duration.seconds < 0.005:
             end = start + 0.005
         elif note.note_duration.seconds > 10:
             end = start + 10
@@ -1685,14 +1746,18 @@ def check_pairs(pairs):
     return non_matched
 
 
-def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
-    xml_name = path_name + 'musicxml_cleaned.musicxml'
-
+def read_xml_to_notes(path):
+    xml_name = path + 'musicxml_cleaned.musicxml'
     if not os.path.isfile(xml_name):
-        xml_name = path_name + 'xml.xml'
-
+        xml_name = path + 'xml.xml'
     xml_object = MusicXMLDocument(xml_name)
     xml_notes = get_direction_encoded_notes(xml_object)
+
+    return xml_object, xml_notes
+
+
+def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
+    xml_object, xml_notes = read_xml_to_notes(path_name)
     beats = xml_object.get_beat_positions()
     measure_positions = xml_object.get_measure_positions()
     features = extract_score_features(xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
@@ -1736,6 +1801,7 @@ def find_tempo_change(xml_notes):
 
     tempo_change_positions.append(xml_notes[-1].note_duration.xml_position+0.1)
     return tempo_change_positions
+
 
 class Tempo:
     def __init__(self, xml_position, qpm, time_position, end_xml, end_time):
@@ -2308,16 +2374,12 @@ def composer_name_to_vec(composer_name):
 
 
 def read_score_perform_pair(path, perf_name, composer_name, means, stds):
-    xml_name = path + 'musicxml_cleaned.musicxml'
     score_midi_name = path + 'midi_cleaned.mid'
 
-    if not os.path.isfile(xml_name):
-        xml_name = path + 'xml.xml'
+    if not os.path.isfile(score_midi_name):
         score_midi_name = path + 'midi.mid'
 
-    xml_object = MusicXMLDocument(xml_name)
-    xml_notes = get_direction_encoded_notes(xml_object)
-
+    xml_object, xml_notes = read_xml_to_notes(path)
     score_midi = midi_utils.to_midi_zero(score_midi_name)
     score_midi_notes = score_midi.instruments[0].notes
     score_midi_notes.sort(key=lambda x:x.start)
@@ -2579,6 +2641,7 @@ def make_slicing_indexes_by_beat(beat_numbers, beat_steps, overlap=True):
             slice_indexes.append((0, num_notes))
     return slice_indexes
 
+
 def cal_actual_note_articulation(path):
     features_in_folder = load_pairs_from_folder(path, pedal_elongate=True)
     for feat in features_in_folder:
@@ -2586,7 +2649,6 @@ def cal_actual_note_articulation(path):
         articulations = []
         for i in range(num_notes):
             pass
-
 
 
 def check_data_split(path):
@@ -2604,10 +2666,7 @@ def check_data_split(path):
     num_notes_in_test = 0
 
     def load_pairs_and_add_num_notes(path):
-        xml_name = path + 'musicxml_cleaned.musicxml'
-
-        XMLDocument = MusicXMLDocument(xml_name)
-        xml_notes = XMLDocument.get_notes()
+        xml_object, xml_notes = read_xml_to_notes(path)
         filenames = os.listdir(path)
         perform_features_piece = []
 
