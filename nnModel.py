@@ -148,7 +148,6 @@ class ContextAttention(nn.Module):
         return sum_attention
 
 
-
 class ISGN(nn.Module):
     def __init__(self, network_parameters, device):
         super(ISGN, self).__init__()
@@ -171,14 +170,14 @@ class ISGN(nn.Module):
         self.final_hidden_size = network_parameters.final.size
         self.final_input = network_parameters.final.input
         self.encoder_size = network_parameters.encoder.size
+        self.encoded_vector_size = network_parameters.encoded_vector_size
         self.encoder_input_size = network_parameters.encoder.input
         self.encoder_layer_num = network_parameters.encoder.layer
-        self.onset_hidden_size = network_parameters.onset.size
-        self.num_onset_layers = network_parameters.onset.layer
         self.time_regressive_size = network_parameters.time_reg.size
         self.time_regressive_layer = network_parameters.time_reg.layer
         self.num_edge_types = network_parameters.num_edge_types
         self.final_graph_margin_size = network_parameters.final.margin
+
         if self.is_baseline:
             self.final_graph_input_size = self.final_input + self.encoder_size + 8 + self.output_size + self.final_graph_margin_size + self.time_regressive_size * 2
             self.final_beat_hidden_idx = self.final_input + self.encoder_size + 8 # tempo info
@@ -230,12 +229,18 @@ class ISGN(nn.Module):
         self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size, num_layers=self.encoder_layer_num,
-                                           batch_first=True, bidirectional=False)
-        self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
-        self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
+                                           batch_first=True, bidirectional=True)
+        self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+        self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+        self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
         self.beat_tempo_contractor = nn.Sequential(
             nn.Linear(self.final_graph_input_size - self.time_regressive_size * 2, self.time_regressive_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU()
+        )
+        self.style_vector_expandor = nn.Sequential(
+            nn.Linear(self.encoded_vector_size, self.encoder_size),
             nn.Dropout(DROP_OUT),
             nn.ReLU()
         )
@@ -321,10 +326,11 @@ class ISGN(nn.Module):
             performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
                                                   measure_numbers, start_index, lower_is_note=True)
             perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+            perform_style_vector = self.performance_final_attention(perform_style_encoded)
 
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
-            perform_style_vector = perform_style_encoded[:, -1, :]  # need check
+            # perform_style_vector = perform_style_encoded[:, -1, :]  # need check
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         if return_z:
@@ -337,12 +343,15 @@ class ISGN(nn.Module):
 
             return mean_perform_z
 
+        perform_z = self.style_vector_expandor(perform_z)
+        perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
+
         initial_output = self.initial_result_fc(note_out)
         num_measures = measure_numbers[start_index+num_notes-1] - measure_numbers[start_index] + 1
-        perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1,num_measures, -1)
-        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
-        measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat)
-        measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
+        # perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1,num_measures, -1)
+        # perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
+        # measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat)
+        # measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers, num_notes, start_index)
 
         initial_beat_hidden = torch.zeros((note_out.size(0), num_notes, self.time_regressive_size * 2)).to(self.device)
         initial_margin = torch.zeros((note_out.size(0), num_notes, self.final_graph_margin_size)).to(self.device)
@@ -365,7 +374,7 @@ class ISGN(nn.Module):
             tempo_info_in_note = torch.cat((qpm_primo, tempo_primo, tempo_vector), 2)
 
             out_with_result = torch.cat(
-                (note_out, measure_perform_style_spanned, tempo_info_in_note, initial_beat_hidden, initial_output, initial_margin), 2)
+                (note_out, perform_z_batched, tempo_info_in_note, initial_beat_hidden, initial_output, initial_margin), 2)
 
             for i in range(self.num_sequence_iteration):
                 out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
@@ -392,7 +401,8 @@ class ISGN(nn.Module):
                 total_iterated_output.append(final_out)
         elif self.is_test_version:
             out_with_result = torch.cat(
-                (note_out, measure_perform_style_spanned, initial_beat_hidden, initial_output, initial_margin), 2)
+                # (note_out, measure_perform_style_spanned, initial_beat_hidden, initial_output, initial_margin), 2)
+                (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
 
             for i in range(self.num_sequence_iteration):
                 out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
@@ -422,7 +432,7 @@ class ISGN(nn.Module):
 
         else:
             out_with_result = torch.cat(
-                (note_out, measure_perform_style_spanned, initial_beat_hidden, initial_output, initial_margin), 2)
+                (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
 
             for i in range(self.num_sequence_iteration):
                 out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
@@ -562,7 +572,6 @@ class ISGN(nn.Module):
         return beat_tempos
 
 
-
 class HAN_Integrated(nn.Module):
     def __init__(self, network_parameters, device, step_by_step=False):
         super(HAN_Integrated, self).__init__()
@@ -595,6 +604,7 @@ class HAN_Integrated(nn.Module):
         if self.test_version:
             self.final_input -= 1
         self.encoder_size = network_parameters.encoder.size
+        self.encoded_vector_size = network_parameters.encoded_vector_size
         self.encoder_input_size = network_parameters.encoder.input
         self.encoder_layer_num = network_parameters.encoder.layer
         self.num_attention_head = network_parameters.num_attention_head
@@ -669,22 +679,27 @@ class HAN_Integrated(nn.Module):
             else:
                 self.fc = nn.Linear(self.final_hidden_size, self.output_size - 1)
 
-        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size)
+        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True)
         if self.encoder_size % self.num_attention_head == 0:
-            self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
+            self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
         else:
-            self.performance_measure_attention = ContextAttention(self.encoder_size, self.encoder_size)
+            self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.encoder_size * 2)
         self.performance_contractor = nn.Sequential(
             nn.Linear(self.encoder_input_size, self.encoder_size),
             nn.Dropout(DROP_OUT),
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
         )
-        self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=False)
-        self.performance_encoder_mean = nn.Linear(self.encoder_size, self.encoder_size)
-        self.performance_encoder_var = nn.Linear(self.encoder_size, self.encoder_size)
+        self.performance_encoder = nn.LSTM(self.encoder_size * 2, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=True)
+        self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+        self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+        self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
-        # self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
+        self.style_vector_expandor = nn.Sequential(
+            nn.Linear(self.encoded_vector_size, self.encoder_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU()
+        )
 
         self.softmax = nn.Softmax(dim=0)
         self.sigmoid = nn.Sigmoid()
@@ -707,8 +722,8 @@ class HAN_Integrated(nn.Module):
                                                              start_index)
         if type(initial_z) is not bool:
             if type(initial_z) is str and initial_z == 'zero':
-                zero_mean = torch.zeros(self.encoder_size)
-                one_std = torch.ones(self.encoder_size)
+                zero_mean = torch.zeros(self.encoded_vector_size)
+                one_std = torch.ones(self.encoded_vector_size)
                 perform_z = self.reparameterize(zero_mean, one_std).to(self.device)
             # if type(initial_z) is list:
             #     perform_z = self.reparameterize(torch.Tensor(initial_z), torch.Tensor(initial_z)).to(self.device)
@@ -731,7 +746,8 @@ class HAN_Integrated(nn.Module):
             perform_style_encoded, _ = self.performance_encoder(perform_measure)
             # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
             # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
-            perform_style_vector = perform_style_encoded[:, -1, :]  # need check
+            # perform_style_vector = perform_style_encoded[:, -1, :]  # need check
+            perform_style_vector = self.performance_final_attention(perform_style_encoded)
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         if return_z:
@@ -744,6 +760,7 @@ class HAN_Integrated(nn.Module):
 
             return mean_perform_z
         # perform_z = self.performance_decoder(perform_z)
+        perform_z = self.style_vector_expandor(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         perform_z = perform_z.view(-1)
 
@@ -846,7 +863,7 @@ class HAN_Integrated(nn.Module):
                                 beat_tempo_vec = x[0, i, TEMPO_IDX:TEMPO_IDX + 5]
                                 beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :], measure_hidden_out[0, current_measure,:], prev_tempo,
                                                             qpm_primo, tempo_primo, beat_tempo_vec,
-                                                            result_nodes[current_beat, :], measure_perform_style_spanned[0, current_measure, :])).view(1, 1, -1)
+                                                            result_nodes[current_beat, :], perform_z)).view(1, 1, -1)
                             beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
 
                             tmp_tempos = self.beat_tempo_fc(beat_forward)
@@ -869,7 +886,7 @@ class HAN_Integrated(nn.Module):
                             out_combined = torch.cat(
                                 (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
                                  measure_hidden_out[0, current_measure, :],
-                                 prev_out, qpm_primo, tempo_primo, measure_perform_style[0, current_measure,:])).view(1, 1, -1)
+                                 prev_out, qpm_primo, tempo_primo, perform_z)).view(1, 1, -1)
                         out, final_hidden = self.output_lstm(out_combined, final_hidden)
                         # out = torch.cat((out, out_combined), 2)
                         out = out.view(-1)

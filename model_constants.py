@@ -40,7 +40,7 @@ test_piece_list = [
                 ('bwv_891_prelude', 'Bach'),
                 ('bwv_858_fugue', 'Bach'),
                 ('bwv_891_fugue', 'Bach'),
-                ('schubert_ps', 'Schubert'),
+                ('schubert_piano_sonata_664-1', 'Schubert'),
                 ('haydn_keyboard_31_1', 'Haydn'),
                 ('haydn_keyboard_49_1', 'Haydn'),
                 ('schubert_impromptu', 'Schubert'),
