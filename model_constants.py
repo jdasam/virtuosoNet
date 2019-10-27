@@ -69,6 +69,14 @@ test_piece_list = [
                 ('chopin_scherzo', 'Chopin'),
                    ]
 
+# test_piece_list = [
+#     # ('dmc_glass', 'Liszt', 120),
+#                    ('dmc_prokofiev', 'Prokofiev', 160),
+#                    # ('dmc_shostakovich', 'Bach', 80),
+#                    ('dmc_sho_fugue', 'Liszt', 160),
+#                     # ('dmc_messiaen', 'Debussy', 72)
+#                    ]
+
 emotion_folder_path = 'test_pieces/emotionNet/'
 emotion_key_list = ['OR', 'Anger', 'Enjoy', 'Relax', 'Sad']
 emotion_data_path  = [('Bach_Prelude_1', 'Bach', 1),

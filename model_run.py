@@ -79,7 +79,7 @@ NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.01
-KLD_SIG = 2e5
+KLD_SIG = 5e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -166,19 +166,8 @@ else:
     #     TrillNET_Param.num_edge_types = 10
     TRILL_MODEL = nnModel.TrillRNN(TrillNET_Param, DEVICE).to(DEVICE)
 
-if 'ggnn_non_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE, LOSS_TYPE, NUM_TEMPO_PARAM).to(DEVICE)
-elif 'ggnn_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
-elif 'ggnn_simple_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sequential_ggnn' in args.modelCode:
-    MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sggnn_alt' in args.modelCode:
-    MODEL = nnModel.SGGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sggnn_note' in args.modelCode:
-    MODEL = nnModel.SGGNN_Note(NET_PARAM, DEVICE).to(DEVICE)
-elif 'isgn' in args.modelCode:
+
+if 'isgn' in args.modelCode:
     MODEL = nnModel.ISGN(NET_PARAM, DEVICE).to(DEVICE)
 elif 'han' in args.modelCode:
     if 'ar' in args.modelCode:
@@ -1139,16 +1128,24 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         for piece in test_list:
             path = './test_pieces/' + piece[0] + '/'
             composer = piece[1]
+            if len(piece) == 3:
+                start_tempo = piece[2]
+            else:
+                start_tempo = 0
             for perform_z_pair in perform_z_by_list:
-                load_file_and_generate_performance(path, composer, z=perform_z_pair)
-            load_file_and_generate_performance(path, composer, z=0)
+                load_file_and_generate_performance(path, composer, z=perform_z_pair, start_tempo=start_tempo)
+            load_file_and_generate_performance(path, composer, z=0, start_tempo=start_tempo)
     elif args.sessMode == 'testAllzero':
         test_list = cons.test_piece_list
         for piece in test_list:
             path = './test_pieces/' + piece[0] + '/'
             composer = piece[1]
+            if len(piece) == 3:
+                start_tempo = piece[2]
+            else:
+                start_tempo = 0
             random.seed(0)
-            load_file_and_generate_performance(path, composer, z=0)
+            load_file_and_generate_performance(path, composer, z=0, start_tempo=start_tempo)
 
     elif args.sessMode == 'encode':
         perform_z, qpm_primo = load_file_and_encode_style(args.testPath, args.perfName, args.composer)

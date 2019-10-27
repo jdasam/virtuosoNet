@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import time
 from torch.autograd import Variable
 import random
+import numpy
 import math
 import model_constants as cons
 
@@ -273,7 +274,7 @@ class ISGN(nn.Module):
         else:
             self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size + 8, self.time_regressive_size,
                                      num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
-            self.final_measure_attention = ContextAttention(self.output_size, 1)
+            self.final_beat_attention = ContextAttention(self.output_size, 1)
             self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
             self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
 
@@ -308,9 +309,10 @@ class ISGN(nn.Module):
         note_out, measure_hidden_out = self.run_graph_network(x, edges, measure_numbers, start_index)
         if type(initial_z) is not bool:
             if type(initial_z) is str and initial_z == 'zero':
-                zero_mean = torch.zeros(self.encoder_size)
-                one_std = torch.ones(self.encoder_size)
-                perform_z = self.reparameterize(zero_mean, one_std).to(self.device)
+                # zero_mean = torch.zeros(self.encoded_vector_size)
+                # one_std = torch.ones(self.encoded_vector_size)
+                # perform_z = self.reparameterize(zero_mean, one_std).to(self.device)
+                perform_z = torch.Tensor(numpy.random.normal(size=self.encoded_vector_size)).to(self.device)
             # if type(initial_z) is list:
             #     perform_z = self.reparameterize(torch.Tensor(initial_z), torch.Tensor(initial_z)).to(self.device)
             elif not initial_z.is_cuda:
@@ -399,7 +401,7 @@ class ISGN(nn.Module):
                                              final_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
                 # out = torch.cat((out, trill_out), 2)
                 total_iterated_output.append(final_out)
-        elif self.is_test_version:
+        else:
             out_with_result = torch.cat(
                 # (note_out, measure_perform_style_spanned, initial_beat_hidden, initial_output, initial_margin), 2)
                 (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
@@ -412,7 +414,7 @@ class ISGN(nn.Module):
 
                 margin_in_beat = self.make_higher_node(changed_margin, self.final_margin_attention, beat_numbers,
                                                           beat_numbers, start_index, lower_is_note=True)
-                out_in_beat = self.make_higher_node(initial_out, self.final_measure_attention, beat_numbers,
+                out_in_beat = self.make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
                                                        beat_numbers, start_index, lower_is_note=True)
                 out_beat_cat = torch.cat((out_in_beat, margin_in_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), 2)
                 out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
@@ -428,32 +430,6 @@ class ISGN(nn.Module):
                 final_out = torch.cat((tempos_spanned, other_out), 2)
                 out_with_result = torch.cat((out_with_result[:, :, :-self.output_size - self.final_graph_margin_size],
                                              final_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
-                total_iterated_output.append(final_out)
-
-        else:
-            out_with_result = torch.cat(
-                (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
-
-            for i in range(self.num_sequence_iteration):
-                out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
-                out_without_beat = torch.cat((out_with_result[:,:,:self.final_beat_hidden_idx], out_with_result[:,:,-self.output_size-self.final_graph_margin_size:]),2)
-                out_beat = self.make_higher_node(out_without_beat, self.final_beat_attention, beat_numbers,
-                                                 beat_numbers, start_index, lower_is_note=True)
-                out_beat = self.beat_tempo_contractor(out_beat)
-                out_beat_cat = torch.cat((out_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), 2)
-                out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
-                tempo_out = self.tempo_fc(out_beat_rnn_result)
-                tempos_spanned = self.span_beat_to_note_num(tempo_out, beat_numbers, num_notes, start_index)
-                out_beat_spanned = self.span_beat_to_note_num(out_beat_rnn_result, beat_numbers, num_notes, start_index)
-                out_with_result = torch.cat((out_with_result[:,:,:self.final_beat_hidden_idx],
-                                             out_beat_spanned,
-                                             out_with_result[:,:,-self.output_size-self.final_graph_margin_size:]), 2)
-                out_with_beat_out = torch.cat((out_with_result, tempos_spanned), 2)
-                other_out = self.fc(out_with_beat_out)
-
-                final_out = torch.cat((tempos_spanned, other_out),2)
-                out_with_result = torch.cat((out_with_result[:,:,:-self.output_size-self.final_graph_margin_size], final_out, out_with_result[:,:,-self.final_graph_margin_size:]),2)
-                # out = torch.cat((out, trill_out), 2)
                 total_iterated_output.append(final_out)
 
         return final_out, perform_mu, perform_var, total_iterated_output

@@ -56,13 +56,13 @@ def initialize_model_parameters_by_code(model_code):
 
     if 'isgn' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 128
         net_param.measure.layer = 2
-        net_param.measure.size = 32
+        net_param.measure.size = 64
         net_param.final.margin = 32
 
-        net_param.encoded_vector_size = 16
-        net_param.encoder.size = 200
+        net_param.encoded_vector_size = 32
+        net_param.encoder.size = 64
         net_param.encoder.layer = 2
 
         net_param.time_reg.layer = 2
@@ -82,19 +82,19 @@ def initialize_model_parameters_by_code(model_code):
 
     elif 'han' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 32
+        net_param.note.size = 128
         net_param.beat.layer = 2
-        net_param.beat.size = 32
+        net_param.beat.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 32
+        net_param.measure.size = 64
         net_param.final.layer = 1
-        net_param.final.size = 32
+        net_param.final.size = 64
         net_param.voice.layer = 2
-        net_param.voice.size = 32
+        net_param.voice.size = 128
 
         # net_param.num_attention_head = 1
         net_param.encoded_vector_size = 16
-        net_param.encoder.size = 256
+        net_param.encoder.size = 128
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
