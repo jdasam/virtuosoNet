@@ -10,6 +10,7 @@ matplotlib.use('Agg')
 
 import pyScoreParser.xml_matching as xml_matching
 import pyScoreParser.performanceWorm as perf_worm
+import data_process as dp
 import copy
 import random
 import nnModel
@@ -61,10 +62,11 @@ if 'measure' in args.modelCode or 'beat' in args.modelCode:
     HIERARCHY = True
 elif 'note' in args.modelCode:
     IN_HIER = True  # In hierarchy mode
-if 'measure' in args.modelCode or 'measure' in args.hierCode:
-    HIER_MEAS = True
-elif 'beat' in args.modelCode or 'beat' in args.hierCode:
-    HIER_BEAT = True
+if HIERARCHY or IN_HIER:
+    if 'measure' in args.modelCode or 'measure' in args.hierCode:
+        HIER_MEAS = True
+    elif 'beat' in args.modelCode or 'beat' in args.hierCode:
+        HIER_BEAT = True
 
 if args.trainTrill:
     TRILL = True
@@ -79,7 +81,7 @@ NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.01
-KLD_SIG = 5e4
+KLD_SIG = 20e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -132,8 +134,6 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 QPM_INDEX = 0
 # VOICE_IDX = 11
 TEMPO_IDX = 26
-PITCH_VEC_IDX = 13
-PITCH_SCL_IDX = 0
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
@@ -182,32 +182,6 @@ else:
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
 optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-# optimizer = torch.optim.Adadelta(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-# second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
-# else:
-#     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
-#     TrillNET_Param.input_size = NUM_INPUT + NUM_OUTPUT - num_trill_param
-#     TrillNET_Param.output_size = num_trill_param
-#     TrillNET_Param.note.size = 16
-#     TrillNET_Param.note.layer = 1
-#     TrillNET_Param.num_edge_types = N_EDGE_TYPE
-#     param.save_parameters(TrillNET_Param, args.modelCode + '_trill_param')
-#
-#     trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
-#
-#     trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
-
-
-
-### Model
-
-# class PerformanceEncoder(GGNN_HAN):
-#     def __init__(self, network_parameters):
-#         super(perfor)
-
-
-# model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-# second_model = ExtraHAN(NET_PARAM).to(device)
 
 
 if LOSS_TYPE == 'MSE':
@@ -243,34 +217,6 @@ def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime')
         best_name = model_name + '_' + filename + '_best.pth.tar'
         shutil.copyfile(save_name, best_name)
 
-
-def key_augmentation(data_x, key_change):
-    # key_change = 0
-    if key_change == 0:
-        return data_x
-    data_x_aug = copy.deepcopy(data_x)
-    pitch_start_index = PITCH_VEC_IDX
-    # while key_change == 0:
-    #     key_change = random.randrange(-5, 7)
-    for data in data_x_aug:
-        octave = data[pitch_start_index]
-        pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
-        pitch_class = pitch_class_vec.index(1)
-        new_pitch = pitch_class + key_change
-        if new_pitch < 0:
-            octave -= 0.25
-        elif new_pitch > 12:
-            octave += 0.25
-        new_pitch = new_pitch % 12
-
-        new_pitch_vec = [0] * 13
-        new_pitch_vec[0] = octave
-        new_pitch_vec[new_pitch+1] = 1
-
-        data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
-        data[PITCH_SCL_IDX] = data[PITCH_SCL_IDX] + key_change
-
-    return data_x_aug
 
 
 def edges_to_matrix(edges, num_notes):
@@ -556,7 +502,7 @@ def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, m
         total_output = []
         total_z = []
         measure_numbers = [x.measure for x in note_locations]
-        slice_indexes = xml_matching.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
+        slice_indexes = dp.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
         if edges is not None:
             edges = edges.to(DEVICE)
 
@@ -839,7 +785,13 @@ if args.sessMode == 'train':
 
                 if selected_sample.slice_indexes is None:
                     measure_numbers = [x.measure for x in note_locations]
-                    selected_sample.slice_indexes = xml_matching.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
+                    if HIER_MEAS:
+                        selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                                     measure_numbers,
+                                                                                                         measure_steps=TIME_STEPS)
+
+                    else:
+                        selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
 
                 num_slice = len(selected_sample.slice_indexes)
                 selected_idx = random.randrange(0,num_slice)
@@ -859,7 +811,7 @@ if args.sessMode == 'train':
 
                 for i in range(num_key_augmentation+1):
                     key = key_lists[i]
-                    temp_train_x = key_augmentation(train_x, key)
+                    temp_train_x = dp.key_augmentation(train_x, key)
                     kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
@@ -912,8 +864,8 @@ if args.sessMode == 'train':
 
                 for i in range(num_key_augmentation+1):
                     key = key_lists[i]
-                    temp_train_x = key_augmentation(train_x, key)
-                    slice_indexes = xml_matching.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
+                    temp_train_x = dp.key_augmentation(train_x, key)
+                    slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
                     kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     for slice_idx in slice_indexes:
