@@ -63,7 +63,7 @@ test_piece_list = [
                 ('chopin_prelude_15', 'Chopin'),
                 ('kiss_the_rain', 'Chopin'),
                 ('bohemian_rhapsody', 'Liszt'),
-                ('chopin_fantasie_impromptu', 'Chopin'),
+                ('chopin_fantasie_impromptu', 'Chopin', 180),
                 ('schumann', 'Schumann'),
                 ('chopin_barcarolle', 'Chopin'),
                 ('chopin_scherzo', 'Chopin'),
