@@ -62,7 +62,7 @@ def initialize_model_parameters_by_code(model_code):
         net_param.final.margin = 32
 
         net_param.encoded_vector_size = 16
-        net_param.encoder.size = 64
+        net_param.encoder.size = 128
         net_param.encoder.layer = 2
 
         net_param.time_reg.layer = 2
