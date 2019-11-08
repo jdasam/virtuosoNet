@@ -10,6 +10,7 @@ matplotlib.use('Agg')
 
 import pyScoreParser.xml_matching as xml_matching
 import pyScoreParser.performanceWorm as perf_worm
+import data_process as dp
 import copy
 import random
 import nnModel
@@ -44,7 +45,7 @@ parser.add_argument("-randtr", "--randomTrain", default=True, type=lambda x: (st
 parser.add_argument("-dskl", "--disklavier", default=True, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
 
-random.seed(30)
+random.seed(0)
 
 
 args = parser.parse_args()
@@ -61,25 +62,26 @@ if 'measure' in args.modelCode or 'beat' in args.modelCode:
     HIERARCHY = True
 elif 'note' in args.modelCode:
     IN_HIER = True  # In hierarchy mode
-if 'measure' in args.modelCode or 'measure' in args.hierCode:
-    HIER_MEAS = True
-elif 'beat' in args.modelCode or 'beat' in args.hierCode:
-    HIER_BEAT = True
+if HIERARCHY or IN_HIER:
+    if 'measure' in args.modelCode or 'measure' in args.hierCode:
+        HIER_MEAS = True
+    elif 'beat' in args.modelCode or 'beat' in args.hierCode:
+        HIER_BEAT = True
 
-if args.trainTrill:
+if 'trill' in args.modelCode:
     TRILL = True
 
 
 ### parameters
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 4000
-DELTA_WEIGHT = 1
+VALID_STEPS = 10000
+DELTA_WEIGHT = 2
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.01
-KLD_SIG = 2e5
+KLD_SIG = 20e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -132,8 +134,6 @@ with open(args.dataName + "_stat.dat", "rb") as f:
 QPM_INDEX = 0
 # VOICE_IDX = 11
 TEMPO_IDX = 26
-PITCH_VEC_IDX = 13
-PITCH_SCL_IDX = 0
 QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
@@ -166,19 +166,8 @@ else:
     #     TrillNET_Param.num_edge_types = 10
     TRILL_MODEL = nnModel.TrillRNN(TrillNET_Param, DEVICE).to(DEVICE)
 
-if 'ggnn_non_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_HAN(NET_PARAM, DEVICE, LOSS_TYPE, NUM_TEMPO_PARAM).to(DEVICE)
-elif 'ggnn_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
-elif 'ggnn_simple_ar' in args.modelCode:
-    MODEL = nnModel.GGNN_Recursive(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sequential_ggnn' in args.modelCode:
-    MODEL = nnModel.Sequential_GGNN(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sggnn_alt' in args.modelCode:
-    MODEL = nnModel.SGGNN_Alt(NET_PARAM, DEVICE).to(DEVICE)
-elif 'sggnn_note' in args.modelCode:
-    MODEL = nnModel.SGGNN_Note(NET_PARAM, DEVICE).to(DEVICE)
-elif 'isgn' in args.modelCode:
+
+if 'isgn' in args.modelCode:
     MODEL = nnModel.ISGN(NET_PARAM, DEVICE).to(DEVICE)
 elif 'han' in args.modelCode:
     if 'ar' in args.modelCode:
@@ -193,32 +182,6 @@ else:
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
 optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-# optimizer = torch.optim.Adadelta(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-# second_optimizer = torch.optim.Adam(second_model.parameters(), lr=learning_rate)
-# else:
-#     TrillNET_Param = param.initialize_model_parameters_by_code(args.modelCode)
-#     TrillNET_Param.input_size = NUM_INPUT + NUM_OUTPUT - num_trill_param
-#     TrillNET_Param.output_size = num_trill_param
-#     TrillNET_Param.note.size = 16
-#     TrillNET_Param.note.layer = 1
-#     TrillNET_Param.num_edge_types = N_EDGE_TYPE
-#     param.save_parameters(TrillNET_Param, args.modelCode + '_trill_param')
-#
-#     trill_model = nnModel.TrillGraph(TrillNET_Param, is_trill_index_concated, LOSS_TYPE, DEVICE).to(DEVICE)
-#
-#     trill_optimizer = torch.optim.Adam(trill_model.parameters(), lr=learning_rate)
-
-
-
-### Model
-
-# class PerformanceEncoder(GGNN_HAN):
-#     def __init__(self, network_parameters):
-#         super(perfor)
-
-
-# model = BiRNN(input_size, hidden_size, num_layers, num_output).to(device)
-# second_model = ExtraHAN(NET_PARAM).to(device)
 
 
 if LOSS_TYPE == 'MSE':
@@ -244,7 +207,7 @@ elif LOSS_TYPE == 'CE':
             if data_size ==0:
                 data_size = 1
                 print('data size for loss calculation is zero')
-        return -1 * torch.sum((target * torch.log(pred)  + (1-target) * torch.log(1-pred)) * aligned_status) / data_size
+        return -1 * torch.sum((target * torch.log(pred) + (1-target) * torch.log(1-pred)) * aligned_status) / data_size
 
 
 def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
@@ -254,34 +217,6 @@ def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime')
         best_name = model_name + '_' + filename + '_best.pth.tar'
         shutil.copyfile(save_name, best_name)
 
-
-def key_augmentation(data_x, key_change):
-    # key_change = 0
-    if key_change == 0:
-        return data_x
-    data_x_aug = copy.deepcopy(data_x)
-    pitch_start_index = PITCH_VEC_IDX
-    # while key_change == 0:
-    #     key_change = random.randrange(-5, 7)
-    for data in data_x_aug:
-        octave = data[pitch_start_index]
-        pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
-        pitch_class = pitch_class_vec.index(1)
-        new_pitch = pitch_class + key_change
-        if new_pitch < 0:
-            octave -= 0.25
-        elif new_pitch > 12:
-            octave += 0.25
-        new_pitch = new_pitch % 12
-
-        new_pitch_vec = [0] * 13
-        new_pitch_vec[0] = octave
-        new_pitch_vec[new_pitch+1] = 1
-
-        data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
-        data[PITCH_SCL_IDX] = data[PITCH_SCL_IDX] + key_change
-
-    return data_x_aug
 
 
 def edges_to_matrix(edges, num_notes):
@@ -373,6 +308,10 @@ def categorize_value_to_vector(y, bins):
 
 
 def scale_model_prediction_to_original(prediction, MEANS, STDS):
+    for i in range(len(STDS)):
+        for j in range(len(STDS[i])):
+            if STDS[i][j] < 1e-4:
+                STDS[i][j] = 1
     prediction = np.squeeze(np.asarray(prediction.cpu()))
     num_notes = len(prediction)
     if LOSS_TYPE == 'MSE':
@@ -398,38 +337,14 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
     return prediction
 
 
-def load_file_and_generate_performance(filename, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
-    path_name = filename
-    composer_name = composer
+def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
     test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
-                                                                                       start_tempo, composer_name,
+                                                                                       start_tempo, composer,
                                                                                        vel_pair)
     batch_x = torch.Tensor(test_x)
-    for i in range(len(STDS)):
-        for j in range(len(STDS[i])):
-            if STDS[i][j] < 1e-4:
-                STDS[i][j] = 1
     num_notes = len(test_x)
-    if start_tempo == 0:
-        start_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
-        start_tempo = math.log(start_tempo, 10)
-        # start_tempo_norm = (start_tempo - means[1][0]) / stds[1][0]
-    else:
-        start_tempo = math.log(args.startTempo, 10)
     input_y = torch.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
-
-    #
-    # if LOSS_TYPE == 'MSE':
-    #     start_tempo_norm = (start_tempo - MEANS[1][0]) / STDS[1][0]
-    #     input_y[0, 0, 0] = start_tempo_norm
-    #     for i in range(1, NUM_OUTPUT - 1):
-    #         input_y[0, 0, i] -= MEANS[1][i]
-    #         input_y[0, 0, i] /= STDS[1][i]
-    #     input_y = input_y.to(DEVICE)
-    #     tempo_stats = [MEANS[1][0], STDS[1][0]]
-    # else:
-    #     tempo_stats = [0, 0]
 
     if type(z) is dict:
         initial_z = z['z']
@@ -437,7 +352,6 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         z = z['key']
         batch_x[:,QPM_PRIMO_IDX] = batch_x[:,QPM_PRIMO_IDX] + qpm_change
     else:
-        # initial_z = torch.Tensor([z] * NET_PARAM.encoder.size)
         initial_z = 'zero'
 
     if IN_HIER:
@@ -460,7 +374,6 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
         hier_output_spanned = HIER_MODEL.span_beat_to_note_num(hier_output, hierarchy_numbers, len(test_x), 0)
         combined_x = torch.cat((batch_x, hier_output_spanned), 2)
         prediction, _ = run_model_in_steps(combined_x, input_y, graph, note_locations, initial_z=final_z, model=MODEL)
-
     else:
         if type(initial_z) is list:
             initial_z = initial_z[0]
@@ -475,7 +388,8 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
     prediction = torch.cat((prediction, trill_prediction), 2)
     prediction = scale_model_prediction_to_original(prediction, MEANS, STDS)
 
-    output_features = model_prediction_to_feature(prediction, note_locations)
+    output_features = xml_matching.model_prediction_to_feature(prediction)
+    output_features = xml_matching.add_note_location_to_features(output_features, note_locations)
     if return_features:
         return output_features
 
@@ -489,41 +403,6 @@ def load_file_and_generate_performance(filename, composer=args.composer, z=args.
     xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
                                                bool_pedal=args.boolPedal, disklavier=args.disklavier)
 
-
-def model_prediction_to_feature(prediction, note_locations):
-    output_features = []
-    num_notes = len(prediction)
-    for i in range(num_notes):
-        pred = prediction[i]
-        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
-        feat = xml_matching.MusicFeature()
-        feat.qpm = pred[0]
-        feat.velocity = pred[1]
-        feat.xml_deviation = pred[2]
-        feat.articulation = pred[3]
-        feat.pedal_refresh_time = pred[4]
-        feat.pedal_cut_time = pred[5]
-        feat.pedal_at_start = pred[6]
-        feat.pedal_at_end = pred[7]
-        feat.soft_pedal = pred[8]
-        feat.pedal_refresh = pred[9]
-        feat.pedal_cut = pred[10]
-
-        feat.note_location.beat = note_locations[i].beat
-        feat.note_location.measure = note_locations[i].measure
-
-        feat.trill_param = pred[11:16]
-        feat.trill_param[0] = feat.trill_param[0]
-        feat.trill_param[1] = (feat.trill_param[1])
-        feat.trill_param[2] = (feat.trill_param[2])
-        feat.trill_param[3] = (feat.trill_param[3])
-        feat.trill_param[4] = round(feat.trill_param[4])
-
-        # if test_x[i][is_trill_index_score] == 1:
-        #     print(feat.trill_param)
-        output_features.append(feat)
-
-    return output_features
 
 def load_file_and_encode_style(path, perf_name, composer_name):
     test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(path, perf_name, composer_name, MEANS, STDS)
@@ -623,7 +502,7 @@ def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, m
         total_output = []
         total_z = []
         measure_numbers = [x.measure for x in note_locations]
-        slice_indexes = xml_matching.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
+        slice_indexes = dp.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
         if edges is not None:
             edges = edges.to(DEVICE)
 
@@ -816,7 +695,6 @@ def handle_data_in_tensor(x, y, hierarchy_test=False):
     return x.to(DEVICE), y.to(DEVICE)
 
 
-
 def sigmoid(x, gain=1):
   return 1 / (1 + math.exp(-gain*x))
 
@@ -907,7 +785,13 @@ if args.sessMode == 'train':
 
                 if selected_sample.slice_indexes is None:
                     measure_numbers = [x.measure for x in note_locations]
-                    selected_sample.slice_indexes = xml_matching.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
+                    if HIER_MEAS and HIERARCHY:
+                        selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                                     measure_numbers,
+                                                                                                         measure_steps=TIME_STEPS)
+
+                    else:
+                        selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
 
                 num_slice = len(selected_sample.slice_indexes)
                 selected_idx = random.randrange(0,num_slice)
@@ -927,7 +811,7 @@ if args.sessMode == 'train':
 
                 for i in range(num_key_augmentation+1):
                     key = key_lists[i]
-                    temp_train_x = key_augmentation(train_x, key)
+                    temp_train_x = dp.key_augmentation(train_x, key)
                     kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
@@ -980,8 +864,8 @@ if args.sessMode == 'train':
 
                 for i in range(num_key_augmentation+1):
                     key = key_lists[i]
-                    temp_train_x = key_augmentation(train_x, key)
-                    slice_indexes = xml_matching.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
+                    temp_train_x = dp.key_augmentation(train_x, key)
+                    slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
                     kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
 
                     for slice_idx in slice_indexes:
@@ -1065,6 +949,7 @@ if args.sessMode == 'train':
                 for z in total_z:
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss_total.append(kld_loss.item())
             elif TRILL:
                 trill_bool = batch_x[:,:,is_trill_index_concated] == 1
                 trill_bool = trill_bool.float().view(1,-1,1).to(DEVICE)
@@ -1075,6 +960,8 @@ if args.sessMode == 'train':
                 deviation_loss = torch.zeros(1)
                 articul_loss = torch.zeros(1)
                 pedal_loss = torch.zeros(1)
+                kld_loss = torch.zeros(1)
+                kld_loss_total.append(kld_loss.item())
 
             else:
                 tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
@@ -1094,6 +981,8 @@ if args.sessMode == 'train':
                 for z in total_z:
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss_total.append(kld_loss.item())
+
             # valid_loss_total.append(valid_loss.item())
             tempo_loss_total.append(tempo_loss.item())
             vel_loss_total.append(vel_loss.item())
@@ -1101,7 +990,6 @@ if args.sessMode == 'train':
             articul_loss_total.append(articul_loss.item())
             pedal_loss_total.append(pedal_loss.item())
             trill_loss_total.append(trill_loss.item())
-            kld_loss_total.append(kld_loss.item())
 
         mean_tempo_loss = np.mean(tempo_loss_total)
         mean_vel_loss = np.mean(vel_loss_total)
@@ -1186,7 +1074,7 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
     MODEL.is_teacher_force = False
 
     if args.sessMode == 'test':
-        random.seed(30)
+        random.seed(0)
         load_file_and_generate_performance(args.testPath)
     elif args.sessMode=='testAll':
         path_list = cons.emotion_data_path
@@ -1196,16 +1084,24 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         for piece in test_list:
             path = './test_pieces/' + piece[0] + '/'
             composer = piece[1]
+            if len(piece) == 3:
+                start_tempo = piece[2]
+            else:
+                start_tempo = 0
             for perform_z_pair in perform_z_by_list:
-                load_file_and_generate_performance(path, composer, z=perform_z_pair)
-            load_file_and_generate_performance(path, composer, z=0)
+                load_file_and_generate_performance(path, composer, z=perform_z_pair, start_tempo=start_tempo)
+            load_file_and_generate_performance(path, composer, z=0, start_tempo=start_tempo)
     elif args.sessMode == 'testAllzero':
         test_list = cons.test_piece_list
         for piece in test_list:
             path = './test_pieces/' + piece[0] + '/'
             composer = piece[1]
-            random.seed(100)
-            load_file_and_generate_performance(path, composer, z=0)
+            if len(piece) == 3:
+                start_tempo = piece[2]
+            else:
+                start_tempo = 0
+            random.seed(0)
+            load_file_and_generate_performance(path, composer, z=0, start_tempo=start_tempo)
 
     elif args.sessMode == 'encode':
         perform_z, qpm_primo = load_file_and_encode_style(args.testPath, args.perfName, args.composer)
@@ -1409,7 +1305,6 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         print("Test Loss= {:.4f} , Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}"
               .format(mean_valid_loss, mean_tempo_loss, mean_vel_loss,
                       mean_deviation_loss, mean_articul_loss, mean_pedal_loss, mean_trill_loss, mean_kld_loss))
-
         # num_piece = len(model_correlation_total)
         # for i in range(num_piece):
         #     if len(human_correlation_total) > 0:

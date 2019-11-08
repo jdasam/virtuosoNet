@@ -40,7 +40,7 @@ test_piece_list = [
                 ('bwv_891_prelude', 'Bach'),
                 ('bwv_858_fugue', 'Bach'),
                 ('bwv_891_fugue', 'Bach'),
-                ('schubert_ps', 'Schubert'),
+                ('schubert_piano_sonata_664-1', 'Schubert'),
                 ('haydn_keyboard_31_1', 'Haydn'),
                 ('haydn_keyboard_49_1', 'Haydn'),
                 ('schubert_impromptu', 'Schubert'),
@@ -63,11 +63,19 @@ test_piece_list = [
                 ('chopin_prelude_15', 'Chopin'),
                 ('kiss_the_rain', 'Chopin'),
                 ('bohemian_rhapsody', 'Liszt'),
-                ('chopin_fantasie_impromptu', 'Chopin'),
+                ('chopin_fantasie_impromptu', 'Chopin', 180),
                 ('schumann', 'Schumann'),
                 ('chopin_barcarolle', 'Chopin'),
                 ('chopin_scherzo', 'Chopin'),
                    ]
+
+# test_piece_list = [
+#     # ('dmc_glass', 'Liszt', 120),
+#                    ('dmc_prokofiev', 'Prokofiev', 160),
+#                    # ('dmc_shostakovich', 'Bach', 80),
+#                    ('dmc_sho_fugue', 'Liszt', 160),
+#                     # ('dmc_messiaen', 'Debussy', 72)
+#                    ]
 
 emotion_folder_path = 'test_pieces/emotionNet/'
 emotion_key_list = ['OR', 'Anger', 'Enjoy', 'Relax', 'Sad']
