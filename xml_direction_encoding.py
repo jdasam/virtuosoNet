@@ -2,7 +2,7 @@ import copy
 
 absolute_tempos_keywords = ['adagio', 'grave', 'lento', 'largo', 'larghetto', 'andante', 'andantino', 'moderato',
                             'allegretto', 'allegro', 'vivace', 'accarezzevole', 'languido', 'tempo giusto', 'mesto',
-                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento', 'agitato'
+                            'presto', 'prestissimo', 'maestoso', 'lullaby', 'doppio movimento', 'agitato', 'precipitato',
                             'leicht und zart', 'aufgeregt', 'bewegt', 'rasch', 'innig', 'lebhaft', 'geschwind',
                             "d'un rythme souple",
                             'lent', 'large', 'vif', 'animé', 'scherzo', 'menuetto', 'minuetto']
@@ -491,6 +491,7 @@ def define_tempo_embedding_table():
     embed_table.append(EmbeddingKey('molto vivace', 0, 0.7))
     embed_table.append(EmbeddingKey('vivace assai', 0, 0.7))
     embed_table.append(EmbeddingKey('presto', 0, 0.8))
+    embed_table.append(EmbeddingKey('precipitato', 0, 0.8))
     embed_table.append(EmbeddingKey('prestissimo', 0, 0.9))
 
     embed_table.append(EmbeddingKey('doppio movimento', 0, 0.6))

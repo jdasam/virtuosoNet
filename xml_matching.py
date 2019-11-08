@@ -626,6 +626,13 @@ def cal_beat_importance(beat_position, numerator):
         beat_importance = 1
     elif (beat_position * 12) % 1 == 0 and numerator in [3, 6, 12]:
         beat_importance = 0.5
+    elif numerator == 7:
+        if abs((beat_position * 7) - 2) < 0.001:
+            beat_importance = 2
+        elif abs((beat_position * 5) - 2) < 0.001:
+            beat_importance = 2
+        else:
+            beat_importance = 0
     else:
         beat_importance = 0
     return beat_importance
@@ -2547,101 +2554,6 @@ def cal_correlation_of_pairs_in_folder(path):
     return correlation_result_total
 
 
-def make_slicing_indexes_by_measure(num_notes, measure_numbers, steps, overlap=True):
-    slice_indexes = []
-    if num_notes < steps:
-        slice_indexes.append((0, num_notes))
-    elif overlap:
-        first_end_measure = measure_numbers[steps]
-        last_measure = measure_numbers[-1]
-        if first_end_measure < last_measure - 1:
-            first_note_after_the_measure = measure_numbers.index(first_end_measure+1)
-            slice_indexes.append((0, first_note_after_the_measure))
-            second_end_start_measure = measure_numbers[num_notes - steps]
-            first_note_of_the_measure = measure_numbers.index(second_end_start_measure)
-            slice_indexes.append((first_note_of_the_measure, num_notes))
-
-            if num_notes > steps * 2:
-                first_start = random.randrange(int(steps/2), int(steps*1.5))
-                start_measure = measure_numbers[first_start]
-                end_measure = start_measure
-
-                while end_measure < second_end_start_measure:
-                    start_note = measure_numbers.index(start_measure)
-                    if start_note+steps < num_notes:
-                        end_measure = measure_numbers[start_note+steps]
-                    else:
-                        break
-                    end_note = measure_numbers.index(end_measure-1)
-                    slice_indexes.append((start_note, end_note))
-
-                    if end_measure > start_measure + 2:
-                        start_measure = end_measure - 2
-                    elif end_measure > start_measure + 1:
-                        start_measure = end_measure - 1
-                    else:
-                        start_measure = end_measure
-        else:
-            slice_indexes.append((0, num_notes))
-    else:
-        num_slice = math.ceil(num_notes / steps)
-        prev_end_index = 0
-        for i in range(num_slice):
-            if prev_end_index + steps >= num_notes:
-                slice_indexes.append((prev_end_index, num_notes))
-                break
-            end_measure = measure_numbers[prev_end_index + steps]
-            if end_measure >= measure_numbers[-1]:
-                slice_indexes.append((prev_end_index, num_notes))
-                break
-            first_note_after_the_measure = measure_numbers.index(end_measure + 1)
-            slice_indexes.append((prev_end_index, first_note_after_the_measure))
-            prev_end_index = first_note_after_the_measure
-    return slice_indexes
-
-
-def make_slicing_indexes_by_beat(beat_numbers, beat_steps, overlap=True):
-    slice_indexes = []
-    num_notes = len(beat_numbers)
-    num_beats = beat_numbers[-1]
-    if num_beats < beat_steps:
-        slice_indexes.append((0, num_notes))
-    elif overlap:
-        first_end_beat = beat_steps
-        last_end_beat = num_beats
-
-        if first_end_beat < last_end_beat - 1:
-            first_note_after_the_beat = beat_numbers.index(first_end_beat + 1)
-            slice_indexes.append((0, first_note_after_the_beat))
-            second_end_start_beat = num_beats - beat_steps
-            first_note_of_the_beat = beat_numbers.index(second_end_start_beat)
-            slice_indexes.append((first_note_of_the_beat, num_notes))
-            if num_beats > beat_steps * 2:
-                first_start = random.randrange(int(beat_steps / 2), int(beat_steps * 1.5))
-                start_beat = first_start
-                end_beat = start_beat
-
-                while end_beat < second_end_start_beat:
-                    start_note = beat_numbers.index(start_beat)
-                    if start_beat + beat_steps < num_beats:
-                        end_beat = start_beat + beat_steps
-                    else:
-                        break
-                    end_note = beat_numbers.index(end_beat)
-                    slice_indexes.append((start_note, end_note))
-
-                    if end_beat > start_beat + 2:
-                        start_beat = end_beat - 2
-                    elif end_beat > start_beat + 1:
-                        start_beat = end_beat - 1
-                    else:
-                        start_beat = end_beat
-
-        else:
-            slice_indexes.append((0, num_notes))
-    return slice_indexes
-
-
 def cal_actual_note_articulation(path):
     features_in_folder = load_pairs_from_folder(path, pedal_elongate=True)
     for feat in features_in_folder:
@@ -2741,3 +2653,6 @@ def check_data_split(path):
     print('Number of train notes: ', num_notes_in_train, 'valid notes: ', num_notes_in_valid, 'test notes: ',
           num_notes_in_test)
     return entire_pairs, num_train_pairs, num_valid_pairs, num_test_pairs
+
+
+
