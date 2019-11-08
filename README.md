@@ -3,7 +3,7 @@
 Our research project is developing a system for generating expressive piano perfomrance, or simply 'AI Pianist'. The system reads a given music score in MusicX
 ML and generates a human-like performance MIDI file.
 
-This repository contains PyTorch code and pre-trained model for [__Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance__ (ICML 2019)](http://proceedings.mlr.press/v97/jeong19a.html), and __VirtuosoNet: A Hierarchical RNN-based system for modeling expressive piano performance__ (ISMIR 2019)
+This repository contains PyTorch code and pre-trained model for [__Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance__ (ICML 2019)](http://proceedings.mlr.press/v97/jeong19a.html), and [__VirtuosoNet: A Hierarchical RNN-based system for modeling expressive piano performance__ (ISMIR 2019)](http://archives.ismir.net/ismir2019/paper/000112.pdf).
 
 This documentation is currently a work in progress.
 contact: jdasam@kaist.ac.kr
@@ -11,7 +11,8 @@ contact: jdasam@kaist.ac.kr
 * You need PyTorch (torch 0.4.1) and pretty_midi (https://github.com/craffel/pretty-midi)
 
 
-
+## Data:
+Data is provided as a .dat file in this [link](https://mega.nz/#F!N6RC3aJK!zWto4arANF9V7snhoyZh5w). It is pre-extracted note-level features of score and performance. Please contact me for the further information about the dataset.
 
 
 ## How to generate performance MIDI from musicXML
@@ -56,10 +57,8 @@ If the MIDI player cannot handle pedal, the articulation of our notes will sound
 
 
 ## How to train the model
-We have uploaded toy training set (icml_haydn_set.dat, icml_haydn_set_stat.dat, icml_haydn_set_test.dat).
-You can train model by selecting this data set and training mode.
 You can change model parameters in model_parameters.py
-> python3 model_run.py -mode=train -code=isgn_test -data=icml_haydn_set)
+> python3 model_run.py -mode=train -code=isgn_test -data=training_data)
 
 
 
