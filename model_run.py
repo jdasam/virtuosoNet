@@ -68,20 +68,20 @@ if HIERARCHY or IN_HIER:
     elif 'beat' in args.modelCode or 'beat' in args.hierCode:
         HIER_BEAT = True
 
-if args.trainTrill:
+if 'trill' in args.modelCode:
     TRILL = True
 
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 500
-VALID_STEPS = 4000
+TIME_STEPS = 100
+VALID_STEPS = 10000
 DELTA_WEIGHT = 2
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.01
-KLD_SIG = 20e4
+KLD_SIG = 5e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -785,7 +785,7 @@ if args.sessMode == 'train':
 
                 if selected_sample.slice_indexes is None:
                     measure_numbers = [x.measure for x in note_locations]
-                    if HIER_MEAS:
+                    if HIER_MEAS and HIERARCHY:
                         selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
                                                                                                      measure_numbers,
                                                                                                          measure_steps=TIME_STEPS)
@@ -949,6 +949,7 @@ if args.sessMode == 'train':
                 for z in total_z:
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss_total.append(kld_loss.item())
             elif TRILL:
                 trill_bool = batch_x[:,:,is_trill_index_concated] == 1
                 trill_bool = trill_bool.float().view(1,-1,1).to(DEVICE)
@@ -959,6 +960,8 @@ if args.sessMode == 'train':
                 deviation_loss = torch.zeros(1)
                 articul_loss = torch.zeros(1)
                 pedal_loss = torch.zeros(1)
+                kld_loss = torch.zeros(1)
+                kld_loss_total.append(kld_loss.item())
 
             else:
                 tempo_loss = cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0)
@@ -978,6 +981,8 @@ if args.sessMode == 'train':
                 for z in total_z:
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss_total.append(kld_loss.item())
+
             # valid_loss_total.append(valid_loss.item())
             tempo_loss_total.append(tempo_loss.item())
             vel_loss_total.append(vel_loss.item())
@@ -985,7 +990,6 @@ if args.sessMode == 'train':
             articul_loss_total.append(articul_loss.item())
             pedal_loss_total.append(pedal_loss.item())
             trill_loss_total.append(trill_loss.item())
-            kld_loss_total.append(kld_loss.item())
 
         mean_tempo_loss = np.mean(tempo_loss_total)
         mean_vel_loss = np.mean(vel_loss_total)
