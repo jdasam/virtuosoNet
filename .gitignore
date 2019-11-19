@@ -3,5 +3,7 @@ musicxml_parser/
 chopin_cleaned/
 midi_utils/
 mscx_files/
+private_test/
+test_pieces/performScore_test/
 *.pyc
 **/.DS_Store

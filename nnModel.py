@@ -343,6 +343,8 @@ class ISGN(nn.Module):
             total_perform_z = torch.stack(total_perform_z)
             mean_perform_z = torch.mean(total_perform_z, 0, True)
 
+            # mean_perform_z = torch.Tensor(numpy.random.normal(loc=perform_mu, scale=perform_var, size=self.encoded_vector_size)).to(self.device)
+
             return mean_perform_z
 
         perform_z = self.style_vector_expandor(perform_z)
@@ -728,13 +730,16 @@ class HAN_Integrated(nn.Module):
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         if return_z:
             total_perform_z = [perform_z]
-            for i in range(20):
+            for i in range(10):
                 temp_z = self.reparameterize(perform_mu, perform_var)
                 total_perform_z.append(temp_z)
             total_perform_z = torch.stack(total_perform_z)
             mean_perform_z = torch.mean(total_perform_z, 0, True)
+            # var = torch.exp(0.5 * perform_var)
+            # mean_perform_z = torch.Tensor(numpy.random.normal(loc=perform_mu, scale=var)).to(self.device)
 
             return mean_perform_z
+
         # perform_z = self.performance_decoder(perform_z)
         perform_z = self.style_vector_expandor(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)

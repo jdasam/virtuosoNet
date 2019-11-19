@@ -94,7 +94,7 @@ def initialize_model_parameters_by_code(model_code):
 
         # net_param.num_attention_head = 1
         net_param.encoded_vector_size = 16
-        net_param.encoder.size = 32
+        net_param.encoder.size = 64
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
