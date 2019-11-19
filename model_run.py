@@ -1,5 +1,6 @@
 import torch
 import pickle
+import _pickle as cPickle
 import argparse
 import math
 import numpy as np
@@ -17,12 +18,14 @@ import nnModel
 import model_parameters as param
 import model_constants as cons
 import sys
+import style_analysis
+
 sys.modules['xml_matching'] = xml_matching
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
+parser.add_argument("-mode", "--sessMode", type=str, default='analysis', help="train or test or testAll")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/bps_5_1/", help="folder path of test mat")
-parser.add_argument("-data", "--dataName", type=str, default="training_data", help="dat file name")
+parser.add_argument("-data", "--dataName", type=str, default="pedal_refresh", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
 parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
 parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
@@ -30,7 +33,7 @@ parser.add_argument("-slur", "--slurEdge", default=False, type=lambda x: (str(x)
 parser.add_argument("-voice", "--voiceEdge", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
 parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='isgn', help="code name for saving the model")
+parser.add_argument("-code", "--modelCode", type=str, default='han_ar_note_encoder_16_64_delta2', help="code name for saving the model")
 parser.add_argument("-tCode", "--trillCode", type=str, default='trill_default', help="code name for loading trill model")
 parser.add_argument("-comp", "--composer", type=str, default='Beethoven', help="composer name of the input piece")
 parser.add_argument("--latent", type=float, default=0, help='initial_z value')
@@ -39,7 +42,7 @@ parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='ty
 parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (str(x).lower() == 'true'), help='resume training after loading model')
 parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help='resume training after loading model')
 parser.add_argument("-delta", "--deltaLoss", default=False, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-parser.add_argument("-hCode", "--hierCode", type=str, default='han_measure', help="code name for loading hierarchy model")
+parser.add_argument("-hCode", "--hierCode", type=str, default='han_ar_measure_time8000_8_64', help="code name for loading hierarchy model")
 parser.add_argument("-intermd", "--intermediateLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
 parser.add_argument("-randtr", "--randomTrain", default=True, type=lambda x: (str(x).lower() == 'true'), help="use random train")
 parser.add_argument("-dskl", "--disklavier", default=True, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
@@ -74,13 +77,13 @@ if 'trill' in args.modelCode:
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 500
-VALID_STEPS = 10000
-DELTA_WEIGHT = 2
+TIME_STEPS = 300
+VALID_STEPS = 15000
+DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.01
+KLD_MAX = 0.02
 KLD_SIG = 20e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
@@ -434,6 +437,44 @@ def load_file_and_encode_style(path, perf_name, composer_name):
 
     return perform_z, qpm_primo
 
+
+def load_all_file_and_encode_style(parsed_data, note_level=False):
+    total_z = []
+    perf_name_list = []
+    num_piece = len(parsed_data[0])
+    for i in range(num_piece):
+        piece_test_x = parsed_data[0][i]
+        piece_test_y = parsed_data[1][i]
+        piece_edges = parsed_data[2][i]
+        piece_note_locations = parsed_data[3][i]
+        piece_perf_name = parsed_data[4][i]
+
+        num_perf = len(piece_test_x)
+        piece_z = []
+        for j in range(num_perf):
+            # test_x, test_y, edges, note_locations, perf_name = perf
+            if note_level:
+                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=False)
+                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
+                test_x = test_x.view((1, -1, MODEL.input_size))
+                test_y = test_y.view(1, -1, MODEL.output_size)
+                perform_z_high = encode_performance_style_vector(test_x, test_y, edges, piece_note_locations[j],
+                                                                 model=MODEL)
+            else:
+                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=IN_HIER)
+                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
+                test_x = test_x.view((1, -1, HIER_MODEL.input_size))
+                hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
+                perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, piece_note_locations[j], model=HIER_MODEL)
+            perform_z_high = perform_z_high.reshape(-1).cpu().numpy()
+            piece_z.append(perform_z_high)
+            perf_name_list.append(piece_perf_name[j])
+        piece_z = np.asarray(piece_z)
+        # average_piece_z = np.average(piece_z, axis=0)
+        # piece_z -= average_piece_z
+        total_z.append(piece_z)
+    total_z = np.concatenate(total_z, axis=0)
+    return total_z, perf_name_list
 
 def encode_performance_style_vector(input, input_y, edges, note_locations, model=MODEL):
     with torch.no_grad():
@@ -1032,7 +1073,7 @@ if args.sessMode == 'train':
     #end of epoch
 
 
-elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation']:
+elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation', 'analysis']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -1348,3 +1389,24 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
 
         with open(args.modelCode + "_cor.dat", "wb") as f:
             pickle.dump(model_cor, f, protocol=2)
+
+    elif args.sessMode == 'analysis':
+        # total_perf_z = total_perf_names = []
+        # dir_name = 'test_pieces/performScore_test'
+        # piece_list = os.listdir(dir_name)
+        # for piece in piece_list:
+        #     piece_path = os.path.join(dir_name, piece) + '/'
+        #     perform_z_list, perf_names = load_all_file_and_encode_style(piece_path, 'Chopin')
+        #     total_perf_z.append(perform_z_list)
+        #     total_perf_names.append(perf_names)
+
+        with open("style_parsed_emotion.dat", "rb") as f:
+            # u = pickle._Unpickler(f)
+            u = cPickle.Unpickler(f)
+            total_data = u.load()
+
+        total_perf_z, total_perf_names = load_all_file_and_encode_style(total_data, note_level=True)
+
+        embedded_z = style_analysis.embedd_tsne(total_perf_z, total_perf_names)
+        with open("style_tsne_z.dat", "wb") as f:
+            pickle.dump({'z': embedded_z ,'name': total_perf_names}, f, protocol=2)
