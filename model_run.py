@@ -77,14 +77,14 @@ if 'trill' in args.modelCode:
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 300
-VALID_STEPS = 15000
+TIME_STEPS = 50
+VALID_STEPS = 10000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.02
-KLD_SIG = 20e4
+KLD_MAX = 0.1
+KLD_SIG = 10e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -782,8 +782,9 @@ if args.sessMode == 'train':
     if not os.path.isfile(training_data_name):
         training_data_name = '/mnt/ssd1/jdasam_data/' + training_data_name
     with open(training_data_name, "rb") as f:
-        u = pickle._Unpickler(f)
-        u.encoding = 'latin1'
+        # u = pickle._Unpickler(f)
+        # u.encoding = 'latin1'
+        u = cPickle.Unpickler(f)
         # p = u.load()
         # complete_xy = pickle.load(f)
         complete_xy = u.load()

@@ -662,6 +662,14 @@ class HAN_Integrated(nn.Module):
             self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
         else:
             self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.encoder_size * 2)
+        self.performance_embedding_layer = nn.Sequential(
+            nn.Linear(self.output_size, self.hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.Dropout(DROP_OUT),
+            nn.ReLU()
+        )
         self.performance_contractor = nn.Sequential(
             nn.Linear(self.encoder_input_size, self.encoder_size),
             nn.Dropout(DROP_OUT),
@@ -712,19 +720,18 @@ class HAN_Integrated(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
+            expanded_y = self.performance_embedding_layer(y)
             if self.is_baseline:
-                perform_concat = torch.cat((note_out, y), 2)
+                perform_concat = torch.cat((note_out, expanded_y), 2)
             else:
-                perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, y), 2)
+                perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, expanded_y), 2)
+            perform_concat = self.masking_half(perform_concat)
             perform_contracted = self.performance_contractor(perform_concat)
             perform_note_encoded, _ = self.performance_note_encoder(perform_contracted)
 
             perform_measure = self.make_higher_node(perform_note_encoded, self.performance_measure_attention,
                                                     beat_numbers, measure_numbers, start_index, lower_is_note=True)
             perform_style_encoded, _ = self.performance_encoder(perform_measure)
-            # perform_style_reduced = perform_style_reduced.view(-1,self.encoder_input_size)
-            # perform_style_node = self.sum_with_attention(perform_style_reduced, self.perform_attention)
-            # perform_style_vector = perform_style_encoded[:, -1, :]  # need check
             perform_style_vector = self.performance_final_attention(perform_style_encoded)
             perform_z, perform_mu, perform_var = \
                 self.encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
@@ -1048,7 +1055,6 @@ class HAN_Integrated(nn.Module):
         beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
         return beat_tempos
 
-
     def run_voice_net(self, batch_x, voice_hidden, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
         output = torch.zeros(1, batch_x.size(1), self.voice_hidden_size * 2).to(self.device)
@@ -1071,6 +1077,11 @@ class HAN_Integrated(nn.Module):
                 # ith_voice_out, ith_hidden = self.lstm(voice_x, ith_hidden)
                 output += torch.bmm(span_mat, ith_voice_out)
         return output, voice_hidden
+
+    def masking_half(self, y):
+        num_notes = y.shape[1]
+        y = y[:,:num_notes//2,:]
+        return y
 
     def init_hidden(self, num_layer, num_direction, batch_size, hidden_size):
         h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(self.device)

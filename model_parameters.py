@@ -15,6 +15,7 @@ class NetParams:
         self.beat = self.Param()
         self.measure = self.Param()
         self.section = self.Param()
+        self.performance = self.Param()
         self.final = self.Param()
         self.voice = self.Param()
         self.sum = self.Param()
@@ -82,7 +83,7 @@ def initialize_model_parameters_by_code(model_code):
 
     elif 'han' in model_code:
         net_param.note.layer = 2
-        net_param.note.size = 64
+        net_param.note.size = 128
         net_param.beat.layer = 2
         net_param.beat.size = 64
         net_param.measure.layer = 1
@@ -90,7 +91,8 @@ def initialize_model_parameters_by_code(model_code):
         net_param.final.layer = 1
         net_param.final.size = 64
         net_param.voice.layer = 2
-        net_param.voice.size = 64
+        net_param.voice.size = 128
+        net_param.performance.size = 128
 
         # net_param.num_attention_head = 1
         net_param.encoded_vector_size = 16
@@ -98,7 +100,7 @@ def initialize_model_parameters_by_code(model_code):
         net_param.encoder.layer = 2
         net_param.encoder.input = (net_param.note.size + net_param.beat.size +
                                    net_param.measure.size + net_param.voice.size) * 2 \
-                                  + cons.NUM_PRIME_PARAM
+                                  + net_param.performance.size
         num_tempo_info = 3  # qpm primo, tempo primo
         num_dynamic_info = 0
         net_param.final.input = (net_param.note.size + net_param.voice.size + net_param.beat.size +
@@ -135,11 +137,11 @@ def initialize_model_parameters_by_code(model_code):
     if 'measure' in model_code:
         net_param.hierarchy_level = 'measure'
         net_param.output_size = 2
-        net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
+        # net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
     elif 'beat' in model_code:
         net_param.hierarchy_level = 'beat'
         net_param.output_size = 2
-        net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
+        # net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
     elif 'note' in model_code:
         net_param.input_size += 2
 
