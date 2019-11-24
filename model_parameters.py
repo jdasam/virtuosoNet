@@ -85,9 +85,9 @@ def initialize_model_parameters_by_code(model_code):
         net_param.note.layer = 2
         net_param.note.size = 128
         net_param.beat.layer = 2
-        net_param.beat.size = 64
+        net_param.beat.size = 128
         net_param.measure.layer = 1
-        net_param.measure.size = 64
+        net_param.measure.size = 128
         net_param.final.layer = 1
         net_param.final.size = 64
         net_param.voice.layer = 2

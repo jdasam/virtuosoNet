@@ -77,14 +77,14 @@ if 'trill' in args.modelCode:
 
 ### parameters
 learning_rate = 0.0003
-TIME_STEPS = 50
+TIME_STEPS = 200
 VALID_STEPS = 10000
 DELTA_WEIGHT = 1
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
-KLD_MAX = 0.1
-KLD_SIG = 10e4
+KLD_MAX = 0.02
+KLD_SIG = 15e4
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
@@ -438,7 +438,7 @@ def load_file_and_encode_style(path, perf_name, composer_name):
     return perform_z, qpm_primo
 
 
-def load_all_file_and_encode_style(parsed_data, note_level=False):
+def load_all_file_and_encode_style(parsed_data, measure_only=False, emotion_data=False):
     total_z = []
     perf_name_list = []
     num_piece = len(parsed_data[0])
@@ -448,30 +448,45 @@ def load_all_file_and_encode_style(parsed_data, note_level=False):
         piece_edges = parsed_data[2][i]
         piece_note_locations = parsed_data[3][i]
         piece_perf_name = parsed_data[4][i]
-
         num_perf = len(piece_test_x)
+        if num_perf == 0:
+            continue
         piece_z = []
         for j in range(num_perf):
             # test_x, test_y, edges, note_locations, perf_name = perf
-            if note_level:
+            if measure_only:
+                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=IN_HIER)
+                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
+                test_x = test_x.view((1, -1, HIER_MODEL.input_size))
+                hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
+                perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, piece_note_locations[j], model=HIER_MODEL)
+            else:
                 test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=False)
                 edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
                 test_x = test_x.view((1, -1, MODEL.input_size))
                 test_y = test_y.view(1, -1, MODEL.output_size)
                 perform_z_high = encode_performance_style_vector(test_x, test_y, edges, piece_note_locations[j],
                                                                  model=MODEL)
-            else:
-                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=IN_HIER)
-                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
-                test_x = test_x.view((1, -1, HIER_MODEL.input_size))
-                hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
-                perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, piece_note_locations[j], model=HIER_MODEL)
-            perform_z_high = perform_z_high.reshape(-1).cpu().numpy()
-            piece_z.append(perform_z_high)
-            perf_name_list.append(piece_perf_name[j])
-        piece_z = np.asarray(piece_z)
-        # average_piece_z = np.average(piece_z, axis=0)
-        # piece_z -= average_piece_z
+            # perform_z_high = perform_z_high.reshape(-1).cpu().numpy()
+            # piece_z.append(perform_z_high)
+            # perf_name_list.append(piece_perf_name[j])
+
+            perform_z_high = [z.reshape(-1).cpu().numpy() for z in perform_z_high]
+            piece_z += perform_z_high
+            perf_name_list += [piece_perf_name[j]] * len(perform_z_high)
+        if emotion_data:
+            for i, name in enumerate(piece_perf_name):
+                if name[-2:] == 'E1':
+                    or_idx = i
+                    break
+            or_z = piece_z.pop(or_idx)
+            piece_z = np.asarray(piece_z)
+            piece_z -= or_z
+            perf_name_list.pop(-(5-or_idx))
+        else:
+            piece_z = np.asarray(piece_z)
+            average_piece_z = np.average(piece_z, axis=0)
+            piece_z -= average_piece_z
         total_z.append(piece_z)
     total_z = np.concatenate(total_z, axis=0)
     return total_z, perf_name_list
@@ -505,6 +520,7 @@ def encode_all_emotionNet_data(path_list, style_keywords):
             for key in style_keywords:
                 perf_name = key + '_sub' + str(sub_idx+1)
                 perform_z_li, qpm_primo = load_file_and_encode_style(path, perf_name, composer_name)
+                perform_z_li = [torch.mean(torch.stack(z), 0, True) for z in perform_z_li]
                 indiv_perform_z.append(perform_z_li)
                 indiv_qpm.append(qpm_primo)
             for i in range(1, num_style):
@@ -831,6 +847,11 @@ if args.sessMode == 'train':
                         selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
                                                                                                      measure_numbers,
                                                                                                          measure_steps=TIME_STEPS)
+                    elif HIER_BEAT and HIERARCHY:
+                        beat_numbers = [x.beat for x in note_locations]
+                        selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                               beat_numbers,
+                                                                                               measure_steps=TIME_STEPS)
 
                     else:
                         selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=TIME_STEPS)
@@ -1073,8 +1094,8 @@ if args.sessMode == 'train':
 
     #end of epoch
 
-
-elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation', 'analysis']:
+else:
+# elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation', 'analysis']:
 ### test session
     if os.path.isfile('prime_' + args.modelCode + args.resume):
         print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
@@ -1401,13 +1422,51 @@ elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 
         #     total_perf_z.append(perform_z_list)
         #     total_perf_names.append(perf_names)
 
-        with open("style_parsed_emotion.dat", "rb") as f:
+        # with open("style_parsed_emotion.dat", "rb") as f:
+        with open("style_parsed.dat", "rb") as f:
             # u = pickle._Unpickler(f)
             u = cPickle.Unpickler(f)
             total_data = u.load()
+        measure_only = True
+        is_emotion_data = False
 
-        total_perf_z, total_perf_names = load_all_file_and_encode_style(total_data, note_level=True)
+        total_perf_z, total_perf_names = load_all_file_and_encode_style(total_data, measure_only=measure_only, emotion_data=is_emotion_data)
+        if ',' in total_perf_names[0]:
+            total_perf_names = [x.split(',')[0] for x in total_perf_names]
+        else:
+            total_perf_names = [x.split('.')[-1] for x in total_perf_names]
 
+
+
+        with open("style_z_encoded.dat", "wb") as f:
+            pickle.dump({'z': total_perf_z ,'name': total_perf_names}, f, protocol=2)
+
+        # selected_performers = ['Biret', 'Pollini', 'Lisiecki']
+        # total_perf_z, total_perf_names = style_analysis.filter_z_by_name(total_perf_z, total_perf_names, selected_performers)
         embedded_z = style_analysis.embedd_tsne(total_perf_z, total_perf_names)
+        embedd_pca = style_analysis.embedd_pca(total_perf_z, total_perf_names)
         with open("style_tsne_z.dat", "wb") as f:
             pickle.dump({'z': embedded_z ,'name': total_perf_names}, f, protocol=2)
+
+    elif args.sessMode == 'horowitz':
+        # this code is for making Horowitz-like performance from data
+
+        with open("chopin105.dat", "rb") as f:
+            # u = pickle._Unpickler(f)
+            u = cPickle.Unpickler(f)
+            total_data = u.load()
+        total_perf_z, total_perf_names = load_all_file_and_encode_style(total_data, measure_only=False, emotion_data=False)
+        total_perf_names = [x.split(',')[0] for x in total_perf_names]
+        horowitz_z = []
+        for z, name in zip(total_perf_z, total_perf_names):
+            if name == 'Horowitz':
+                horowitz_z.append(z)
+        horowitz_z = np.asarray(horowitz_z)
+        horowitz_z = np.mean(horowitz_z, 0)
+
+        path_list = cons.emotion_data_path
+        emotion_list = cons.emotion_key_list
+        perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
+        for z_dict in perform_z_by_list:
+            z_dict['z'][0] = torch.Tensor(horowitz_z).to(DEVICE)
+            load_file_and_generate_performance('test_pieces/schumann/', 'Schumann', z=z_dict, start_tempo=45)

@@ -709,7 +709,7 @@ class HAN_Integrated(nn.Module):
         if type(initial_z) is not bool:
             if type(initial_z) is str and initial_z == 'zero':
                 zero_mean = torch.zeros(self.encoded_vector_size)
-                one_std = torch.ones(self.encoded_vector_size)
+                one_std = torch.zeros(self.encoded_vector_size)
                 perform_z = self.reparameterize(zero_mean, one_std).to(self.device)
             # if type(initial_z) is list:
             #     perform_z = self.reparameterize(torch.Tensor(initial_z), torch.Tensor(initial_z)).to(self.device)
@@ -739,13 +739,15 @@ class HAN_Integrated(nn.Module):
             total_perform_z = [perform_z]
             for i in range(10):
                 temp_z = self.reparameterize(perform_mu, perform_var)
+                # temp_z = torch.Tensor(numpy.random.normal(loc=perform_mu, scale=math.exp(0.5*perform_var))).to(self.device)
                 total_perform_z.append(temp_z)
-            total_perform_z = torch.stack(total_perform_z)
-            mean_perform_z = torch.mean(total_perform_z, 0, True)
+            # total_perform_z = torch.stack(total_perform_z)
+            # mean_perform_z = torch.mean(total_perform_z, 0, True)
             # var = torch.exp(0.5 * perform_var)
             # mean_perform_z = torch.Tensor(numpy.random.normal(loc=perform_mu, scale=var)).to(self.device)
 
-            return mean_perform_z
+            # return mean_perform_z
+            return total_perform_z
 
         # perform_z = self.performance_decoder(perform_z)
         perform_z = self.style_vector_expandor(perform_z)
