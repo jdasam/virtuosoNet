@@ -1,4 +1,5 @@
 .DS_Store
 chopin_cleaned/
 mscx_files/
+EmotionData/
 *.pyc

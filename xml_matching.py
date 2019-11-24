@@ -729,6 +729,61 @@ def load_pairs_from_folder(path, pedal_elongate=False):
         return None
     return perform_features_piece
 
+#
+# def load_pairs_by_path(score_path, perform_list, pedal_elongate=False):
+#     score_midi_path = score_path + '.mid'
+#     path_split = score_path.split('/')
+#     composer_name = path_split[-1].split('.')[1]
+#
+#     if composer_name == 'Mendelssohn':
+#         composer_name = 'Schubert'
+#     composer_name_vec = composer_name_to_vec(composer_name)
+#
+#     XMLDocument, xml_notes = read_xml_to_notes(score_path)
+#     score_midi = midi_utils.to_midi_zero(score_midi_path)
+#     score_midi_notes = score_midi.instruments[0].notes
+#     score_midi_notes.sort(key=lambda x:x.start)
+#     match_list = matching.match_xml_to_midi(xml_notes, score_midi_notes)
+#     score_pairs = matching.make_xml_midi_pair(xml_notes, score_midi_notes, match_list)
+#     num_non_matched = check_pairs(score_pairs)
+#     if num_non_matched > 100:
+#         print("There are too many xml-midi matching errors")
+#         return None
+#
+#     measure_positions = XMLDocument.get_measure_positions()
+#     perform_features_piece = []
+#     notes_graph = score_graph.make_edge(xml_notes)
+#
+#     for file in perform_list:
+#         perf_name
+#         # perf_score = evaluation.cal_score(perf_name)
+#
+#         perf_midi_name = path + perf_name + '.mid'
+#         perf_midi = midi_utils.to_midi_zero(perf_midi_name)
+#         perf_midi = midi_utils.add_pedal_inf_to_notes(perf_midi)
+#         if pedal_elongate:
+#             perf_midi = midi_utils.elongate_offset_by_pedal(perf_midi)
+#         perf_midi_notes= perf_midi.instruments[0].notes
+#         corresp_name = path + file
+#         corresp = matching.read_corresp(corresp_name)
+#
+#         xml_perform_match = matching.match_score_pair2perform(score_pairs, perf_midi_notes, corresp)
+#         perform_pairs = matching.make_xml_midi_pair(xml_notes, perf_midi_notes, xml_perform_match)
+#         print("performance name is " + perf_name)
+#         num_align_error = check_pairs(perform_pairs)
+#
+#         if num_align_error > 1000:
+#             print('Too many align error in the performance')
+#             continue
+#         NUM_PERF_NOTES += len(score_midi_notes) - num_align_error
+#         NUM_NON_MATCHED_NOTES += num_align_error
+#         perform_features = extract_perform_features(XMLDocument, xml_notes, perform_pairs, perf_midi_notes, measure_positions)
+#         perform_feat_score = {'features': perform_features, 'score': perf_score, 'composer': composer_name_vec, 'graph': notes_graph}
+#
+#         perform_features_piece.append(perform_feat_score)
+#     if perform_features_piece == []:
+#         return None
+#     return perform_features_piece
 
 def convert_features_to_vector(features, composer_vec):
     score_features = []
@@ -2380,13 +2435,22 @@ def composer_name_to_vec(composer_name):
     return one_hot_vec
 
 
-def read_score_perform_pair(path, perf_name, composer_name, means, stds):
-    score_midi_name = path + 'midi_cleaned.mid'
+def read_score_perform_pair(path, perf_name, composer_name, means, stds, search_by_file_name=False):
+    if search_by_file_name:
+        folder_path = '/'.join(path.split('/')[0:-1]) + '/'
+        score_midi_name = path + '.mid'
+        perf_midi_name = folder_path + perf_name + '.mid'
+        corresp_name = folder_path + perf_name + '_infer_corresp.txt'
+        xml_object = MusicXMLDocument(path+'.musicxml')
+        xml_notes = get_direction_encoded_notes(xml_object)
 
-    if not os.path.isfile(score_midi_name):
-        score_midi_name = path + 'midi.mid'
-
-    xml_object, xml_notes = read_xml_to_notes(path)
+    else:
+        score_midi_name = path + 'midi_cleaned.mid'
+        if not os.path.isfile(score_midi_name):
+            score_midi_name = path + 'midi.mid'
+        perf_midi_name = path + perf_name + '.mid'
+        corresp_name = path + perf_name + '_infer_corresp.txt'
+        xml_object, xml_notes = read_xml_to_notes(path)
     score_midi = midi_utils.to_midi_zero(score_midi_name)
     score_midi_notes = score_midi.instruments[0].notes
     score_midi_notes.sort(key=lambda x:x.start)
@@ -2394,11 +2458,9 @@ def read_score_perform_pair(path, perf_name, composer_name, means, stds):
     score_pairs = matching.make_xml_midi_pair(xml_notes, score_midi_notes, match_list)
     measure_positions = xml_object.get_measure_positions()
 
-    perf_midi_name = path + perf_name + '.mid'
     perf_midi = midi_utils.to_midi_zero(perf_midi_name)
     perf_midi = midi_utils.add_pedal_inf_to_notes(perf_midi)
     perf_midi_notes = perf_midi.instruments[0].notes
-    corresp_name = path + perf_name + '_infer_corresp.txt'
     corresp = matching.read_corresp(corresp_name)
 
     xml_perform_match = matching.match_score_pair2perform(score_pairs, perf_midi_notes, corresp)
