@@ -51,7 +51,12 @@ class EmbeddingKey():
         self.vector_index = vec_idx
         self.value = value
 
-
+class Cresciuto:
+    def __init__(self, start, end, type):
+        self.xml_position = start
+        self.end_xml_position = end
+        self.type = type #crescendo or diminuendo
+        self.overlapped = 0
 
 def extract_directions_by_keywords(directions, keywords):
     sub_directions =[]
@@ -144,12 +149,6 @@ def get_dynamics(directions):
     relative_dynamics_position = [dyn.xml_position for dyn in relative_dynamics]
     cresc_name = ['crescendo', 'diminuendo']
     cresciuto_list = []
-    class Cresciuto:
-        def __init__(self, start, end, type):
-            self.xml_position = start
-            self.end_xml_position = end
-            self.type = type #crescendo or diminuendo
-            self.overlapped = 0
     num_relative = len(relative_dynamics)
     for i in range(num_relative):
         rel = relative_dynamics[i]
