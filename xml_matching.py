@@ -33,36 +33,6 @@ TEM_EMB_TAB = dir_enc.define_tempo_embedding_table()
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
 
-class PerformData:
-    def __init__(self, midi_path, meta):
-        self.midi_path = midi_path
-        self.midi = midi_utils.to_midi_zero(self.midi_path)
-        self.midi = midi_utils.add_pedal_inf_to_notes(self.midi)
-        self.midi_notes = self.midi.instruments[0].notes
-        self.corresp_path = os.path.splitext(self.midi_path)[0] + '_infer_corresp.txt'
-        self.corresp = matching.read_corresp(self.corresp_path)
-        self.perform_features = []
-        self.match_between_xml_perf = None
-        self.pairs = None
-
-        self.num_matched_notes = 0
-        self.num_unmatched_notes = 0
-        self.tempos = []
-
-        self.meta = meta
-
-    def _count_matched_notes(self):
-        self.num_matched_notes = 0
-        self.num_unmatched_notes = 0
-        for pair in self.pairs:
-            if pair == []:
-                self.num_unmatched_notes += 1
-            else:
-                self.num_matched_notes += 1
-        print(
-            'Number of Matched Notes: ' + str(self.num_matched_notes) + ', unmatched notes: ' + str(self.num_unmatched_notes))
-
-
 class NoteExtractorState:
     def __init__(self):
         self.cur_note = None
