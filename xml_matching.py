@@ -241,69 +241,6 @@ class PieceData:
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
 
-    def _extract_score_features(self):
-        xml_length = len(self.xml_notes)
-        # melody_notes = extract_melody_only_from_notes(xml_notes)
-        features = []
-
-        self.qpm_primo = self.xml_notes[0].state_fixed.qpm
-        tempo_primo_word = dir_enc.direction_words_flatten(self.xml_notes[0].tempo)
-        if tempo_primo_word:
-            self.tempo_primo = dir_enc.dynamic_embedding(tempo_primo_word, TEM_EMB_TAB, 5)
-            self.tempo_primo = self.tempo_primo[0:2]
-        else:
-            self.tempo_primo = [0, 0]
-
-        total_length = cal_total_xml_length(self.xml_notes)
-
-        for i in range(xml_length):
-            note = self.xml_notes[i]
-            feature = MusicFeature()
-            note_position = note.note_duration.xml_position
-            measure_index = note.measure_number - 1
-            # measure_index = binary_index(self.measure_positions, note_position)
-
-            feature.note_location.measure = measure_index
-            feature.note_location.beat = binary_index(self.beat_positions, note.note_duration.xml_position)
-            feature.note_location.voice = note.voice
-            feature.note_location.section = binary_index(self.section_positions, note_position)
-
-            if measure_index + 1 < len(self.measure_positions):
-                measure_length = self.measure_positions[measure_index + 1] - self.measure_positions[measure_index]
-                # measure_sec_length = measure_seocnds[measure_index+1] - measure_seocnds[measure_index]
-            else:
-                measure_length = self.measure_positions[measure_index] - self.measure_positions[measure_index - 1]
-                # measure_sec_length = measure_seocnds[measure_index] - measure_seocnds[measure_index-1]
-            feature.midi_pitch = note.pitch[1]
-            feature.pitch = pitch_into_vector(note.pitch[1])
-            feature.duration = note.note_duration.duration / note.state_fixed.divisions
-
-            beat_position = (note_position - self.measure_positions[measure_index]) / measure_length
-            feature.beat_importance = cal_beat_importance(beat_position, note.tempo.time_numerator)
-            feature.measure_length = measure_length / note.state_fixed.divisions
-            feature.xml_position = note.note_duration.xml_position / total_length
-
-            feature._update_score_features_from_note(note)
-            feature._update_tempo_dynamics(note)
-            self.crescendo_to_continuous_value(note, feature)
-            features.append(feature)
-
-        self.score_features = features
-        self.score_features = make_index_continuous(self.score_features, score=False)
-
-    def crescendo_to_continuous_value(self, note, feature):
-        cresc_words = ['cresc', 'decresc', 'dim']
-        if feature.dynamic[1] != 0:
-            for rel in note.dynamic.relative:
-                for word in cresc_words:
-                    if word in rel.type['type'] or word in rel.type['content']:
-                        rel_length = rel.end_xml_position - rel.xml_position
-                        if rel_length == float("inf") or rel_length == 0:
-                            rel_length = note.state_fixed.divisions * 10
-                        ratio = (note.note_duration.xml_position - rel.xml_position) / rel_length
-                        feature.dynamic[1] *= (ratio + 0.05)
-                        break
-
     def _extract_all_perform_features(self):
         for perf in self.performances:
             perf.perform_features = self.extract_perform_features(perf)
@@ -457,17 +394,6 @@ class PieceData:
                 perform.perform_features[prev_idx].attack_deviation = previous_onset_timings[j] - avg_onset_time
 
     def _get_tempo_fluctuation(self, perform):
-        # prev_tempo = perform.tempos[0].qpm
-        # tempo_diff = 0
-        # for tempo in perform.tempos:
-        #     tempo_diff += abs(tempo.qpm - prev_tempo)
-        #     prev_tempo = tempo.qpm
-        #
-        # tempo_diff /= len(perform.tempos) - 1
-        #
-        # # This is a trick to save average tempo diff as a note-level feature
-        # for feature in perform.perform_features:
-        #     feature.tempo_fluctuation = tempo_diff
         perform.perform_features[0].tempo_fluctuation = None
         for i in range(1, len(perform.perform_features)):
             prev_qpm = perform.perform_features[i-1].qpm
@@ -476,7 +402,6 @@ class PieceData:
                 perform.perform_features[i].tempo_fluctuation = None
             else:
                 perform.perform_features[i].tempo_fluctuation = abs(curr_qpm - prev_qpm)
-
 
     def _get_abs_deviation(self, perform):
         for feature in perform.perform_features:
@@ -574,6 +499,7 @@ class PieceMeta:
             shutil.move('score_spr.txt', os.path.join(ALIGN_DIR, '_score_spr.txt'))
             os.chdir(current_dir)
 
+
 class PerformData:
     def __init__(self, midi_path, meta):
         self.midi_path = midi_path
@@ -603,6 +529,157 @@ class PerformData:
         print(
             'Number of Matched Notes: ' + str(self.num_matched_notes) + ', unmatched notes: ' + str(self.num_unmatched_notes))
 
+
+class NoteExtractorState:
+    def __init__(self):
+        self.cur_note = None
+        self.cur_position = None
+        self.cur_idx = None
+
+    def _update_position(self, note, idx):
+        self.cur_note = note
+        self.cur_position = self.cur_note.note_duration.xml_position
+        self.cur_idx = idx
+
+
+class ScoreExtractor:
+    def __init__(self, feature_keys):
+        self.state = NoteExtractorState()
+        self.selected_feature_keys = feature_keys
+
+    def _update_global_feature(self, piece_data):
+        self.beat_positions = piece_data.beat_positions
+        self.measure_positions = piece_data.measure_positions4#
+
+    def extract_and_update_score_features(self, piece_data):
+        features = []
+
+        piece_data.qpm_primo = piece_data.xml_notes[0].state_fixed.qpm
+        tempo_primo_word = dir_enc.direction_words_flatten(piece_data.xml_notes[0].tempo)
+        if tempo_primo_word:
+            piece_data.tempo_primo = dir_enc.dynamic_embedding(tempo_primo_word, TEM_EMB_TAB, 5)
+            piece_data.tempo_primo = piece_data.tempo_primo[0:2]
+        else:
+            piece_data.tempo_primo = [0, 0]
+
+        total_length = cal_total_xml_length(piece_data.xml_notes)
+
+        for i, note in enumerate(piece_data.xml_notes):
+            feature = {}
+            self.state._update_position(note, i)
+            feature['note_location'] = self.get_note_location(piece_data)
+            measure_index = note.measure_number - 1
+            note_position = note.note_duration.xml_position
+
+            if measure_index + 1 < len(piece_data.measure_positions):
+                measure_length = piece_data.measure_positions[measure_index + 1] - piece_data.measure_positions[measure_index]
+                # measure_sec_length = measure_seocnds[measure_index+1] - measure_seocnds[measure_index]
+            else:
+                measure_length = piece_data.measure_positions[measure_index] - piece_data.measure_positions[measure_index - 1]
+                # measure_sec_length = measure_seocnds[measure_index] - measure_seocnds[measure_index-1]
+            feature.midi_pitch = note.pitch[1]
+            feature.pitch = pitch_into_vector(note.pitch[1])
+            feature.duration = note.note_duration.duration / note.state_fixed.divisions
+
+            beat_position = (note_position - piece_data.measure_positions[measure_index]) / measure_length
+            feature.beat_importance = cal_beat_importance(beat_position, note.tempo.time_numerator)
+            feature.measure_length = measure_length / note.state_fixed.divisions
+            feature.xml_position = note.note_duration.xml_position / total_length
+
+            feature._update_score_features_from_note(note)
+            feature._update_tempo_dynamics(note)
+            self.crescendo_to_continuous_value(note, feature)
+
+            for key in self.selected_feature_keys:
+                feature[key] = getattr(self, 'get_' + key)()
+
+            features.append(feature)
+
+        ###
+        features = make_index_continuous(features, score=False)
+
+        return features
+
+    def crescendo_to_continuous_value(self, note, feature):
+        cresc_words = ['cresc', 'decresc', 'dim']
+        if feature.dynamic[1] != 0:
+            for rel in note.dynamic.relative:
+                for word in cresc_words:
+                    if word in rel.type['type'] or word in rel.type['content']:
+                        rel_length = rel.end_xml_position - rel.xml_position
+                        if rel_length == float("inf") or rel_length == 0:
+                            rel_length = note.state_fixed.divisions * 10
+                        ratio = (note.note_duration.xml_position - rel.xml_position) / rel_length
+                        feature.dynamic[1] *= (ratio + 0.05)
+                        break
+
+    def get_note_location(self, piece_data):
+        note = self.state.cur_note
+        measure_index = note.measure_number - 1
+
+        return NoteLocation(NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+                                                    measure = measure_index,
+                                                    voice = note.voice,
+                                                    section =  binary_index(piece_data.section_positions, note.note_duration.xml_position)))
+
+    def get_midi_pitch(self):
+        return self.state.cur_note.pitch[1]
+
+    def get_pitch_vector(self):
+        pitch = self.state.cur_note.pitch[1]
+        pitch_vec = [0] * 13  # octave + pitch class
+        octave = (pitch // 12) - 1
+        octave = (octave - 4) / 4  # normalization
+        pitch_class = pitch % 12
+
+        pitch_vec[0] = octave
+        pitch_vec[pitch_class + 1] = 1
+
+        return pitch_vec
+
+    def get_duration(self):
+        return self.state.cur_note.note_duration.duration / state.cur_note.state_fixed.divisions
+
+    def get_beat_importance(self):
+        beat_position = (note_position - piece_data.measure_positions[measure_index]) / measure_length
+        numerator = self.state.cur_note.tempo.time_numerator
+        if beat_position == 0:
+            beat_importance = 4
+        elif beat_position == 0.5 and numerator in [2, 4, 6, 12]:
+            beat_importance = 3
+        elif abs(beat_position - (1 / 3)) < 0.001 and numerator in [3, 9]:
+            beat_importance = 2
+        elif (beat_position * 4) % 1 == 0 and numerator in [2, 4]:
+            beat_importance = 1
+        elif (beat_position * 5) % 1 == 0 and numerator in [5]:
+            beat_importance = 2
+        elif (beat_position * 6) % 1 == 0 and numerator in [3, 6, 12]:
+            beat_importance = 1
+        elif (beat_position * 8) % 1 == 0 and numerator in [2, 4]:
+            beat_importance = 0.5
+        elif (beat_position * 9) % 1 == 0 and numerator in [9]:
+            beat_importance = 1
+        elif (beat_position * 12) % 1 == 0 and numerator in [3, 6, 12]:
+            beat_importance = 0.5
+        elif numerator == 7:
+            if abs((beat_position * 7) - 2) < 0.001:
+                beat_importance = 2
+            elif abs((beat_position * 5) - 2) < 0.001:
+                beat_importance = 2
+            else:
+                beat_importance = 0
+        else:
+            beat_importance = 0
+        return beat_importance
+
+
+class NoteLocation:
+    def __init__(self, beat, measure, voice, onset, section):
+        self.beat = beat
+        self.measure = measure
+        self.voice = voice
+        self.onset = onset
+        self.section = section
 
 class MusicFeature:
     def __init__(self):
@@ -669,14 +746,6 @@ class MusicFeature:
         self.midi_start = None
         self.passed_second = None
         self.duration_second = None
-
-    class NoteLocation:
-        def __init__(self, beat, measure, voice, onset, section):
-            self.beat = beat
-            self.measure = measure
-            self.voice = voice
-            self.onset = onset
-            self.section = section
 
     def _update_score_features_from_note(self, note):
         self.grace_order = note.note_duration.grace_order
@@ -1022,7 +1091,6 @@ def extract_melody_only_from_notes(xml_notes):
     melody_notes = MusicXMLDocument.delete_chord_notes_for_melody(MusicXMLDocument, melody_notes=melody_notes)
 
     return melody_notes
-
 
 def calculate_IOI_articulation(pairs, index, total_length):
     margin = len(pairs) - index
@@ -1503,135 +1571,6 @@ def binary_index_for_edge(alist, item):
     return last
 
 
-
-def applyIOI(xml_notes, midi_notes, features, feature_list):
-    IOIratio = feature_list[0]
-    articulation = feature_list[1]
-    loudness = feature_list[2]
-    # time_deviation = feature_list[3]
-
-    #len(features) always equal to len(xml_notes) by its definition
-    xml_ioi_ratio_pairs = []
-    ioi_index =0
-    if not len(xml_notes) == len(IOIratio):
-        for i in range(len(features)):
-            if not features[i]['IOI_ratio'] == None:
-                # [xml_position, time_position, ioi_ratio]
-                temp_pair = {'xml_pos': xml_notes[i].note_duration.xml_position, 'midi_pos' : xml_notes[i].note_duration.time_position, 'ioi': IOIratio[ioi_index]}
-                xml_ioi_ratio_pairs.append(temp_pair)
-                ioi_index += 1
-        if not ioi_index  == len(IOIratio):
-            print('check ioi_index', ioi_index)
-    else:
-        for i in range(len(xml_notes)):
-            note = xml_notes[i]
-            temp_pair = {'xml_pos': note.note_duration.xml_position, 'midi_pos' : note.note_duration.time_position, 'ioi': IOIratio[i]}
-            xml_ioi_ratio_pairs.append(temp_pair)
-
-    default_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
-    default_velocity = 64
-
-    # in case the xml_position of first note is not 0
-    current_sec = (xml_ioi_ratio_pairs[0]['xml_pos'] - 0) / default_tempo
-    tempo_mapping_list = [ [xml_ioi_ratio_pairs[0]['midi_pos'] ] , [current_sec]]
-    for i in range(len(xml_ioi_ratio_pairs)-1):
-        pair = xml_ioi_ratio_pairs[i]
-        next_pair = xml_ioi_ratio_pairs[i+1]
-        note_length = next_pair['xml_pos'] - pair['xml_pos']
-        tempo_ratio =  1/ (10 ** pair['ioi'])
-        tempo = default_tempo * tempo_ratio
-        note_length_second = note_length / tempo
-        next_sec = current_sec + note_length_second
-        current_sec = next_sec
-        tempo_mapping_list[0].append( next_pair['midi_pos'] )
-        tempo_mapping_list[1].append( current_sec )
-
-    for note in midi_notes:
-        note = make_new_note(note, tempo_mapping_list[0], tempo_mapping_list[1], articulation, loudness, default_velocity)
-    return midi_notes
-
-# def apply_perform_features(xml_notes, features):
-#     melody_notes = extract_melody_only_from_notes(xml_notes)
-#     default_tempo = xml_notes[0].state_fixed.qpm / 60 * xml_notes[0].state_fixed.divisions
-#     previous_ioi = 0
-#     current_sec = 0
-#     between_notes = find_notes_between_melody_notes(xml_notes, melody_notes)
-#     num_melody_notes = len(melody_notes)
-#     prev_vel = 64
-#
-#     for i in range(num_melody_notes):
-#         note = melody_notes[i]
-#         xml_index = xml_notes.index(note)
-#         if features[xml_index]['IOI_ratio'] == None:
-#             ioi = previous_ioi
-#         else:
-#             ioi = features[xml_index]['IOI_ratio']
-#         tempo_ratio = 1 / (10 ** ioi)
-#         tempo = default_tempo * tempo_ratio
-#
-#         note.note_duration.time_position = current_sec
-#         note.note_duration.seconds = note.note_duration.duration / tempo
-#
-#         note, prev_vel = apply_feat_to_a_note(note, features[xml_index], prev_vel)
-#
-#         num_between_notes = len(between_notes[i])
-#         # for j in range(-1, -num_between_notes+1, -1):
-#         for j in range(num_between_notes):
-#             betw_note = between_notes[i][j]
-#             betw_index = xml_notes.index(betw_note)
-#
-#             if not features[betw_index]['xml_deviation'] == None:
-#                 dur = betw_note.note_duration.duration
-#                 if betw_note.note_duration.is_grace_note:
-#                     dur = betw_note.following_note.note_duration.duration
-#                 betw_note.note_duration.xml_position += features[betw_index]['xml_deviation'] * dur
-#
-#             passed_duration = betw_note.note_duration.xml_position - note.note_duration.xml_position
-#             passed_second = passed_duration / tempo
-#             betw_note.note_duration.time_position = current_sec + passed_second
-#             # betw_note.note_duration.seconds = betw_note.note_duration.duration / tempo
-#
-#             betw_note, prev_vel = apply_feat_to_a_note(betw_note, features[betw_index], prev_vel)
-#         for j in range(num_between_notes):
-#             betw_note = between_notes[i][j]
-#             if betw_note.note_duration.is_grace_note:
-#                 betw_note.note_duration.seconds = (betw_note.following_note.note_duration.time_position
-#                                                    - betw_note.note_duration.time_position)\
-#                                                   * betw_note.note_duration.grace_order
-#         if not i == num_melody_notes-1:
-#             duration_to_next = melody_notes[i + 1].note_duration.xml_position - melody_notes[i].note_duration.xml_position  # there can be a rest
-#             second_to_next_note = duration_to_next / tempo
-#             next_sec = current_sec + second_to_next_note
-#             current_sec = next_sec
-#
-#     # after the new time_position of melody notes are fixed, calculate offset of btw notes
-#     xml_time_pairs = {'beat': [note.note_duration.xml_position for note in melody_notes],
-#                       'time': [note.note_duration.time_position for note in melody_notes]}
-#     for i in range(num_melody_notes):
-#         num_between_notes = len(between_notes[i])
-#         for j in range(num_between_notes):
-#             betw_note = between_notes[i][j]
-#             if betw_note.note_duration.is_grace_note:
-#                 continue
-#             note_offset_beat = betw_note.note_duration.xml_position + betw_note.note_duration.duration
-#             offset_index = binaryIndex(xml_time_pairs['beat'], note_offset_beat)
-#
-#             while offset_index + 1 >= num_melody_notes:
-#                 offset_index += -1
-#             tempo = (xml_time_pairs['beat'][offset_index+1] - xml_time_pairs['beat'][offset_index]) \
-#                     / (xml_time_pairs['time'][offset_index+1] - xml_time_pairs['time'][offset_index])
-#
-#             exceed_beat = note_offset_beat - xml_time_pairs['beat'][offset_index]
-#             if not math.isinf(tempo):
-#                 offset_time = xml_time_pairs['time'][offset_index] + exceed_beat / tempo
-#             else:
-#                 offset_time = xml_time_pairs['time'][offset_index]
-#
-#             betw_note.note_duration.seconds = max(offset_time - betw_note.note_duration.time_position, 0.05)
-#
-#     return xml_notes
-
-
 def model_prediction_to_feature(prediction):
     output_features = []
     num_notes = len(prediction)
@@ -1670,7 +1609,6 @@ def add_note_location_to_features(features, note_locations):
         feat.note_location.beat = loc.beat
         feat.note_location.measure = loc.measure
     return features
-
 
 
 def apply_tempo_perform_features(xml_doc, xml_notes, features, start_time=0, predicted=False):
