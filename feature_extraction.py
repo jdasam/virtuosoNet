@@ -1,5 +1,5 @@
 from . import xml_direction_encoding as dir_enc
-from . import xml_utils
+from . import xml_utils, utils
 
 class NoteExtractorState:
     def __init__(self):
@@ -89,10 +89,10 @@ class ScoreExtractor:
         note = self.state.cur_note
         measure_index = note.measure_number - 1
 
-        return NoteLocation(NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+        return NoteLocation(NoteLocation(beat=utils.binary_index(piece_data.beat_positions, note.note_duration.xml_position),
                                                     measure = measure_index,
                                                     voice = note.voice,
-                                                    section =  binary_index(piece_data.section_positions, note.note_duration.xml_position)))
+                                                    section = utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
 
     def get_midi_pitch(self):
         return self.state.cur_note.pitch[1]
