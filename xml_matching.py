@@ -1991,31 +1991,9 @@ def get_measure_accidentals(xml_notes, index):
                         break
     return measure_accidentals
 
-
-def make_index_continuous(features, score=False):
-    # TODO: what's the role?
-    prev_beat = 0
-    prev_measure = 0
-
-    beat_compensate = 0
-    measure_compensate = 0
-
-    for feat in features:
-        if feat.qpm is not None or score:
-            if feat.note_location.beat - prev_beat > 1:
-                beat_compensate -= (feat.note_location.beat - prev_beat) -1
-            if feat.note_location.measure - prev_measure > 1:
-                measure_compensate -= (feat.note_location.measure - prev_measure) -1
-
-            prev_beat = feat.note_location.beat
-            prev_measure = feat.note_location.measure
-
-            feat.note_location.beat += beat_compensate
-            feat.note_location.measure += measure_compensate
-        else:
-            continue
-    return features
-
+'''
+make_index_continous -> feature_extraciton.py
+'''
 
 def check_index_continuity(features):
     prev_beat = 0
