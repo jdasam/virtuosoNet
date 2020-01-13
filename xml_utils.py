@@ -195,3 +195,17 @@ def divide_cresc_staff(note):
             del note.dynamic.relative[i]
 
     return note
+
+def cal_total_xml_length(xml_notes):
+    latest_end = 0
+    latest_start =0
+    xml_len = len(xml_notes)
+    for i in range(1,xml_len):
+        note = xml_notes[-i]
+        current_end = note.note_duration.xml_position + note.note_duration.duration
+        if current_end > latest_end:
+            latest_end = current_end
+            latest_start = note.note_duration.xml_position
+        elif current_end < latest_start - note.note_duration.duration * 4:
+            break
+    return latest_end
