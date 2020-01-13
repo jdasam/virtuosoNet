@@ -564,6 +564,12 @@ class ScoreExtractor:
 
         total_length = cal_total_xml_length(piece_data.xml_notes)
 
+
+        feature = dict()
+        feature['note_location']
+
+
+
         for i, note in enumerate(piece_data.xml_notes):
             feature = {}
             
@@ -615,23 +621,15 @@ class ScoreExtractor:
 
     def get_note_location(self, piece_data):
         # TODO: need check up
-        class _NoteLocation:
-            def __init__(self, beat, measure, voice, section):
-                self.beat = beat
-                self.measure = measure
-                self.voice = voice
-                self.section = section
+
         locations = []
-        state = NoteExtractorState()
         for i, note in enumerate(piece_data.xml_notes):
-            state._update_position(note, i)
-            note = state.cur_note
             measure_index = note.measure_number - 1
             locations.append(
-                _NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
-                              measure = measure_index,
-                              voice = note.voice,
-                              section = binary_index(piece_data.section_positions, note.note_duration.xml_position)))
+                NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+                             measure = measure_index,
+                             voice = note.voice,
+                             section = binary_index(piece_data.section_positions, note.note_duration.xml_position)))
         return locations
 
 
@@ -685,6 +683,12 @@ class ScoreExtractor:
             beat_importance = 0
         return beat_importance
 
+class NoteLocation:
+    def __init__(self, beat, measure, voice, section):
+        self.beat = beat
+        self.measure = measure
+        self.voice = voice
+        self.section = section
 
 class MusicFeature:
     def __init__(self):
