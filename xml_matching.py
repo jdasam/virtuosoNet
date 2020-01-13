@@ -631,10 +631,10 @@ class ScoreExtractor:
                 _NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
                               measure = measure_index,
                               voice = note.voice,
-                              section = binary_index(piece_data.section_positions, note.note_duration.xml_position))
+                              section = binary_index(piece_data.section_positions, note.note_duration.xml_position)))
         return locations
 
-        
+
     def get_midi_pitch(self):
         return self.state.cur_note.pitch[1]
 
