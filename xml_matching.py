@@ -33,19 +33,6 @@ TEM_EMB_TAB = dir_enc.define_tempo_embedding_table()
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
 
-
-
-
-
-
-class NoteLocation:
-    def __init__(self, beat, measure, voice, onset, section):
-        self.beat = beat
-        self.measure = measure
-        self.voice = voice
-        self.onset = onset
-        self.section = section
-
 class MusicFeature:
     def __init__(self):
         self.midi_pitch = None
@@ -111,41 +98,6 @@ class MusicFeature:
         self.midi_start = None
         self.passed_second = None
         self.duration_second = None
-
-    def _update_score_features_from_note(self, note):
-        self.grace_order = note.note_duration.grace_order
-        self.is_grace_note = int(note.note_duration.is_grace_note)
-        self.preceded_by_grace_note = int(note.note_duration.preceded_by_grace_note)
-
-        self.time_sig_vec = time_signature_to_vector(note.tempo.time_signature)
-        self.following_rest = note.following_rest_duration / note.state_fixed.divisions
-        self.followed_by_fermata_rest = int(note.followed_by_fermata_rest)
-        self.notation = note_notation_to_vector(note)
-
-        self.slur_beam_vec = [int(note.note_notations.is_slur_start),
-                                 int(note.note_notations.is_slur_continue),
-                                 int(note.note_notations.is_slur_stop), int(note.note_notations.is_beam_start),
-                                 int(note.note_notations.is_beam_continue),
-                                 int(note.note_notations.is_beam_stop)]
-
-    def _update_tempo_dynamics(self, note):
-        dynamic_words = dir_enc.direction_words_flatten(note.dynamic)
-        tempo_words = dir_enc.direction_words_flatten(note.tempo)
-
-        self.dynamic = dir_enc.dynamic_embedding(dynamic_words, DYN_EMB_TAB, len_vec=4)
-
-        if note.dynamic.cresciuto:
-            self.cresciuto = (note.dynamic.cresciuto.overlapped + 1) / 2
-            if note.dynamic.cresciuto.type == 'diminuendo':
-                self.cresciuto *= -1
-        else:
-            self.cresciuto = 0
-        self.dynamic.append(self.cresciuto)
-        self.tempo = dir_enc.dynamic_embedding(tempo_words, TEM_EMB_TAB, len_vec=5)
-        self.distance_from_abs_dynamic = (note.note_duration.xml_position
-                                          - note.dynamic.absolute_position) / note.state_fixed.divisions
-        self.distance_from_recent_tempo = (note.note_duration.xml_position
-                                              - note.tempo.recently_changed_position) / note.state_fixed.divisions
 
 
 def cal_tempo_by_positions(beats, position_pairs):
@@ -1495,63 +1447,13 @@ moved apply_directions_to_notes to xml_utils.py
 moved divide_cresc_staff to xml_utils.py
 '''
 
+'''
+note_notation_to_vector -> feature_extraction.py
+'''
 
-
-def note_notation_to_vector(note):
-    # trill, tenuto, accent, staccato, fermata
-    keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata', 'is_arpeggiate', 'is_strong_accent', 'is_cue', 'is_slash']
-    # keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata']
-
-    notation_vec = [0] * len(keywords)
-
-    for i in range(len(keywords)):
-        key = keywords[i]
-        if getattr(note.note_notations, key) == True:
-            notation_vec[i] = 1
-
-    return notation_vec
-
-
-def time_signature_to_vector(time_signature):
-    numerator = time_signature.numerator
-    denominator = time_signature.denominator
-
-    denominator_list = [2,4,8,16]
-    numerator_vec = [0] * 5
-    denominator_vec = [0] * 4
-
-    if denominator ==32:
-        denominator_vec[-1] = 1
-    else:
-        denominator_type = denominator_list.index(denominator)
-        denominator_vec[denominator_type] = 1
-
-    if numerator == 2:
-        numerator_vec[0] = 1
-    elif numerator == 3:
-        numerator_vec[1] = 1
-    elif numerator == 4:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-    elif numerator == 6:
-        numerator_vec[0] = 1
-        numerator_vec[3] = 1
-    elif numerator == 9:
-        numerator_vec[1] = 1
-        numerator_vec[3] = 1
-    elif numerator == 12:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-        numerator_vec[3] = 1
-    elif numerator == 24:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-        numerator_vec[3] = 1
-    else:
-        print('Unclassified numerator: ', numerator)
-        numerator_vec[4] = 1
-
-    return numerator_vec + denominator_vec
+'''
+time_signature_to_vector -> feature_extraction.py
+'''
 
 '''
 moved xml_notes_to_midi to xml_utils.py
@@ -2089,30 +1991,9 @@ def get_measure_accidentals(xml_notes, index):
                         break
     return measure_accidentals
 
-
-def make_index_continuous(features, score=False):
-    prev_beat = 0
-    prev_measure = 0
-
-    beat_compensate = 0
-    measure_compensate = 0
-
-    for feat in features:
-        if feat.qpm is not None or score:
-            if feat.note_location.beat - prev_beat > 1:
-                beat_compensate -= (feat.note_location.beat - prev_beat) -1
-            if feat.note_location.measure - prev_measure > 1:
-                measure_compensate -= (feat.note_location.measure - prev_measure) -1
-
-            prev_beat = feat.note_location.beat
-            prev_measure = feat.note_location.measure
-
-            feat.note_location.beat += beat_compensate
-            feat.note_location.measure += measure_compensate
-        else:
-            continue
-    return features
-
+'''
+make_index_continous -> feature_extraciton.py
+'''
 
 def check_index_continuity(features):
     prev_beat = 0
