@@ -566,7 +566,7 @@ class ScoreExtractor:
 
         for i, note in enumerate(piece_data.xml_notes):
             feature = {}
-            self.state._update_position(note, i)
+            
             feature['note_location'] = self.get_note_location(piece_data)
             measure_index = note.measure_number - 1
             note_position = note.note_duration.xml_position
@@ -614,14 +614,27 @@ class ScoreExtractor:
                         break
 
     def get_note_location(self, piece_data):
-        note = self.state.cur_note
-        measure_index = note.measure_number - 1
+        # TODO: need check up
+        class _NoteLocation:
+            def __init__(self, beat, measure, voice, section):
+                self.beat = beat
+                self.measure = measure
+                self.voice = voice
+                self.section = section
+        locations = []
+        state = NoteExtractorState()
+        for i, note in enumerate(piece_data.xml_notes):
+            state._update_position(note, i)
+            note = state.cur_note
+            measure_index = note.measure_number - 1
+            locations.append(
+                _NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+                              measure = measure_index,
+                              voice = note.voice,
+                              section = binary_index(piece_data.section_positions, note.note_duration.xml_position))
+        return locations
 
-        return NoteLocation(NoteLocation(beat=binary_index(piece_data.beat_positions, note.note_duration.xml_position),
-                                                    measure = measure_index,
-                                                    voice = note.voice,
-                                                    section =  binary_index(piece_data.section_positions, note.note_duration.xml_position)))
-
+        
     def get_midi_pitch(self):
         return self.state.cur_note.pitch[1]
 
@@ -672,14 +685,6 @@ class ScoreExtractor:
             beat_importance = 0
         return beat_importance
 
-
-class NoteLocation:
-    def __init__(self, beat, measure, voice, onset, section):
-        self.beat = beat
-        self.measure = measure
-        self.voice = voice
-        self.onset = onset
-        self.section = section
 
 class MusicFeature:
     def __init__(self):
