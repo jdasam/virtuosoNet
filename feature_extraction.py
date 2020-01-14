@@ -6,10 +6,12 @@ class ScoreExtractor:
     def __init__(self, feature_keys):
         self.selected_feature_keys = feature_keys
 
+    '''
     def _update_global_feature(self, piece_data):
         self.beat_positions = piece_data.beat_positions
         self.measure_positions = piece_data.measure_positions
-
+    '''
+    
     def extract_and_update_score_features(self, piece_data):
         def _get_beat_position(piece_data):
             beat_positions = []
