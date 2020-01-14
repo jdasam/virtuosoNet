@@ -12,8 +12,17 @@ from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
 from . import score_as_graph as score_graph, xml_midi_matching as matching
 from . import xml_utils
+from . import feature_extraction
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
+DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
+                       'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
+                       'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
+                       'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
+                       'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
+DEFAULT_PERFORM_FEAUTRES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
+                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal'
+                                'pedal_refresh', 'pedal_cut', 'qpm_primo']
 
 # total data class
 class DataSet:
@@ -49,19 +58,21 @@ class DataSet:
 
         self.num_performances = len(self.performances)
 
-    # want to extract features by using feature_extractin.py
-    '''
     def _extract_all_features(self):
+        score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
+        perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
         for piece in self.pieces:
-            piece._extract_score_features()
-            piece._extract_all_perform_features()
+            piece.score_features = score_extractor.extract_score_features(piece)
+            for perform in piece.performances:
+                perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
+
 
     def _extract_selected_features(self, target_features):
         for piece in self.pieces:
             for perform in piece.performances:
                 for feature_name in target_features:
                     getattr(piece, '_get_'+ feature_name)(perform)
-    '''
+
     def _sort_performances(self):
         self.performances.sort(key=lambda x:x.midi_path)
         for tag in self.performs_by_tag:
