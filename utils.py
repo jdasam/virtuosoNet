@@ -27,3 +27,29 @@ def binary_index(alist, item):
                     return midpoint
             return midpoint
     return last
+
+
+def get_item_by_xml_position(alist, item):
+    if hasattr(item, 'xml_position'):
+        item_pos = item.xml_position
+    elif hasattr(item, 'note_duration'):
+        item_pos = item.note_duration.xml_position
+    elif hasattr(item, 'start_xml_position'):
+        item_pos = item.start.xml_position
+    else:
+        item_pos = item
+
+    repre = alist[0]
+
+    if hasattr(repre, 'xml_position'):
+        pos_list = [x.xml_position for x in alist]
+    elif hasattr(repre, 'note_duration'):
+        pos_list = [x.note_duration.xml_position for x in alist]
+    elif hasattr(item, 'start_xml_position'):
+        pos_list = [x.start_xml_position for x in alist]
+    else:
+        pos_list = alist
+
+    index = binary_index(pos_list, item_pos)
+
+    return alist[index]
