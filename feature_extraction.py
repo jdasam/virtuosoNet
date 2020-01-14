@@ -54,6 +54,7 @@ class ScoreExtractor:
 
         def _get_cresciuto(piece_data):
             # TODO: what is this?
+            # This function converts cresciuto class information into single numeric value
             cresciutos = []
             for note in piece_data.xml_notes:
                 if note.dynamic.cresciuto:
@@ -131,6 +132,7 @@ class ScoreExtractor:
 
         features['cresciuto'] = _get_cresciuto(piece_data)
         # TODO: maybe its redundant?
+        # Cresciuto should be concatenated with dynamic vector (features['dynamic'])
         # self.dynamic.append(self.cresciuto)
 
         features['distance_from_abs_dynamic'] = \
@@ -222,6 +224,7 @@ def pitch_into_vector(pitch):
 
     return pitch_vec
 
+
 def time_signature_to_vector(time_signature):
     numerator = time_signature.numerator
     denominator = time_signature.denominator
@@ -281,7 +284,10 @@ def note_notation_to_vector(note):
 
 
 def make_index_continuous(features, score=False):
-    # TODO: what's the role?
+    # Sometimes a beat or a measure can contain no notes at all.
+    # In this case, the sequence of beat index or measure indices of notes are not continuous,
+    # e.g. 0, 0, 0, 0, 1, 1, 1, 1, 4, 4, 4, 4 ...
+    # This function ommits the beat or measure without any notes so that entire sequence of indices become continuous
     prev_beat = 0
     prev_measure = 0
 
