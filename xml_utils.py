@@ -25,7 +25,9 @@ def xml_notes_to_midi(xml_notes):
 
     return midi_notes, midi_pedals
 
+
 def find_tempo_change(xml_notes):
+    # TODO: This function may be simplified if it takes xml_obj or directions as the input
     tempo_change_positions = []
     previous_abs_tempo = None
     previous_rel_tempo = None
@@ -39,6 +41,7 @@ def find_tempo_change(xml_notes):
 
     tempo_change_positions.append(xml_notes[-1].note_duration.xml_position+0.1)
     return tempo_change_positions
+
 
 '''
 want to move to midi_utils
