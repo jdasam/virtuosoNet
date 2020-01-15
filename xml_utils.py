@@ -27,7 +27,7 @@ def xml_notes_to_midi(xml_notes):
 
 
 def find_tempo_change(xml_notes):
-    # TODO: This function may be simplified if it takes xml_obj or directions as the input
+    # TODO: This function can be simplified if it takes xml_obj or directions as the input
     tempo_change_positions = []
     previous_abs_tempo = None
     previous_rel_tempo = None

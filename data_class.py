@@ -22,7 +22,7 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                        'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
 DEFAULT_PERFORM_FEAUTRES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                                 'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal'
-                                'pedal_refresh', 'pedal_cut', 'qpm_primo']
+                                'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
 # total data class
 class DataSet:
