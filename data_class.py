@@ -7,6 +7,7 @@ import pandas
 import math
 import ntpath
 import shutil
+import copy
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
@@ -191,6 +192,7 @@ class PieceData:
 
         self.meta._load_list_of_performances()
         self.meta._check_perf_align()
+        self.meta._load_composer_name()
 
     def _load_score_xml(self):
         self.xml_obj = MusicXMLDocument(self.meta.xml_path)
@@ -303,6 +305,28 @@ class PieceMeta:
             shutil.move('infer_spr.txt', midi_file_path.replace('.mid', '_infer_spr.txt'))
             shutil.move('score_spr.txt', os.path.join(ALIGN_DIR, '_score_spr.txt'))
             os.chdir(current_dir)
+    
+    def _load_composer_name(self):
+        path_split = copy.copy(self.folder_path).split('/')
+
+        if self.data_structure == 'folder':
+            # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
+            if path_split[0] == 'chopin_cleaned':
+                composer_name = path_split[1]
+            else:
+                dataset_folder_name_index = path_split.index('chopin_cleaned')
+                composer_name = path_split[dataset_folder_name_index+1]
+        else:
+            # self.folder_path = '.../emotionDataset/{data_name.mid}'
+            # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
+            dataset_folder_name_index = path_split.index('emotionDataset')
+            data_name = path_split[dataset_folder_name_index+1]
+            composer_name = data_name.split('.')[0]
+        
+        self.composer = composer_name
+
+
+
 
 # performance data class
 class PerformData:
