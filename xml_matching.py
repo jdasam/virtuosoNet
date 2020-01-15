@@ -529,17 +529,9 @@ def pitch_interval_into_vector(pitch_interval):
 
     return vec_itv
 
-
-def pitch_into_vector(pitch):
-    pitch_vec = [0] * 13 #octave + pitch class
-    octave = (pitch // 12) - 1
-    octave = (octave - 4) / 4 # normalization
-    pitch_class = pitch % 12
-
-    pitch_vec[0] = octave
-    pitch_vec[pitch_class+1] = 1
-
-    return pitch_vec
+'''
+pitch_into_vector() -> moved to feature_extraction.py
+'''
 
 
 def calculate_pitch_interval(xml_notes, index):
