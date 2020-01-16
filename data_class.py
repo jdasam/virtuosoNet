@@ -50,7 +50,7 @@ class DataSet:
             self.pieces.append(piece)
         self.num_pieces = len(self.pieces)
 
-    def _load_all_performances(self):
+    def load_all_performances(self):
         for piece in self.pieces:
             piece._load_performances()
             for perf in piece.performances:
@@ -58,7 +58,7 @@ class DataSet:
 
         self.num_performances = len(self.performances)
 
-    def _extract_all_features(self):
+    def extract_all_features(self):
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
         for piece in self.pieces:
@@ -180,6 +180,7 @@ class PieceData:
         self.meta = PieceMeta(xml_path, data_structure)
         self.xml_obj = None
         self.xml_notes = None
+        self.num_notes = 0
         self.performances = []
         self.score_performance_match = []
 
@@ -221,6 +222,7 @@ class PieceData:
         time_signatures = self.xml_obj.get_time_signatures()
 
         self.xml_notes = xml_utils.apply_directions_to_notes(notes, directions, time_signatures)
+        self.num_notes = len(self.xml_notes)
 
     def _match_score_xml_to_midi(self):
         self.score_match_list = matching.match_xml_to_midi(self.xml_notes, self.score_midi_notes)

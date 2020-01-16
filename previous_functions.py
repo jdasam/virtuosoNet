@@ -169,7 +169,7 @@ def extract_score_features(xml_notes, measure_positions, beats=None, qpm_primo=0
 
 def extract_perform_features(xml_doc, xml_notes, pairs, perf_midi, measure_positions):
     beats = xml_doc.get_beat_positions()
-    accidentals_in_words = xml_doc.extract_accidental
+    accidentals_in_words = xml_doc.get_accidentals
     score_features = extract_score_features(xml_notes, measure_positions, beats=beats)
     feat_len = len(score_features)
 
