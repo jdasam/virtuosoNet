@@ -20,7 +20,7 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                        'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                        'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
                        'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
-DEFAULT_PERFORM_FEAUTRES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
+DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                                 'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal'
                                 'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
@@ -65,7 +65,6 @@ class DataSet:
             piece.score_features = score_extractor.extract_score_features(piece)
             for perform in piece.performances:
                 perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
-
 
     def _extract_selected_features(self, target_features):
         for piece in self.pieces:
@@ -217,7 +216,7 @@ class PieceData:
         xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
 
     def _get_direction_encoded_notes(self):
-        notes = self.xml_obj.get_notes()
+        notes, rests = self.xml_obj.get_notes()
         directions = self.xml_obj.get_directions()
         time_signatures = self.xml_obj.get_time_signatures()
 
