@@ -184,110 +184,11 @@ class PerformExtractor:
         self.selected_feature_keys = []
 
     def extract_perform_features(self, piece_data, perform_data):
-        accidentals_in_words = piece_data.xml_obj.extract_accidentals()
-        features = {}
+        perform_data.perform_features = {}
         for feature_key in self.selected_feature_keys:
-            features[feature_key] = getattr(self, 'get_' + feature_key)(piece_data, perform_data)
+            perform_data.perform_features[feature_key] = getattr(self, 'get_' + feature_key)(piece_data, perform_data)
 
-
-
-        prev_articulation = 0
-        prev_vel = 64
-        prev_pedal = 0
-        prev_soft_pedal = 0
-        prev_start = 0
-
-        num_matched_notes = 0
-        num_unmatched_notes = 0
-        perform_features = []
-
-
-        for i in range(feat_len):
-            if tempo.qpm > 0:
-                feature['qpm'] = math.log(tempo.qpm, 10)
-                feature.measure_tempo = math.log(measure_tempo.qpm, 10)
-                feature.section_tempo = math.log(section_tempo.qpm, 10)
-            else:
-                print('Error: qpm is zero')
-            if tempo.qpm > 1000:
-                print('Need Check: qpm is ' + str(tempo.qpm))
-            if tempo.qpm != save_qpm:
-                # feature.previous_tempo = math.log(previous_qpm, 10)
-                previous_qpm = save_qpm
-                save_qpm = tempo.qpm
-            if self.xml_notes[i].note_notations.is_trill:
-                feature.trill_param, trill_length = find_corresp_trill_notes_from_midi(self.xml_obj, self.xml_notes, perform.pairs,
-                                                                                       perform.midi_notes,
-                                                                                       accidentals_in_words, i)
-            else:
-                feature.trill_param = [0] * 5
-                trill_length = None
-
-            if not perform.pairs[i] == []:
-                feature.align_matched = 1
-                num_matched_notes += 1
-                feature.articulation = get_articulation(perform_data.pairs, i, tempo.qpm, trill_length)
-                feature.xml_deviation = get_onset_deviation(perform_data.pairs, i, tempo)
-                # feature['IOI_ratio'], feature['articulation']  = calculate_IOI_articulation(pairs,i, total_length_tuple)
-                # feature['loudness'] = math.log( pairs[i]['midi'].velocity / velocity_mean, 10)
-                feature.velocity = perform_data.pairs[i]['midi'].velocity
-                # feature['xml_deviation'] = cal_onset_deviation(xml_notes, melody_notes, melody_onset_positions, pairs, i)
-                feature.pedal_at_start = pedal_sigmoid(perform_data.pairs[i]['midi'].pedal_at_start)
-                feature.pedal_at_end = pedal_sigmoid(perform_data.pairs[i]['midi'].pedal_at_end)
-                feature.pedal_refresh = pedal_sigmoid(perform_data.pairs[i]['midi'].pedal_refresh)
-                feature.pedal_refresh_time = perform_data.pairs[i]['midi'].pedal_refresh_time
-                feature.pedal_cut = pedal_sigmoid(perform_data.pairs[i]['midi'].pedal_cut)
-                feature.pedal_cut_time = perform_data.pairs[i]['midi'].pedal_cut_time
-                feature.soft_pedal = pedal_sigmoid(perform_data.pairs[i]['midi'].soft_pedal)
-
-                if feature.pedal_at_end > 70:
-                    feature.articulation_loss_weight = 0.05
-                elif feature.pedal_at_end > 60:
-                    feature.articulation_loss_weight = 0.5
-                else:
-                    feature.articulation_loss_weight = 1
-
-                if feature.pedal_at_end > 64 and feature.pedal_refresh < 64:
-                    # pedal refresh occurs in the note
-                    feature.articulation_loss_weight = 1
-
-                feature.midi_start = perform.pairs[i]['midi'].start  # just for reproducing and testing perform features
-
-                if previous_second is None:
-                    feature.passed_second = 0
-                else:
-                    feature.passed_second = perform.pairs[i]['midi'].start - previous_second
-                feature.duration_second = perform.pairs[i]['midi'].end - perform.pairs[i]['midi'].start
-                previous_second = perform.pairs[i]['midi'].start
-                # if not feature['melody'] and not feature['IOI_ratio'] == None :
-                #     feature['IOI_ratio'] = 0
-
-                prev_articulation = feature.articulation
-                prev_vel = feature.velocity
-                prev_pedal = feature.pedal_at_start
-                prev_soft_pedal = feature.soft_pedal
-                prev_start = feature.midi_start
-            else:
-                feature.align_matched = 0
-                num_unmatched_notes += 1
-                feature.articulation = prev_articulation
-                feature.xml_deviation = 0
-                feature.velocity = prev_vel
-                feature.pedal_at_start = prev_pedal
-                feature.pedal_at_end = prev_pedal
-                feature.pedal_refresh = prev_pedal
-                feature.pedal_cut = prev_pedal
-                feature.pedal_refresh_time = 0
-                feature.pedal_cut_time = 0
-                feature.soft_pedal = prev_soft_pedal
-                feature.midi_start = prev_start
-                feature.articulation_loss_weight = 0
-
-            feature.previous_tempo = math.log(previous_qpm, 10)
-            feature.qpm_primo = qpm_primo
-            perform_features.append(feature)
-
-        return perform_features
+        return perform_data.perform_features
 
 
 
@@ -786,13 +687,11 @@ def get_pedal_at_end(piece_data, perform_data):
 
 def get_pedal_refresh_time(piece_data, perform_data):
     features = []
-    prev_pedal = 0
     for pair in perform_data.pairs:
         if pair == []:
-            pedal = prev_pedal
+            pedal = 0
         else:
             pedal = pedal_sigmoid(pair['midi'].pedal_refresh_time)
-            prev_pedal = pedal
         features.append(pedal)
     return features
 
@@ -812,13 +711,11 @@ def get_pedal_cut(piece_data, perform_data):
 
 def get_pedal_cut_time(piece_data, perform_data):
     features = []
-    prev_pedal = 0
     for pair in perform_data.pairs:
         if pair == []:
-            pedal = prev_pedal
+            pedal = 0
         else:
             pedal = pedal_sigmoid(pair['midi'].pedal_cut_time)
-            prev_pedal = pedal
         features.append(pedal)
     return features
 
@@ -842,8 +739,12 @@ def get_articulation_loss_weight(piece_data, perform_data):
     if 'pedal_refresh' not in perform_data.perform_features:
         perform_data.perform_features['pedal_refresh'] = get_pedal_at_end(piece_data, perform_data)
     features = []
-    for pedal, pedal_refresh in zip(perform_data.perform_features['pedal_at_end'], perform_data.perform_features['pedal_refresh']):
-        if pedal > 70:
+    for pair, pedal, pedal_refresh in zip(perform_data.pairs,
+                                          perform_data.perform_features['pedal_at_end'],
+                                          perform_data.perform_features['pedal_refresh']):
+        if pair == []:
+            articulation_loss_weight = 0
+        elif pedal > 70:
             articulation_loss_weight = 0.05
         elif pedal > 60:
             articulation_loss_weight = 0.5
@@ -856,3 +757,7 @@ def get_articulation_loss_weight(piece_data, perform_data):
 
         features.append(articulation_loss_weight)
     return features
+
+
+def get_trill_parameters():
+    return
