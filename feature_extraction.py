@@ -209,34 +209,39 @@ class PerformExtractor:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
         qpm_primo = 0
         for i in range(view_range):
-            tempo = perform_data.perform_features['beat_tempo'][i]
+            tempo = perform_data.tempos[i]
             qpm_primo += tempo.qpm
 
-        return qpm_primo / view_range
+        return math.log(qpm_primo / view_range, 10)
 
-    def get_articulation(self, piece_data, perform_data, trill_length):
+    def get_articulation(self, piece_data, perform_data):
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
-        for pair, tempo in zip(perform_data.pairs, perform_data.perform_features['beat_tempo']):
+        if 'trill_parameters' not in perform_data.perform_features:
+            perform_data.perform_features['trill_parameters'] = self.get_trill_parameters(piece_data, perform_data)
+        for i, pair in enumerate(perform_data.pairs):
             if pair == []:
                 articulation = 0
             else:
                 note = pair['xml']
                 midi = pair['midi']
+                tempo = utils.get_item_by_xml_position(perform_data.tempos, note)
                 xml_duration = note.note_duration.duration
                 if xml_duration == 0:
                     return 0
                 duration_as_quarter = xml_duration / note.state_fixed.divisions
-                second_in_tempo = duration_as_quarter / tempo * 60
-                if trill_length:
-                    actual_second = trill_length
+                second_in_tempo = duration_as_quarter / tempo.qpm * 60
+                if note.note_notations.is_trill:
+                    _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
                 else:
                     actual_second = midi.end - midi.start
 
                 articulation = actual_second / second_in_tempo
                 if articulation > 6:
-                    print('check: articulation is ' + str(articulation))
+                    print('check: articulation is {} in {}th note of perform {}. '
+                          'Tempo QPM was {}, in-tempo duration was {} seconds and was performed in {} seconds'
+                          .format(articulation, i , perform_data.midi_path, tempo.qpm, second_in_tempo, actual_second))
                 articulation = math.log(articulation, 10)
             features.append(articulation)
         return features
@@ -245,13 +250,13 @@ class PerformExtractor:
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
-        for pair, tempo in zip(perform_data.pairs, perform_data.perform_features['beat_tempo']):
+        for pair in perform_data.pairs:
             if pair == []:
                 deviation = 0
             else:
                 note = pair['xml']
                 midi = pair['midi']
-
+                tempo = utils.get_item_by_xml_position(perform_data.tempos, note)
                 tempo_start = tempo.time_position
 
                 passed_duration = note.note_duration.xml_position - tempo.xml_position
@@ -318,6 +323,16 @@ class PerformExtractor:
             features.append(pedal)
         return features
 
+    def get_pedal_refresh(self, piece_data, perform_data):
+        features = []
+        for pair in perform_data.pairs:
+            if pair == []:
+                pedal = 0
+            else:
+                pedal = pedal_sigmoid(pair['midi'].pedal_refresh)
+            features.append(pedal)
+        return features
+
     def get_pedal_refresh_time(self, piece_data, perform_data):
         features = []
         for pair in perform_data.pairs:
@@ -350,7 +365,7 @@ class PerformExtractor:
             features.append(pedal)
         return features
 
-    def get_pedal_soft_pedal(self, piece_data, perform_data):
+    def get_soft_pedal(self, piece_data, perform_data):
         features = []
         prev_pedal = 0
         for pair in perform_data.pairs:
@@ -362,11 +377,67 @@ class PerformExtractor:
             features.append(pedal)
         return features
 
+    def get_attack_deviation(self, piece, perform):
+        previous_xml_onset = 0
+        previous_onset_timings = []
+        previous_onset_indices = []
+        attack_deviations = [0] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair == []:
+                attack_deviations[i] = 0
+                continue
+            if pair['xml'].note_duration.xml_position > previous_xml_onset:
+                if previous_onset_timings != []:
+                    avg_onset_time = sum(previous_onset_timings) / len(previous_onset_timings)
+                    for j, prev_idx in enumerate(previous_onset_indices):
+                        attack_deviations[prev_idx] = abs(previous_onset_timings[j] - avg_onset_time)
+                    previous_onset_timings = []
+                    previous_onset_indices = []
+
+            previous_onset_timings.append(pair['midi'].start)
+            previous_onset_indices.append(i)
+            previous_xml_onset = pair['xml'].note_duration.xml_position
+
+        if previous_onset_timings != []:
+            avg_onset_time = sum(previous_onset_timings) / len(previous_onset_timings)
+            for j, prev_idx in enumerate(previous_onset_indices):
+                attack_deviations[prev_idx] = previous_onset_timings[j] - avg_onset_time
+                
+        return attack_deviations
+
+    def get_tempo_fluctuation(self, piece, perform):
+        tempo_fluctuations = [None] * len(perform.pairs)
+        for i in range(1, len(perform.perform_features)):
+            prev_qpm = perform.perform_features['beat_tempo'][i - 1]
+            curr_qpm = perform.perform_features['beat_tempo'][i]
+            if curr_qpm == prev_qpm:
+                continue
+            else:
+                tempo_fluctuations[i] = abs(curr_qpm - prev_qpm)
+        return tempo_fluctuations
+
+    def get_abs_deviation(self, piece, perform):
+        return [abs(x) for x in perform.perform_features['onset_deviation']]
+
+    def get_left_hand_velocity(self, piece, perform):
+        features = [None] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair != [] and pair['xml'].staff == 2:
+                features[i] = pair['midi'].velocity
+        return features
+
+    def get_right_hand_velocity(self, piece, perform):
+        features = [None] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair != [] and pair['xml'].staff == 1:
+                features[i] = pair['midi'].velocity
+        return features
+
     def get_articulation_loss_weight(self, piece_data, perform_data):
         if 'pedal_at_end' not in perform_data.perform_features:
-            perform_data.perform_features['pedal_at_end'] = get_pedal_at_end(piece_data, perform_data)
+            perform_data.perform_features['pedal_at_end'] = self.get_pedal_at_end(piece_data, perform_data)
         if 'pedal_refresh' not in perform_data.perform_features:
-            perform_data.perform_features['pedal_refresh'] = get_pedal_at_end(piece_data, perform_data)
+            perform_data.perform_features['pedal_refresh'] = self.get_pedal_at_end(piece_data, perform_data)
         features = []
         for pair, pedal, pedal_refresh in zip(perform_data.pairs,
                                               perform_data.perform_features['pedal_at_end'],
@@ -386,6 +457,18 @@ class PerformExtractor:
 
             features.append(articulation_loss_weight)
         return features
+
+    def get_trill_parameters(self, piece_data, perform_data):
+        features = []
+        for i, note in enumerate(piece_data.xml_notes):
+            if note.note_notations.is_trill:
+                trill_parameter, _ = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+            else:
+                trill_parameter = [0, 0, 0, 0, 0]
+            features.append(trill_parameter)
+
+        return features
+
 
 
 def cal_beat_importance(beat_position, numerator):

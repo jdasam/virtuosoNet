@@ -7,6 +7,7 @@ import pandas
 import math
 import ntpath
 import shutil
+import subprocess
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
@@ -21,7 +22,7 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                        'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
                        'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
-                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal'
+                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
                                 'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
 # total data class
@@ -66,11 +67,12 @@ class DataSet:
             for perform in piece.performances:
                 perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
 
-    def _extract_selected_features(self, target_features):
+    def extract_selected_features(self, target_features):
+        perform_extractor = feature_extraction.PerformExtractor(target_features)
         for piece in self.pieces:
             for perform in piece.performances:
                 for feature_name in target_features:
-                    getattr(piece, '_get_'+ feature_name)(perform)
+                    perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(piece, perform)
 
     def _sort_performances(self):
         self.performances.sort(key=lambda x:x.midi_path)
@@ -106,11 +108,13 @@ class DataSet:
         feature_data = []
         for perf in self.default_performances:
             perf_features = [[] for i in range(len(list_of_feat))]
-            for feature in perf.perform_features:
-                for i, feat_key in enumerate(list_of_feat):
-                    value = getattr(feature, feat_key)
-                    if value is not None:
-                        perf_features[i].append(value)
+            for i, feature_type in enumerate(list_of_feat):
+                perf_features[i] = [x for x in perf.perform_features[feature_type] if x is not None]
+            # for feature in perf.perform_features:
+            #     for i, feat_key in enumerate(list_of_feat):
+            #         value = getattr(feature, feat_key)
+            #         if value is not None:
+            #             perf_features[i].append(value)
             feature_data.append(perf_features)
         return feature_data
 
@@ -149,7 +153,7 @@ class DataSet:
                             features_in_performance[j].append(average_of_selected_feature)
                         features_in_previous_measure = [[] for i in range(len(list_of_features))]
                 for j, target_feature in enumerate(list_of_features):
-                    feature_value = getattr(perf.perform_features[i], target_feature)
+                    feature_value = perf.perform_features[target_feature][i]
                     if feature_value is not None:
                         features_in_previous_measure[j].append(feature_value)
             for j, data_of_selected_features in enumerate(features_in_previous_measure):
