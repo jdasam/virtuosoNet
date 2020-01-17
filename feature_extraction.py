@@ -215,6 +215,7 @@ class PerformExtractor:
         return math.log(qpm_primo / view_range, 10)
 
     def get_articulation(self, piece_data, perform_data):
+        # TODO: error happend in some cases (it returned just a single integer, 0)
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
