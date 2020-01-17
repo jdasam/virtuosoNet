@@ -236,7 +236,7 @@ class PieceData:
     def _align_perform_with_score(self, perform):
         perform.match_between_xml_perf = matching.match_score_pair2perform(self.score_pairs, perform.midi_notes, perform.corresp)
         perform.pairs = matching.make_xml_midi_pair(self.xml_notes, perform.midi_notes, perform.match_between_xml_perf)
-        perform.pairs, perform.valid_position_pair = make_available_xml_midi_positions(pairs)
+        perform.pairs, perform.valid_position_pairs = matching.make_available_xml_midi_positions(perform.pairs)
 
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
@@ -320,6 +320,7 @@ class PerformData:
         self.match_between_xml_perf = None
         
         self.pairs = []
+        self.valid_position_pairs = []
 
         self.num_matched_notes = 0
         self.num_unmatched_notes = 0

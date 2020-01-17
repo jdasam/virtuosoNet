@@ -191,17 +191,17 @@ class PerformExtractor:
         return perform_data.perform_features
 
     def get_beat_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.beat_positions, perform_data.pairs)
+        tempos = cal_tempo_by_positions(piece_data.beat_positions, perform_data.valid_position_pairs)
         # update tempos for perform data
         perform_data.tempos = tempos
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_measure_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.measure_positions, perform_data.pairs)
+        tempos = cal_tempo_by_positions(piece_data.measure_positions, perform_data.valid_position_pairs)
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_section_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.section_positions, perform_data.pairs)
+        tempos = cal_tempo_by_positions(piece_data.section_positions, perform_data.valid_position_pairs)
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_qpm_primo(self, piece_data, perform_data, view_range=10):
@@ -547,31 +547,30 @@ def cal_tempo_by_positions(beats, position_pairs):
     for i in range(num_beats-1):
         beat = beats[i]
         current_pos_pair = utils.get_item_by_xml_position(position_pairs, beat)
-        if current_pos_pair.xml_position < previous_end:
+        if current_pos_pair['xml_position'] < previous_end:
             continue
 
         next_beat = beats[i+1]
         next_pos_pair = utils.get_item_by_xml_position(position_pairs, next_beat)
 
-        if next_pos_pair.xml_position == previous_end:
+        if next_pos_pair['xml_position'] == previous_end:
             continue
 
         if current_pos_pair == next_pos_pair:
             continue
 
-        cur_xml = current_pos_pair.xml_position
-        cur_time = current_pos_pair.time_position
-        cur_divisions = current_pos_pair.divisions
-        next_xml = next_pos_pair.xml_position
-        next_time = next_pos_pair.time_position
-
+        cur_xml = current_pos_pair['xml_position']
+        cur_time = current_pos_pair['time_position']
+        cur_divisions = current_pos_pair['divisions']
+        next_xml = next_pos_pair['xml_position']
+        next_time = next_pos_pair['time_position']
         qpm = (next_xml - cur_xml) / (next_time - cur_time) / cur_divisions * 60
 
         if qpm > 1000:
             print('need check: qpm is ' + str(qpm) +', current xml_position is ' + str(cur_xml))
         tempo = Tempo(cur_xml, qpm, cur_time, next_xml, next_time)
         tempos.append(tempo)        #
-        previous_end = next_pos_pair.xml_position
+        previous_end = next_pos_pair['xml_position']
 
     return tempos
 
