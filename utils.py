@@ -36,6 +36,8 @@ def get_item_by_xml_position(alist, item):
         item_pos = item.note_duration.xml_position
     elif hasattr(item, 'start_xml_position'):
         item_pos = item.start.xml_position
+    elif isinstance(item, dict) and 'xml_position' in item:
+        item_pos = item['xml_position']
     else:
         item_pos = item
 
@@ -45,8 +47,10 @@ def get_item_by_xml_position(alist, item):
         pos_list = [x.xml_position for x in alist]
     elif hasattr(repre, 'note_duration'):
         pos_list = [x.note_duration.xml_position for x in alist]
-    elif hasattr(item, 'start_xml_position'):
+    elif hasattr(repre, 'start_xml_position'):
         pos_list = [x.start_xml_position for x in alist]
+    elif isinstance(repre, dict) and 'xml_position' in repre:
+        pos_list = [x['xml_position'] for x in alist]
     else:
         pos_list = alist
 

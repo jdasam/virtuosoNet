@@ -7,7 +7,7 @@ import pandas
 import math
 import ntpath
 import shutil
-import copy
+import subprocess
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
@@ -21,9 +21,9 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                        'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                        'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
                        'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
-DEFAULT_PERFORM_FEAUTRES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
-                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal'
-                                'pedal_refresh', 'pedal_cut', 'qpm_primo']
+DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
+                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
+                                'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
 # total data class
 class DataSet:
@@ -51,7 +51,7 @@ class DataSet:
             self.pieces.append(piece)
         self.num_pieces = len(self.pieces)
 
-    def _load_all_performances(self):
+    def load_all_performances(self):
         for piece in self.pieces:
             piece._load_performances()
             for perf in piece.performances:
@@ -59,7 +59,7 @@ class DataSet:
 
         self.num_performances = len(self.performances)
 
-    def _extract_all_features(self):
+    def extract_all_features(self):
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
         for piece in self.pieces:
@@ -67,12 +67,12 @@ class DataSet:
             for perform in piece.performances:
                 perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
 
-
-    def _extract_selected_features(self, target_features):
+    def extract_selected_features(self, target_features):
+        perform_extractor = feature_extraction.PerformExtractor(target_features)
         for piece in self.pieces:
             for perform in piece.performances:
                 for feature_name in target_features:
-                    getattr(piece, '_get_'+ feature_name)(perform)
+                    perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(piece, perform)
 
     def _sort_performances(self):
         self.performances.sort(key=lambda x:x.midi_path)
@@ -108,11 +108,13 @@ class DataSet:
         feature_data = []
         for perf in self.default_performances:
             perf_features = [[] for i in range(len(list_of_feat))]
-            for feature in perf.perform_features:
-                for i, feat_key in enumerate(list_of_feat):
-                    value = getattr(feature, feat_key)
-                    if value is not None:
-                        perf_features[i].append(value)
+            for i, feature_type in enumerate(list_of_feat):
+                perf_features[i] = [x for x in perf.perform_features[feature_type] if x is not None]
+            # for feature in perf.perform_features:
+            #     for i, feat_key in enumerate(list_of_feat):
+            #         value = getattr(feature, feat_key)
+            #         if value is not None:
+            #             perf_features[i].append(value)
             feature_data.append(perf_features)
         return feature_data
 
@@ -151,7 +153,7 @@ class DataSet:
                             features_in_performance[j].append(average_of_selected_feature)
                         features_in_previous_measure = [[] for i in range(len(list_of_features))]
                 for j, target_feature in enumerate(list_of_features):
-                    feature_value = getattr(perf.perform_features[i], target_feature)
+                    feature_value = perf.perform_features[target_feature][i]
                     if feature_value is not None:
                         features_in_previous_measure[j].append(feature_value)
             for j, data_of_selected_features in enumerate(features_in_previous_measure):
@@ -181,6 +183,7 @@ class PieceData:
         self.meta = PieceMeta(xml_path, data_structure)
         self.xml_obj = None
         self.xml_notes = None
+        self.num_notes = 0
         self.performances = []
         self.score_performance_match = []
 
@@ -218,11 +221,12 @@ class PieceData:
         xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
 
     def _get_direction_encoded_notes(self):
-        notes = self.xml_obj.get_notes()
+        notes, rests = self.xml_obj.get_notes()
         directions = self.xml_obj.get_directions()
         time_signatures = self.xml_obj.get_time_signatures()
 
         self.xml_notes = xml_utils.apply_directions_to_notes(notes, directions, time_signatures)
+        self.num_notes = len(self.xml_notes)
 
     def _match_score_xml_to_midi(self):
         self.score_match_list = matching.match_xml_to_midi(self.xml_notes, self.score_midi_notes)
@@ -237,6 +241,8 @@ class PieceData:
     def _align_perform_with_score(self, perform):
         perform.match_between_xml_perf = matching.match_score_pair2perform(self.score_pairs, perform.midi_notes, perform.corresp)
         perform.pairs = matching.make_xml_midi_pair(self.xml_notes, perform.midi_notes, perform.match_between_xml_perf)
+        perform.pairs, perform.valid_position_pairs = matching.make_available_xml_midi_positions(perform.pairs)
+
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
 
@@ -341,6 +347,7 @@ class PerformData:
         self.match_between_xml_perf = None
         
         self.pairs = []
+        self.valid_position_pairs = []
 
         self.num_matched_notes = 0
         self.num_unmatched_notes = 0
