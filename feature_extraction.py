@@ -215,7 +215,6 @@ class PerformExtractor:
         return math.log(qpm_primo / view_range, 10)
 
     def get_articulation(self, piece_data, perform_data):
-        # TODO: error happend in some cases (it returned just a single integer, 0)
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
@@ -230,21 +229,23 @@ class PerformExtractor:
                 tempo = utils.get_item_by_xml_position(perform_data.tempos, note)
                 xml_duration = note.note_duration.duration
                 if xml_duration == 0:
-                    return 0
-                duration_as_quarter = xml_duration / note.state_fixed.divisions
-                second_in_tempo = duration_as_quarter / tempo.qpm * 60
-                if note.note_notations.is_trill:
-                    _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+                    articulation = 1
                 else:
-                    actual_second = midi.end - midi.start
+                    duration_as_quarter = xml_duration / note.state_fixed.divisions
+                    second_in_tempo = duration_as_quarter / tempo.qpm * 60
+                    if note.note_notations.is_trill:
+                        _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+                    else:
+                        actual_second = midi.end - midi.start
 
-                articulation = actual_second / second_in_tempo
-                if articulation > 6:
-                    print('check: articulation is {} in {}th note of perform {}. '
-                          'Tempo QPM was {}, in-tempo duration was {} seconds and was performed in {} seconds'
-                          .format(articulation, i , perform_data.midi_path, tempo.qpm, second_in_tempo, actual_second))
+                    articulation = actual_second / second_in_tempo
+                    if articulation > 6:
+                        print('check: articulation is {} in {}th note of perform {}. '
+                              'Tempo QPM was {}, in-tempo duration was {} seconds and was performed in {} seconds'
+                              .format(articulation, i , perform_data.midi_path, tempo.qpm, second_in_tempo, actual_second))
                 articulation = math.log(articulation, 10)
             features.append(articulation)
+
         return features
 
     def get_onset_deviation(self, piece_data, perform_data):
