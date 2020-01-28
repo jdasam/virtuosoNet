@@ -249,6 +249,14 @@ class PerformExtractor:
         return features
 
     def get_onset_deviation(self, piece_data, perform_data):
+        ''' Deviation of individual note's onset
+        :param piece_data: PieceData class
+        :param perform_data: PerformData class
+        :return: note-level onset deviation of performance notes in quarter-notes
+        Onset deviation is defined as how much the note's onset is apart from its "in-tempo" position.
+        The "in-tempo" position is defined by pre-calculated beat-level tempo.
+        '''
+
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
@@ -288,6 +296,11 @@ class PerformExtractor:
         return features
 
     def get_velocity(self, piece_data, perform_data):
+        '''
+        :param piece_data: 
+        :param perform_data:
+        :return: List of MIDI velocities of notes in score-performance pair.
+        '''
         features = []
         prev_velocity = 64
         for pair in perform_data.pairs:
@@ -403,13 +416,41 @@ class PerformExtractor:
         if previous_onset_timings != []:
             avg_onset_time = sum(previous_onset_timings) / len(previous_onset_timings)
             for j, prev_idx in enumerate(previous_onset_indices):
-                attack_deviations[prev_idx] = previous_onset_timings[j] - avg_onset_time
+                attack_deviations[prev_idx] = abs(previous_onset_timings[j] - avg_onset_time)
                 
+        return attack_deviations
+
+    def get_non_abs_attack_deviation(self, piece, perform):
+        previous_xml_onset = 0
+        previous_onset_timings = []
+        previous_onset_indices = []
+        attack_deviations = [0] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair == []:
+                attack_deviations[i] = 0
+                continue
+            if pair['xml'].note_duration.xml_position > previous_xml_onset:
+                if previous_onset_timings != []:
+                    avg_onset_time = sum(previous_onset_timings) / len(previous_onset_timings)
+                    for j, prev_idx in enumerate(previous_onset_indices):
+                        attack_deviations[prev_idx] = previous_onset_timings[j] - avg_onset_time
+                    previous_onset_timings = []
+                    previous_onset_indices = []
+
+            previous_onset_timings.append(pair['midi'].start)
+            previous_onset_indices.append(i)
+            previous_xml_onset = pair['xml'].note_duration.xml_position
+
+        if previous_onset_timings != []:
+            avg_onset_time = sum(previous_onset_timings) / len(previous_onset_timings)
+            for j, prev_idx in enumerate(previous_onset_indices):
+                attack_deviations[prev_idx] = previous_onset_timings[j] - avg_onset_time
+
         return attack_deviations
 
     def get_tempo_fluctuation(self, piece, perform):
         tempo_fluctuations = [None] * len(perform.pairs)
-        for i in range(1, len(perform.perform_features)):
+        for i in range(1, len(perform.pairs)):
             prev_qpm = perform.perform_features['beat_tempo'][i - 1]
             curr_qpm = perform.perform_features['beat_tempo'][i]
             if curr_qpm == prev_qpm:
@@ -471,7 +512,23 @@ class PerformExtractor:
 
         return features
 
+    def get_left_hand_attack_deviation(self, piece, perform):
+        if 'non_abs_attack_deviation' not in perform.perform_features:
+            perform.perform_features['non_abs_attack_deviation'] = self.get_non_abs_attack_deviation(piece, perform)
+        features = [None] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair != [] and pair['xml'].staff == 2:
+                features[i] = perform.perform_features['non_abs_attack_deviation'][i]
+        return features
 
+    def get_right_hand_attack_deviation(self, piece, perform):
+        if 'non_abs_attack_deviation' not in perform.perform_features:
+            perform.perform_features['non_abs_attack_deviation'] = self.get_non_abs_attack_deviation(piece, perform)
+        features = [None] * len(perform.pairs)
+        for i, pair in enumerate(perform.pairs):
+            if pair != [] and pair['xml'].staff == 1:
+                features[i] = perform.perform_features['non_abs_attack_deviation'][i]
+        return features
 
 def cal_beat_importance(beat_position, numerator):
     # beat_position : [0-1), note's relative position in measure
