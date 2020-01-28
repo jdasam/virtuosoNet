@@ -90,8 +90,9 @@ class DataSet:
         with open(filename, "wb") as f:
             pickle.dump(self, f, protocol=2)
 
-    def save_features_as_csv(self, features, path='features.csv'):
-        feature_with_name = []
+    def save_features_as_csv(self, features, feature_names, path='features.csv'):
+        feature_type_name = ['MIDI Path'] + feature_names
+        feature_with_name = [feature_type_name]
         perform_names = [x.midi_path for x in self.default_performances]
         for i,feature_by_perf in enumerate(features):
             feature_by_perf = [perform_names[i]] + feature_by_perf
@@ -102,31 +103,34 @@ class DataSet:
     def save_features_by_features_as_csv(self, feature_data, list_of_features, path='measure.csv'):
         for feature, feature_name in zip(feature_data, list_of_features):
             save_name = feature_name + '_' + path
-            self.save_features_as_csv(feature, save_name)
+            self.save_features_as_csv(feature, [feature_name], save_name)
 
     def features_to_list(self, list_of_feat):
-        feature_data = []
+        feature_data = [[] for i in range(len(list_of_feat))]
+
         for perf in self.default_performances:
-            perf_features = [[] for i in range(len(list_of_feat))]
+            # perf_features = [[] for i in range(len(list_of_feat))]
             for i, feature_type in enumerate(list_of_feat):
-                perf_features[i] = [x for x in perf.perform_features[feature_type] if x is not None]
+
+                # perf_features = [x for x in perf.perform_features[feature_type] if x is not None]
+                feature_data[i].append(perf.perform_features[feature_type])
             # for feature in perf.perform_features:
             #     for i, feat_key in enumerate(list_of_feat):
             #         value = getattr(feature, feat_key)
             #         if value is not None:
             #             perf_features[i].append(value)
-            feature_data.append(perf_features)
+            # feature_data.append(perf_features)
         return feature_data
 
     def get_average_by_perform(self, feature_data):
-        # axis 0: performance, axis 1: feature, axis 2: note
-        average_data = []
-        for perf in feature_data:
-            avg_feature_by_perf = [[] for i in range(len(perf))]
-            for i, feature in enumerate(perf):
-                avg = sum(feature) / len(feature)
-                avg_feature_by_perf[i] = avg
-            average_data.append(avg_feature_by_perf)
+        # axis 0: feature, axis 1: performance, axis 2: note
+        average_data = [[] for i in range(len(feature_data[0]))]
+        for feature in feature_data:
+            for i, perf in enumerate(feature):
+                valid_list = [x for x in perf if x is not None]
+                avg = sum(valid_list) / len(valid_list)
+                average_data[i].append(avg)
+
         return average_data
 
     # def list_features_to_measure(self, feature_data):
