@@ -1,3 +1,6 @@
+import math
+import utils
+
 def cal_beat_importance(beat_position, numerator):
     # beat_position : [0-1), note's relative position in measure
     if beat_position == 0:
@@ -41,6 +44,7 @@ def pitch_into_vector(pitch):
     pitch_vec[pitch_class+1] = 1
 
     return pitch_vec
+
 
 def time_signature_to_vector(time_signature):
     numerator = time_signature.numerator
@@ -100,27 +104,97 @@ def note_notation_to_vector(note):
     return notation_vec
 
 
-def make_index_continuous(features, score=False):
-    # TODO: what's the role?
+def make_index_continuous(note_locations):
+    # Sometimes a beat or a measure can contain no notes at all.
+    # In this case, the sequence of beat index or measure indices of notes are not continuous,
+    # e.g. 0, 0, 0, 0, 1, 1, 1, 1, 4, 4, 4, 4 ...
+    # This function ommits the beat or measure without any notes so that entire sequence of indices become continuous
     prev_beat = 0
     prev_measure = 0
 
     beat_compensate = 0
     measure_compensate = 0
 
-    for feat in features:
-        if feat.qpm is not None or score:
-            if feat.note_location.beat - prev_beat > 1:
-                beat_compensate -= (feat.note_location.beat - prev_beat) - 1
-            if feat.note_location.measure - prev_measure > 1:
-                measure_compensate -= (feat.note_location.measure -
-                                       prev_measure) - 1
+    for loc_data in note_locations:
+        if loc_data.beat - prev_beat > 1:
+            beat_compensate -= (loc_data.beat - prev_beat) - 1
+        if loc_data.measure - prev_measure > 1:
+            measure_compensate -= (loc_data.measure -
+                                   prev_measure) - 1
 
-            prev_beat = feat.note_location.beat
-            prev_measure = feat.note_location.measure
+        prev_beat = loc_data.beat
+        prev_measure = loc_data.measure
 
-            feat.note_location.beat += beat_compensate
-            feat.note_location.measure += measure_compensate
-        else:
+        loc_data.beat += beat_compensate
+        loc_data.measure += measure_compensate
+    return note_locations
+
+
+class NoteLocation:
+    def __init__(self, beat, measure, voice, section):
+        self.beat = beat
+        self.measure = measure
+        self.voice = voice
+        self.section = section
+
+class Tempo:
+    def __init__(self, xml_position, qpm, time_position, end_xml, end_time):
+        self.qpm = qpm
+        self.xml_position = xml_position
+        self.time_position = time_position
+        self.end_time = end_time
+        self.end_xml = end_xml
+
+    def __str__(self):
+        string = '{From ' + str(self.xml_position)
+        string += ' to ' + str(self.end_xml)
+        return string
+
+
+def cal_tempo_by_positions(beats, position_pairs):
+    #
+    tempos = []
+    num_beats = len(beats)
+    previous_end = 0
+
+    for i in range(num_beats-1):
+        beat = beats[i]
+        current_pos_pair = utils.get_item_by_xml_position(position_pairs, beat)
+        if current_pos_pair['xml_position'] < previous_end:
             continue
-    return features
+
+        next_beat = beats[i+1]
+        next_pos_pair = utils.get_item_by_xml_position(position_pairs, next_beat)
+
+        if next_pos_pair['xml_position'] == previous_end:
+            continue
+
+        if current_pos_pair == next_pos_pair:
+            continue
+
+        cur_xml = current_pos_pair['xml_position']
+        cur_time = current_pos_pair['time_position']
+        cur_divisions = current_pos_pair['divisions']
+        next_xml = next_pos_pair['xml_position']
+        next_time = next_pos_pair['time_position']
+        qpm = (next_xml - cur_xml) / (next_time - cur_time) / cur_divisions * 60
+
+        if qpm > 1000:
+            print('need check: qpm is ' + str(qpm) +', current xml_position is ' + str(cur_xml))
+        tempo = Tempo(cur_xml, qpm, cur_time, next_xml, next_time)
+        tempos.append(tempo)        #
+        previous_end = next_pos_pair['xml_position']
+
+    return tempos
+
+
+
+def pedal_sigmoid(pedal_value, k=8):
+    sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
+    return int(sigmoid_pedal)
+
+
+
+
+def get_trill_parameters():
+    return
