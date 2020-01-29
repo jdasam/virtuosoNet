@@ -1,9 +1,6 @@
 import pretty_midi
 import copy
-'''
-from . import xml_direction_encoding as dir_enc
-from . import pedal_cleaning, utils
-'''
+
 import xml_direction_encoding as dir_enc
 import pedal_cleaning, utils
 
