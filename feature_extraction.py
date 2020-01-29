@@ -1,5 +1,5 @@
 from . import xml_direction_encoding as dir_enc
-from . import xml_utils, utils
+from . import xml_utils, utils, feature_utils
 import copy
 import math
 
