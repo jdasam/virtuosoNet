@@ -332,6 +332,8 @@ def keyword_into_onehot(attribute, keywords):
 
 def direction_words_flatten(note_attribute):
     flatten_words = note_attribute.absolute
+    if flatten_words == None: # if absolute direction is None
+        flatten_words = ''
     if not note_attribute.relative == []:
         for rel in note_attribute.relative:
             if rel.type['type'] == 'words':
