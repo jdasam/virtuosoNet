@@ -1,2 +1,0 @@
-from data_class import PieceData
-from feature_extraction import ScoreExtractor, PerformExtractor
