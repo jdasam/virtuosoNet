@@ -27,7 +27,7 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
 
 # total data class
 class DataSet:
-    def __init__(self, path):
+    def __init__(self, path, data_structure='folder'):
         self.path = path
         self.pieces = []
         self.performances = []
@@ -40,15 +40,21 @@ class DataSet:
         self.num_performance_notes = 0
 
         self.default_performances = self.performances
+        self.data_structure = data_structure
 
         self._load_all_scores()
 
     def _load_all_scores(self):
         musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
                      f.endswith('xml')]
+
         for xml in musicxml_list:
-            piece = PieceData(xml)
-            self.pieces.append(piece)
+            print('Piece path is ', xml)
+            try:
+                piece = PieceData(xml, data_structure=self.data_structure)
+                self.pieces.append(piece)
+            except Exception as ex:
+                print('Error type :', ex)
         self.num_pieces = len(self.pieces)
 
     def load_all_performances(self):
@@ -272,8 +278,10 @@ class PieceMeta:
                 if file.endswith('.mid') and not file in ('midi.mid', 'midi_cleaned.mid'):
                     perf_file_list.append(self.folder_path + '/' + file)
         else:
+            piece_name = os.path.splitext(self.xml_path)[0]
             for file in files_in_folder:
-                pass
+                if piece_name in file:
+                    perf_file_list.append(self.folder_path + '/' + file)
 
         self.perf_file_list = perf_file_list
 
