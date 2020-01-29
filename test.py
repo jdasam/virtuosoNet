@@ -31,3 +31,5 @@ for key in perform_f:
         print(f'{key}: len={len(perform_f[key])}, \n ex:{perform_f[key][:5]}')
     except:
         print(key, perform_f[key])
+
+print('Test success')
