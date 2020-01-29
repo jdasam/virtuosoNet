@@ -232,8 +232,7 @@ class PieceData:
         xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
 
     def _get_direction_encoded_notes(self):
-        #notes, rests = self.xml_obj.get_notes()
-        notes = self.xml_obj.get_notes()
+        notes, rests = self.xml_obj.get_notes()
         directions = self.xml_obj.get_directions()
         time_signatures = self.xml_obj.get_time_signatures()
 
