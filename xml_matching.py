@@ -14,6 +14,7 @@ import subprocess
 import ntpath
 import pickle
 import pandas
+import warnings
 
 
 from .musicxml_parser import MusicXMLDocument
@@ -717,6 +718,7 @@ def check_index_continuity(features):
 
 
 def composer_name_to_vec(composer_name):
+    warnings.warn('this code is deprecated. use feature_extraction.composer_name_to_vec')
     composer_name_list = ['Bach','Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Glinka', 'Haydn',
                           'Liszt', 'Mozart', 'Prokofiev', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
 
