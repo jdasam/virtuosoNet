@@ -8,6 +8,7 @@ import math
 import ntpath
 import shutil
 import subprocess
+import copy
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
