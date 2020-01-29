@@ -1,8 +1,8 @@
-from . import xml_direction_encoding as dir_enc
-from . import xml_utils, utils
+import xml_direction_encoding as dir_enc
+import xml_utils, utils
 import copy
 import math
-
+import warnings
 
 class ScoreExtractor:
     def __init__(self, feature_keys):
@@ -12,61 +12,12 @@ class ScoreExtractor:
         self.tem_emb_tab = dir_enc.define_tempo_embedding_table()
 
     def extract_score_features(self, piece_data):
-        def _get_beat_position(piece_data):
-            beat_positions = []
-            for _, note in enumerate(piece_data.xml_notes):
-                measure_index = note.measure_number - 1
-                note_position = note.note_duration.xml_position
+        piece_data.score_features = dict()
+        for key in self.selected_feature_keys:
+            piece_data.score_features[key] = getattr(
+                self, 'get_' + key)(piece_data)
 
-                if measure_index + 1 < len(piece_data.measure_positions):
-                    measure_length = piece_data.measure_positions[measure_index +
-                                                                  1] - piece_data.measure_positions[measure_index]
-                else:
-                    measure_length = piece_data.measure_positions[measure_index] - \
-                        piece_data.measure_positions[measure_index - 1]
-                beat_position = (
-                    note_position - piece_data.measure_positions[measure_index]) / measure_length
-                beat_positions.append(beat_position)
-            return beat_positions
-
-        def _get_beat_importance(piece_data):
-            beat_positions = _get_beat_position(piece_data)
-            beat_importances = []
-            for i, note in enumerate(piece_data.xml_notes):
-                importance = cal_beat_importance(
-                    beat_positions[i], note.tempo.time_numerator)
-                beat_importances.append(importance)
-            return beat_importances
-
-        def _get_measure_length(piece_data):
-            measure_lengthes = []
-            for _, note in enumerate(piece_data.xml_notes):
-                measure_index = note.measure_number - 1
-
-                if measure_index + 1 < len(piece_data.measure_positions):
-                    measure_length = piece_data.measure_positions[measure_index +
-                                                                  1] - piece_data.measure_positions[measure_index]
-                else:
-                    measure_length = piece_data.measure_positions[measure_index] - \
-                        piece_data.measure_positions[measure_index - 1]
-                measure_lengthes.append(
-                    measure_length / note.state_fixed.divisions)
-            return measure_lengthes
-
-        def _get_cresciuto(piece_data):
-            # TODO: what is this?
-            # This function converts cresciuto class information into single numeric value
-            cresciutos = []
-            for note in piece_data.xml_notes:
-                if note.dynamic.cresciuto:
-                    cresciuto = (note.dynamic.cresciuto.overlapped + 1) / 2
-                    if note.dynamic.cresciuto.type == 'diminuendo':
-                        cresciuto *= -1
-                else:
-                    cresciuto = 0
-                cresciutos.append(cresciuto)
-            return cresciutos
-
+        '''
         piece_data.qpm_primo = piece_data.xml_notes[0].state_fixed.qpm
         tempo_primo_word = dir_enc.direction_words_flatten(
             piece_data.xml_notes[0].tempo)
@@ -79,10 +30,6 @@ class ScoreExtractor:
 
         total_length = xml_utils.cal_total_xml_length(piece_data.xml_notes)
 
-        features = dict()
-        features['note_location'] = self.get_note_location(piece_data)
-        features['midi_pitch'] = [note.pitch[1]
-                                  for note in piece_data.xml_notes]
         features['pitch'] = [pitch_into_vector(
             note.pitch[1]) for note in piece_data.xml_notes]
         features['duration'] = [note.note_duration.duration / note.state_fixed.divisions
@@ -141,17 +88,11 @@ class ScoreExtractor:
             [(note.note_duration.xml_position - note.tempo.recently_changed_position)
              / note.state_fixed.divisions for note in piece_data.xml_notes]
 
-        '''
-        # TODO: ok...
-        for key in self.selected_feature_keys:
-            feature[key] = getattr(self, 'get_' + key)()
-
-            features.append(feature)
-
-        '''
         features['note_location'] = make_index_continuous(features['note_location'])
 
         return features
+        '''
+        return piece_data.score_features
 
     def crescendo_to_continuous_value(self, note, feature):
         cresc_words = ['cresc', 'decresc', 'dim']
@@ -176,8 +117,153 @@ class ScoreExtractor:
                              measure=measure_index,
                              voice=note.voice,
                              section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
+        locations = make_index_continuous(locations)
         return locations
 
+    def get_qpm_primo(self, piece_data):
+        piece_data.qpm_primo = piece_data.xml_notes[0].state_fixed.qpm
+        return piece_data.qpm_primo
+
+    def get_midi_pitch(self, piece_data):
+        return [note.pitch[1] for note in piece_data.xml_notes]
+
+    def get_pitch(self, piece_data):
+        return [pitch_into_vector(
+            note.pitch[1]) for note in piece_data.xml_notes]
+
+    def get_duration(self, piece_data):
+        return [note.note_duration.duration / note.state_fixed.divisions
+                for note in piece_data.xml_notes]
+
+    def get_grace_order(self, piece_data):
+        return [note.note_duration.grace_order for note in piece_data.xml_notes]
+
+    def get_is_grace_note(self, piece_data):
+        return [int(note.note_duration.is_grace_note) for note in piece_data.xml_notes]
+
+    def get_preceded_by_grace_note(self, piece_data):
+        return [int(note.note_duration.preceded_by_grace_note) for note in piece_data.xml_notes]
+
+    def get_time_sig_vec(self, piece_data):
+        return [time_signature_to_vector(note.tempo.time_signature) for note in piece_data.xml_notes]
+
+    def get_following_rest(self, piece_data):
+        return [note.following_rest_duration /
+                note.state_fixed.divisions for note in piece_data.xml_notes]
+
+    def get_followed_by_fermata_rest(self, piece_data):
+        return [int(note.followed_by_fermata_rest) for note in piece_data.xml_notes]
+
+    def get_notation(self, piece_data):
+        return [note_notation_to_vector(
+            note) for note in piece_data.xml_notes]
+
+    def get_slur_beam_vec(self, piece_data):
+        return [[int(note.note_notations.is_slur_start),
+                 int(note.note_notations.is_slur_continue),
+                 int(note.note_notations.is_slur_stop),
+                 int(note.note_notations.is_beam_start),
+                 int(note.note_notations.is_beam_continue),
+                 int(note.note_notations.is_beam_stop)]
+                for note in piece_data.xml_notes]
+
+    def get_dynamic(self, piece_data):
+        return [
+            dir_enc.dynamic_embedding(
+                dir_enc.direction_words_flatten(note.dynamic), self.dyn_emb_tab, len_vec=4)
+            for note in piece_data.xml_notes]
+
+    def get_tempo(self, piece_data):
+        return [
+            dir_enc.dynamic_embedding(
+                dir_enc.direction_words_flatten(note.tempo), self.tem_emb_tab, len_vec=5)
+            for note in piece_data.xml_notes]
+
+
+    def get_xml_position(self, piece_data):
+        total_length = xml_utils.cal_total_xml_length(
+            piece_data.xml_notes)
+        return [note.note_duration.xml_position /
+                total_length for note in piece_data.xml_notes]
+
+    def get_beat_position(self, piece_data):
+        beat_positions = []
+        for _, note in enumerate(piece_data.xml_notes):
+            measure_index = note.measure_number - 1
+            note_position = note.note_duration.xml_position
+
+            if measure_index + 1 < len(piece_data.measure_positions):
+                measure_length = piece_data.measure_positions[measure_index +
+                                                                1] - piece_data.measure_positions[measure_index]
+            else:
+                measure_length = piece_data.measure_positions[measure_index] - \
+                    piece_data.measure_positions[measure_index - 1]
+            beat_position = (
+                note_position - piece_data.measure_positions[measure_index]) / measure_length
+            beat_positions.append(beat_position)
+        return beat_positions
+
+    def get_beat_importance(self, piece_data):
+        try: 
+            beat_positions = piece_data.score_features['beat_position']
+        except:
+            beat_positions = self.get_beat_position(piece_data)
+        beat_importances = []
+        for i, note in enumerate(piece_data.xml_notes):
+            importance = cal_beat_importance(
+                beat_positions[i], note.tempo.time_numerator)
+            beat_importances.append(importance)
+        return beat_importances
+
+    def get_measure_length(self, piece_data):
+        measure_lengthes = []
+        for _, note in enumerate(piece_data.xml_notes):
+            measure_index = note.measure_number - 1
+
+            if measure_index + 1 < len(piece_data.measure_positions):
+                measure_length = piece_data.measure_positions[measure_index +
+                                                                1] - piece_data.measure_positions[measure_index]
+            else:
+                measure_length = piece_data.measure_positions[measure_index] - \
+                    piece_data.measure_positions[measure_index - 1]
+            measure_lengthes.append(
+                measure_length / note.state_fixed.divisions)
+        return measure_lengthes
+
+    def get_cresciuto(self, piece_data):
+        # This function converts cresciuto class information into single numeric value
+        cresciutos = []
+        for note in piece_data.xml_notes:
+            if note.dynamic.cresciuto:
+                cresciuto = (note.dynamic.cresciuto.overlapped + 1) / 2
+                if note.dynamic.cresciuto.type == 'diminuendo':
+                    cresciuto *= -1
+            else:
+                cresciuto = 0
+            cresciutos.append(cresciuto)
+        return cresciutos
+
+    def get_distance_from_abs_dynamic(self, piece_data):
+        return [(note.note_duration.xml_position - note.dynamic.absolute_position)
+                / note.state_fixed.divisions for note in piece_data.xml_notes]
+
+    def get_distance_from_recent_tempo(self, piece_data):
+        return [(note.note_duration.xml_position - note.tempo.recently_changed_position)
+                / note.state_fixed.divisions for note in piece_data.xml_notes]
+
+    def get_composer_vec(self, piece_data):
+        return composer_name_to_vec(piece_data.meta.composer)
+
+    def get_tempo_primo(self, piece_data):
+        tempo_primo_word = dir_enc.direction_words_flatten(
+            piece_data.xml_notes[0].tempo)
+        if tempo_primo_word:
+            piece_data.tempo_primo = dir_enc.dynamic_embedding(
+                tempo_primo_word, self.tem_emb_tab, 5)
+            piece_data.tempo_primo = piece_data.tempo_primo[0:2]
+        else:
+            piece_data.tempo_primo = [0, 0]
+        return piece_data.tempo_primo
 
 class PerformExtractor:
     def __init__(self, selected_feature_keys):
@@ -530,6 +616,7 @@ class PerformExtractor:
                 features[i] = perform.perform_features['non_abs_attack_deviation'][i]
         return features
 
+
 def cal_beat_importance(beat_position, numerator):
     # beat_position : [0-1), note's relative position in measure
     if beat_position == 0:
@@ -666,6 +753,7 @@ class NoteLocation:
         self.voice = voice
         self.section = section
 
+
 class Tempo:
     def __init__(self, xml_position, qpm, time_position, end_xml, end_time):
         self.qpm = qpm
@@ -717,13 +805,24 @@ def cal_tempo_by_positions(beats, position_pairs):
     return tempos
 
 
-
 def pedal_sigmoid(pedal_value, k=8):
     sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
     return int(sigmoid_pedal)
 
 
-
-
 def get_trill_parameters():
     return
+
+
+def composer_name_to_vec(composer_name):
+    # composer string -> one hot vector. if matching fails, return all-zero vector
+    composer_name_list = ['Bach', 'Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Glinka', 'Haydn',
+                          'Liszt', 'Mozart', 'Prokofiev', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
+    one_hot_vec = [0] * (len(composer_name_list) + 1)
+    if composer_name in composer_name_list:
+        index = composer_name_list.index(composer_name)
+        one_hot_vec[index] = 1
+    else:
+        warnings.warn(f'no matching composer:{composer_name}')
+
+    return one_hot_vec
