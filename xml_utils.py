@@ -1,3 +1,15 @@
+""" Utilities for xml usage
+
+Interface summary:
+
+        import xml_utils
+
+        notes, pedals = xml_utils.xml_notes_to_midi(xml_notes)
+
+call in feature_extraction.py and data_class.py
+
+get xml information like note information to generate or modify xml information
+"""
 import pretty_midi
 import copy
 
@@ -5,6 +17,20 @@ from . import xml_direction_encoding as dir_enc
 from . import pedal_cleaning, utils
 
 def xml_notes_to_midi(xml_notes):
+    """ Returns midi-transformed xml notes in pretty_midi.Note() format
+
+    Args:
+        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
+    
+    Returns:
+        midi_notes (1-D list): list of pretty_midi.Note() of shape (num_notes, )
+        midi_pedals (1-D list): list of pretty_midi pedal value of shape (num_pedals, )
+    
+    Example:
+        (in data_class.py -> make_score_midi())
+        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
+        
+    """
     midi_notes = []
     for note in xml_notes:
         if note.is_overlapped:  # ignore overlapped notes.
@@ -27,6 +53,19 @@ def xml_notes_to_midi(xml_notes):
 
 
 def find_tempo_change(xml_notes):
+    """ Returns position of note where the tempo changes
+
+    Args:
+        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
+    
+    Returns:
+        tempo_change_positions (1-D list): list of xml_position shape (num of tempo_change_position, )
+    
+    Example:
+        (in data_class.py -> _load_score_xml()
+        >>> self.section_positions = xml_utils.find_tempo_change(self.xml_notes)
+        
+    """
     # TODO: This function can be simplified if it takes xml_obj or directions as the input
     tempo_change_positions = []
     previous_abs_tempo = None
@@ -47,6 +86,24 @@ def find_tempo_change(xml_notes):
 want to move to midi_utils
 '''
 def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_pedal=False, disklavier=False):
+    """ Generate midi file by using received midi notes and midi pedals
+
+    Args:
+        midi_notes (1-D list) : list of pretty_midi.Note() of shape (num_notes, )
+        midi_pedals (1-D list): list of pretty_midi pedal value of shape (num_pedals, ) 
+        output_name (string) : output midi file name
+        bool_pedal (boolean) : check whether the method needs to handle meaningless pedal values
+        disklavier (boolean) : unused 
+
+    Returns:
+        -
+
+    Example:
+        (in data_class.py -> make_score_midi()
+        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
+        >>> xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
+
+    """
     piano_midi = pretty_midi.PrettyMIDI()
     piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
     piano = pretty_midi.Instrument(program=piano_program)
@@ -113,6 +170,24 @@ def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_ped
 
 
 def apply_directions_to_notes(xml_notes, directions, time_signatures):
+    """ apply xml directions to each xml_notes
+
+    Args:
+        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
+        directions (1-D list): list of Direction() object in xml of shape (num_direction, )
+        time_signatures (1-D list): list of TimeSignature() object in xml of shape (num_time_signature, )
+
+    Returns:
+        xml_notes (1-D list): list of direction-encoded Note() object in xml of shape (num_notes, )
+
+    Example:
+        (in data_class.py -> _get_direction_encoded_notes())
+        >>> notes, rests = self.xml_obj.get_notes()
+        >>> directions = self.xml_obj.get_directions()
+        >>> time_signatures = self.xml_obj.get_time_signatures()
+        >>> self.xml_notes = xml_utils.apply_directions_to_notes(notes, directions, time_signatures)
+        >>> self.num_notes = len(self.xml_notes)
+    """
     absolute_dynamics, relative_dynamics, cresciutos = dir_enc.get_dynamics(directions)
     absolute_dynamics_position = [dyn.xml_position for dyn in absolute_dynamics]
     absolute_tempos, relative_tempos = dir_enc.get_tempos(directions)
@@ -178,6 +253,18 @@ def apply_directions_to_notes(xml_notes, directions, time_signatures):
     return xml_notes
 
 def divide_cresc_staff(note):
+    """ update note.dynamic
+
+    Args:
+        note: Note() object in xml_notes
+
+    Returns:
+        note: dynamic updated Note() object in xml_notes
+
+    Example:
+        (in apply_directions_to_notes())
+        >>> note = divide_cresc_staff(note)
+    """
     #check the note has both crescendo and diminuendo (only wedge type)
     cresc = False
     dim = False
@@ -200,6 +287,19 @@ def divide_cresc_staff(note):
     return note
 
 def cal_total_xml_length(xml_notes):
+    """ Return proper length of total xml notes
+
+    Args:
+        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
+
+    Returns:
+        lates_end (integer) : proper length of total xml notes
+
+    Example:
+        (in feature_extraction.py -> _get_cresciuto())
+        >>> total_length = xml_utils.cal_total_xml_length(piece_data.xml_notes)
+
+    """
     latest_end = 0
     latest_start =0
     xml_len = len(xml_notes)
@@ -215,6 +315,20 @@ def cal_total_xml_length(xml_notes):
 
 
 def check_corresponding_accidental(note, accidentals):
+    """ Return a key correspond to the type of accidentals on note position
+
+    Args:
+        note (Note) : Note() object in xml_notes
+        accidentals (1-D list) : list of accidentals in Note() objects
+
+    Returns:
+        final_key (integer) : final key corresponds to accidental type
+
+    Example:
+        (in find_corresp_trill_notes_from_midi())
+        >>> accidentals = piece_data.xml_obj.get_accidentals()
+        >>> accidental_on_trill = check_corresponding_accidental(note, accidentals)
+    """
     final_key = None
     for acc in accidentals:
         if acc.xml_position == note.note_duration.xml_position:
@@ -231,6 +345,31 @@ def check_corresponding_accidental(note, accidentals):
 
 
 def find_corresp_trill_notes_from_midi(piece_data, perform_data, index):
+    """ Return information about trill(length of trill and trill parameter) which starts from current note
+
+    Args: 
+        piece_data (PieceData object) : PieceData object
+        perform_data (PerformData object) : PerformData object
+        index (integer) : index of current note pair
+
+    Returns:
+        trill_vec (1-D list) : list of [num_trills, last_note_velocity, first_note_ratio, last_note_ratio, up_trill] shape (5, )
+        trill_length (integer) : length of current trill
+
+    Example1:
+        (in feature_extraction.py -> get_articulation())
+        >>> if note.note_notations.is_trill:
+        >>>     _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+        >>> else:
+        >>>     actual_second = midi.end - midi.start
+                
+    Example2:
+        (in feature_extraction.py -> get_trill_parameters())
+        >>> if note.note_notations.is_trill:
+        >>>     trill_parameter, _ = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+        >>> else:
+        >>>     trill_parameter = [0, 0, 0, 0, 0]
+    """
     #start of trill, end of trill
     key_signatures = piece_data.xml_obj.get_key_signatures()
     note = piece_data.xml_notes[index]
@@ -384,6 +523,19 @@ def find_corresp_trill_notes_from_midi(piece_data, perform_data, index):
 
 
 def get_measure_accidentals(xml_notes, index):
+    """ Return pitch-accidental pairs list for current measure
+
+    Args: 
+        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
+        index (integer) : index of current note pair
+
+    Returns:
+        measure_accidentals (1-D list): list of {pitch, accident} dictionary pair
+
+    Example1:
+        (in find_corresp_trill_notes_from_midi())
+        >>> measure_accidentals = get_measure_accidentals(piece_data.xml_notes, index)
+    """
     accs = ['bb', 'b', '♮', '#', 'x']
     note = xml_notes[index]
     num_note = len(xml_notes)
@@ -408,6 +560,24 @@ def get_measure_accidentals(xml_notes, index):
 
 
 def cal_up_trill_pitch(pitch_tuple, key, final_key, measure_accidentals):
+    """ Return 
+
+    Args: 
+        pitch_tuple (tuple) : pitch information in (Pitch Name, MIDI number) format
+        key (integer) : MIDI and MusicXML identify key by using "fifths"
+              -1 = F, 0 = C, 1 = G etc.
+        final_key (integer) : final key delta by check_corresponding_accidental()
+        measure_accidentals (1-D list): list of {pitch, accident} dictionary pair
+
+    Returns:
+        up_pitch (integer) : final pitch value
+        final_pitch_string (string) : final pitch value in string format
+
+    Example1:
+        (in find_corresp_trill_notes_from_midi())
+        >>> up_pitch, _ = cal_up_trill_pitch(note.pitch, key, accidental_on_trill, measure_accidentals)
+
+    """
     pitches = ['c', 'd', 'e', 'f', 'g', 'a', 'b']
     corresp_midi_pitch = [0, 2, 4, 5, 7, 9, 11]
     pitch_name = pitch_tuple[0][0:1].lower()

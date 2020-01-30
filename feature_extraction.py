@@ -1,10 +1,12 @@
 from . import xml_direction_encoding as dir_enc
-from . import xml_utils, utils
+from . import xml_utils, utils, feature_utils
 import copy
 import math
 
 
 class ScoreExtractor:
+    """
+    """
     def __init__(self, feature_keys):
         self.selected_feature_keys = feature_keys
 
@@ -33,7 +35,7 @@ class ScoreExtractor:
             beat_positions = _get_beat_position(piece_data)
             beat_importances = []
             for i, note in enumerate(piece_data.xml_notes):
-                importance = cal_beat_importance(
+                importance = feature_utils.cal_beat_importance(
                     beat_positions[i], note.tempo.time_numerator)
                 beat_importances.append(importance)
             return beat_importances
@@ -83,7 +85,7 @@ class ScoreExtractor:
         features['note_location'] = self.get_note_location(piece_data)
         features['midi_pitch'] = [note.pitch[1]
                                   for note in piece_data.xml_notes]
-        features['pitch'] = [pitch_into_vector(
+        features['pitch'] = [feature_utils.pitch_into_vector(
             note.pitch[1]) for note in piece_data.xml_notes]
         features['duration'] = [note.note_duration.duration / note.state_fixed.divisions
                                 for note in piece_data.xml_notes]
@@ -99,13 +101,13 @@ class ScoreExtractor:
             int(note.note_duration.is_grace_note) for note in piece_data.xml_notes]
         features['preceded_by_grace_note'] = [
             int(note.note_duration.preceded_by_grace_note) for note in piece_data.xml_notes]
-        features['time_sig_vec'] = [time_signature_to_vector(
+        features['time_sig_vec'] = [feature_utils.time_signature_to_vector(
             note.tempo.time_signature) for note in piece_data.xml_notes]
         features['following_rest'] = [note.following_rest_duration /
                                       note.state_fixed.divisions for note in piece_data.xml_notes]
         features['followed_by_fermata_rest'] = [
             int(note.followed_by_fermata_rest) for note in piece_data.xml_notes]
-        features['notation'] = [note_notation_to_vector(
+        features['notation'] = [feature_utils.note_notation_to_vector(
             note) for note in piece_data.xml_notes]
 
         # TODO: better to save it as dict
@@ -149,7 +151,7 @@ class ScoreExtractor:
             features.append(feature)
 
         '''
-        features['note_location'] = make_index_continuous(features['note_location'])
+        features['note_location'] = feature_utils.make_index_continuous(features['note_location'])
 
         return features
 
@@ -172,7 +174,7 @@ class ScoreExtractor:
         for _, note in enumerate(piece_data.xml_notes):
             measure_index = note.measure_number - 1
             locations.append(
-                NoteLocation(beat=utils.binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+                feature_utils.NoteLocation(beat=utils.binary_index(piece_data.beat_positions, note.note_duration.xml_position),
                              measure=measure_index,
                              voice=note.voice,
                              section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
@@ -191,17 +193,17 @@ class PerformExtractor:
         return perform_data.perform_features
 
     def get_beat_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.beat_positions, perform_data.valid_position_pairs)
+        tempos = feature_utils.cal_tempo_by_positions(piece_data.beat_positions, perform_data.valid_position_pairs)
         # update tempos for perform data
         perform_data.tempos = tempos
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_measure_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.measure_positions, perform_data.valid_position_pairs)
+        tempos = feature_utils.cal_tempo_by_positions(piece_data.measure_positions, perform_data.valid_position_pairs)
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_section_tempo(self, piece_data, perform_data):
-        tempos = cal_tempo_by_positions(piece_data.section_positions, perform_data.valid_position_pairs)
+        tempos = feature_utils.cal_tempo_by_positions(piece_data.section_positions, perform_data.valid_position_pairs)
         return [math.log(utils.get_item_by_xml_position(tempos, note).qpm, 10) for note in piece_data.xml_notes]
 
     def get_qpm_primo(self, piece_data, perform_data, view_range=10):
@@ -328,7 +330,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = prev_pedal
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_at_start)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_at_start)
                 prev_pedal = pedal
             features.append(pedal)
         return features
@@ -340,7 +342,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = prev_pedal
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_at_end)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_at_end)
                 prev_pedal = pedal
             features.append(pedal)
         return features
@@ -351,7 +353,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = 0
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_refresh)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_refresh)
             features.append(pedal)
         return features
 
@@ -361,7 +363,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = 0
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_refresh_time)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_refresh_time)
             features.append(pedal)
         return features
 
@@ -372,7 +374,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = prev_pedal
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_cut)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_cut)
                 prev_pedal = pedal
             features.append(pedal)
         return features
@@ -383,7 +385,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = 0
             else:
-                pedal = pedal_sigmoid(pair['midi'].pedal_cut_time)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_cut_time)
             features.append(pedal)
         return features
 
@@ -394,7 +396,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = prev_pedal
             else:
-                pedal = pedal_sigmoid(pair['midi'].soft_pedal)
+                pedal = feature_utils.pedal_sigmoid(pair['midi'].soft_pedal)
                 prev_pedal = pedal
             features.append(pedal)
         return features
@@ -536,201 +538,3 @@ class PerformExtractor:
             if pair != [] and pair['xml'].staff == 1:
                 features[i] = perform.perform_features['non_abs_attack_deviation'][i]
         return features
-
-def cal_beat_importance(beat_position, numerator):
-    # beat_position : [0-1), note's relative position in measure
-    if beat_position == 0:
-        beat_importance = 4
-    elif beat_position == 0.5 and numerator in [2, 4, 6, 12]:
-        beat_importance = 3
-    elif abs(beat_position - (1/3)) < 0.001 and numerator in [3, 9]:
-        beat_importance = 2
-    elif (beat_position * 4) % 1 == 0 and numerator in [2, 4]:
-        beat_importance = 1
-    elif (beat_position * 5) % 1 == 0 and numerator in [5]:
-        beat_importance = 2
-    elif (beat_position * 6) % 1 == 0 and numerator in [3, 6, 12]:
-        beat_importance = 1
-    elif (beat_position * 8) % 1 == 0 and numerator in [2, 4]:
-        beat_importance = 0.5
-    elif (beat_position * 9) % 1 == 0 and numerator in [9]:
-        beat_importance = 1
-    elif (beat_position * 12) % 1 == 0 and numerator in [3, 6, 12]:
-        beat_importance = 0.5
-    elif numerator == 7:
-        if abs((beat_position * 7) - 2) < 0.001:
-            beat_importance = 2
-        elif abs((beat_position * 5) - 2) < 0.001:
-            beat_importance = 2
-        else:
-            beat_importance = 0
-    else:
-        beat_importance = 0
-    return beat_importance
-
-
-def pitch_into_vector(pitch):
-    # TODO: should be located in general file. maybe utils?
-    pitch_vec = [0] * 13  # octave + pitch class
-    octave = (pitch // 12) - 1
-    octave = (octave - 4) / 4  # normalization
-    pitch_class = pitch % 12
-
-    pitch_vec[0] = octave
-    pitch_vec[pitch_class+1] = 1
-
-    return pitch_vec
-
-
-def time_signature_to_vector(time_signature):
-    numerator = time_signature.numerator
-    denominator = time_signature.denominator
-
-    denominator_list = [2, 4, 8, 16]
-    numerator_vec = [0] * 5
-    denominator_vec = [0] * 4
-
-    if denominator == 32:
-        denominator_vec[-1] = 1
-    else:
-        denominator_type = denominator_list.index(denominator)
-        denominator_vec[denominator_type] = 1
-
-    if numerator == 2:
-        numerator_vec[0] = 1
-    elif numerator == 3:
-        numerator_vec[1] = 1
-    elif numerator == 4:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-    elif numerator == 6:
-        numerator_vec[0] = 1
-        numerator_vec[3] = 1
-    elif numerator == 9:
-        numerator_vec[1] = 1
-        numerator_vec[3] = 1
-    elif numerator == 12:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-        numerator_vec[3] = 1
-    elif numerator == 24:
-        numerator_vec[0] = 1
-        numerator_vec[2] = 1
-        numerator_vec[3] = 1
-    else:
-        print('Unclassified numerator: ', numerator)
-        numerator_vec[4] = 1
-
-    return numerator_vec + denominator_vec
-
-
-def note_notation_to_vector(note):
-    # trill, tenuto, accent, staccato, fermata
-    keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato',
-                'is_fermata', 'is_arpeggiate', 'is_strong_accent', 'is_cue', 'is_slash']
-    # keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato', 'is_fermata']
-
-    notation_vec = [0] * len(keywords)
-
-    for i in range(len(keywords)):
-        key = keywords[i]
-        if getattr(note.note_notations, key) == True:
-            notation_vec[i] = 1
-
-    return notation_vec
-
-
-def make_index_continuous(note_locations):
-    # Sometimes a beat or a measure can contain no notes at all.
-    # In this case, the sequence of beat index or measure indices of notes are not continuous,
-    # e.g. 0, 0, 0, 0, 1, 1, 1, 1, 4, 4, 4, 4 ...
-    # This function ommits the beat or measure without any notes so that entire sequence of indices become continuous
-    prev_beat = 0
-    prev_measure = 0
-
-    beat_compensate = 0
-    measure_compensate = 0
-
-    for loc_data in note_locations:
-        if loc_data.beat - prev_beat > 1:
-            beat_compensate -= (loc_data.beat - prev_beat) - 1
-        if loc_data.measure - prev_measure > 1:
-            measure_compensate -= (loc_data.measure -
-                                   prev_measure) - 1
-
-        prev_beat = loc_data.beat
-        prev_measure = loc_data.measure
-
-        loc_data.beat += beat_compensate
-        loc_data.measure += measure_compensate
-    return note_locations
-
-
-class NoteLocation:
-    def __init__(self, beat, measure, voice, section):
-        self.beat = beat
-        self.measure = measure
-        self.voice = voice
-        self.section = section
-
-class Tempo:
-    def __init__(self, xml_position, qpm, time_position, end_xml, end_time):
-        self.qpm = qpm
-        self.xml_position = xml_position
-        self.time_position = time_position
-        self.end_time = end_time
-        self.end_xml = end_xml
-
-    def __str__(self):
-        string = '{From ' + str(self.xml_position)
-        string += ' to ' + str(self.end_xml)
-        return string
-
-
-def cal_tempo_by_positions(beats, position_pairs):
-    #
-    tempos = []
-    num_beats = len(beats)
-    previous_end = 0
-
-    for i in range(num_beats-1):
-        beat = beats[i]
-        current_pos_pair = utils.get_item_by_xml_position(position_pairs, beat)
-        if current_pos_pair['xml_position'] < previous_end:
-            continue
-
-        next_beat = beats[i+1]
-        next_pos_pair = utils.get_item_by_xml_position(position_pairs, next_beat)
-
-        if next_pos_pair['xml_position'] == previous_end:
-            continue
-
-        if current_pos_pair == next_pos_pair:
-            continue
-
-        cur_xml = current_pos_pair['xml_position']
-        cur_time = current_pos_pair['time_position']
-        cur_divisions = current_pos_pair['divisions']
-        next_xml = next_pos_pair['xml_position']
-        next_time = next_pos_pair['time_position']
-        qpm = (next_xml - cur_xml) / (next_time - cur_time) / cur_divisions * 60
-
-        if qpm > 1000:
-            print('need check: qpm is ' + str(qpm) +', current xml_position is ' + str(cur_xml))
-        tempo = Tempo(cur_xml, qpm, cur_time, next_xml, next_time)
-        tempos.append(tempo)        #
-        previous_end = next_pos_pair['xml_position']
-
-    return tempos
-
-
-
-def pedal_sigmoid(pedal_value, k=8):
-    sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
-    return int(sigmoid_pedal)
-
-
-
-
-def get_trill_parameters():
-    return
