@@ -32,4 +32,12 @@ for key in perform_f:
     except:
         print(key, perform_f[key])
 
+score_ext = ScoreExtractor(DEFAULT_SCORE_FEATURES)
+score_f = score_ext.extract_score_features(piece)
+for key in score_f:
+    try:
+        print(key, len(score_f[key]), score_f[key][:5])
+    except:
+        print(key, score_f[key])
+
 print('Test success')
