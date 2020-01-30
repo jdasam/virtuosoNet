@@ -7,51 +7,26 @@ import numpy as np
 import shutil
 import os
 import matplotlib
+import warnings
 matplotlib.use('Agg')
 
+from .parser import get_parser
 import pyScoreParser.xml_matching as xml_matching
 import pyScoreParser.performanceWorm as perf_worm
 import data_process as dp
 import copy
 import random
-import nnModel
-import model_parameters as param
+from . import nnModel
+from . import model_parameters as param
 import model_constants as cons
 import sys
 import style_analysis
 
 sys.modules['xml_matching'] = xml_matching
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='analysis', help="train or test or testAll")
-parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/bps_5_1/", help="folder path of test mat")
-parser.add_argument("-data", "--dataName", type=str, default="pedal_refresh", help="dat file name")
-parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
-parser.add_argument("-tempo", "--startTempo", type=int, default=0, help="start tempo. zero to use xml first tempo")
-parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str(x).lower() == 'true'), help="train trill")
-parser.add_argument("-slur", "--slurEdge", default=False, type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
-parser.add_argument("-voice", "--voiceEdge", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
-parser.add_argument("-code", "--modelCode", type=str, default='han_ar_note_encoder_16_64_delta2', help="code name for saving the model")
-parser.add_argument("-tCode", "--trillCode", type=str, default='trill_default', help="code name for loading trill model")
-parser.add_argument("-comp", "--composer", type=str, default='Beethoven', help="composer name of the input piece")
-parser.add_argument("--latent", type=float, default=0, help='initial_z value')
-parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (str(x).lower() == 'true'), help='make pedal value zero under threshold')
-parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='type of training loss')
-parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (str(x).lower() == 'true'), help='resume training after loading model')
-parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help='resume training after loading model')
-parser.add_argument("-delta", "--deltaLoss", default=False, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-parser.add_argument("-hCode", "--hierCode", type=str, default='han_ar_measure_time8000_8_64', help="code name for loading hierarchy model")
-parser.add_argument("-intermd", "--intermediateLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
-parser.add_argument("-randtr", "--randomTrain", default=True, type=lambda x: (str(x).lower() == 'true'), help="use random train")
-parser.add_argument("-dskl", "--disklavier", default=True, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
 
-random.seed(0)
-
-
-args = parser.parse_args()
+#>>>>>>>>>>>>>>>> to parser
 LOSS_TYPE = args.trainingLoss
 HIERARCHY = False
 IN_HIER = False
@@ -85,11 +60,20 @@ WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.02
 KLD_SIG = 15e4
+
+batch_size = 1
+#<<<<<<<<<<<<<<<< to parser
+
+
+#>>>>>>>>>>>>>>>> to parser.get_name
+
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
       (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
 num_key_augmentation = 1
+#<<<<<<<<<<<<<<<< to parser.get_name
 
+#>>>>>>>>>>>>>>>> remove
 NUM_INPUT = 78
 NUM_PRIME_PARAM = 11
 if HIERARCHY:
@@ -101,7 +85,9 @@ else:
     NUM_OUTPUT = 11
 if IN_HIER:
     NUM_INPUT += 2
+#<<<<<<<<<<<<<<<< remove
 
+#>>>>>>>>>>>>>>>> remove or constants
 NUM_TEMPO_PARAM = 1
 VEL_PARAM_IDX = 1
 DEV_PARAM_IDX = 2
@@ -114,7 +100,22 @@ num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, for
 is_trill_index_score = -11
 is_trill_index_concated = -11 - (NUM_PRIME_PARAM + num_second_param)
 
+QPM_INDEX = 0
+# VOICE_IDX = 11
+TEMPO_IDX = 26
+QPM_PRIMO_IDX = 4
+TEMPO_PRIMO_IDX = -2
+GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
+if args.slurEdge:
+    GRAPH_KEYS.append('slur')
+if args.voiceEdge:
+    GRAPH_KEYS.append('voice')
+N_EDGE_TYPE = len(GRAPH_KEYS) * 2
+# mean_vel_start_index = 7
+# vel_vec_start_index = 33
+#<<<<<<<<<<<<<<<< remove or constants
 
+#>>>>>>>>>>>>>>>> dataset
 with open(args.dataName + "_stat.dat", "rb") as f:
     u = pickle._Unpickler(f)
     u.encoding = 'latin1'
@@ -133,22 +134,14 @@ with open(args.dataName + "_stat.dat", "rb") as f:
         NUM_TEMPO_PARAM = len(BINS[0]) - 1
     else:
         MEANS, STDS = u.load()
+#<<<<<<<<<<<<<<<<< dataset
 
-QPM_INDEX = 0
-# VOICE_IDX = 11
-TEMPO_IDX = 26
-QPM_PRIMO_IDX = 4
-TEMPO_PRIMO_IDX = -2
-GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
-if args.slurEdge:
-    GRAPH_KEYS.append('slur')
-if args.voiceEdge:
-    GRAPH_KEYS.append('voice')
-N_EDGE_TYPE = len(GRAPH_KEYS) * 2
-# mean_vel_start_index = 7
-# vel_vec_start_index = 33
+def main():
 
-batch_size = 1
+    parser = get_parser()
+    random.seed(0)
+    args = parser.parse_args()
+    
 
 torch.cuda.set_device(args.device)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -214,6 +207,7 @@ elif LOSS_TYPE == 'CE':
 
 
 def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
+    warnings.warn('moved to utils.py', DeprecationWarning)
     save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
     torch.save(state, save_name)
     if is_best:
@@ -223,6 +217,7 @@ def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime')
 
 
 def edges_to_matrix(edges, num_notes):
+    warnings.warn('moved to graph.py', DeprecationWarning)
     if not MODEL.is_graph:
         return None
     num_keywords = len(GRAPH_KEYS)
@@ -244,10 +239,13 @@ def edges_to_matrix(edges, num_notes):
 
 
 def edges_to_matrix_short(edges, slice_index):
+    warnings.warn('moved to graph.py', DeprecationWarning)
     if not MODEL.is_graph:
         return None
     num_keywords = len(GRAPH_KEYS)
+    # TODO: No ref for slice_idx
     num_notes = slice_idx[1] - slice_idx[0]
+
     matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
     start_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[0])
     end_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[1] + 1)
