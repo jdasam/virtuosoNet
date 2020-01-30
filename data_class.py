@@ -8,6 +8,8 @@ import math
 import ntpath
 import shutil
 import subprocess
+from pathlib import Path
+import warnings
 import copy
 
 from .musicxml_parser import MusicXMLDocument
@@ -18,17 +20,17 @@ from . import feature_extraction
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
-                       'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
-                       'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
-                       'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
-                       'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
+                          'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
+                          'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
+                          'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
+                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
-                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                                'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
+                            'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
+                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
 # total data class
 class DataSet:
-    def __init__(self, path):
+    def __init__(self, path, data_structure='folder'):
         self.path = path
         self.pieces = []
         self.performances = []
@@ -41,15 +43,23 @@ class DataSet:
         self.num_performance_notes = 0
 
         self.default_performances = self.performances
+        self.data_structure = data_structure
 
         self._load_all_scores()
 
     def _load_all_scores(self):
-        musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
-                     f.endswith('xml')]
+        musicxml_list = sorted(self.path.glob('**.xml'))
         for xml in musicxml_list:
-            piece = PieceData(xml)
-            self.pieces.append(piece)
+            composer_name = str(xml.relative_to(self.path).parts[0])
+            if composer_name == 'Mendelssohn':
+                warnings.warn(
+                    f"no matching composer: {composer_name}, replaced to Schubert")
+                composer_name = 'Schubert'
+            try:
+                piece = PieceData(xml, data_structure=self.data_structure)
+                self.pieces.append(piece)
+            except Exception as ex:
+                print('Error type :', ex)
         self.num_pieces = len(self.pieces)
 
     def load_all_performances(self):
@@ -72,6 +82,7 @@ class DataSet:
         perform_extractor = feature_extraction.PerformExtractor(target_features)
         for piece in self.pieces:
             for perform in piece.performances:
+                print('Performance:', perform.midi_path)
                 for feature_name in target_features:
                     perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(piece, perform)
 
@@ -184,13 +195,16 @@ class DataSet:
 
 # score data class
 class PieceData:
-    def __init__(self, xml_path, data_structure='folder'):
-        self.meta = PieceMeta(xml_path, data_structure)
+    def __init__(self, xml_path, data_structure='folder', composer=None):
+        self.meta = PieceMeta(xml_path, data_structure, composer=composer)
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
         self.performances = []
         self.score_performance_match = []
+
+        self.score_match_list = []
+        self.score_pairs = []
 
         self.score_features = []
 
@@ -203,7 +217,8 @@ class PieceData:
         self.meta._load_composer_name()
 
     def _load_score_xml(self):
-        self.xml_obj = MusicXMLDocument(self.meta.xml_path)
+        print(self.meta.xml_path)
+        self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
         self.measure_positions = self.xml_obj.get_measure_positions()
@@ -258,25 +273,29 @@ class PieceData:
 
 # score meta data class
 class PieceMeta:
-    def __init__(self, xml_path, data_structure='folder'):
+    def __init__(self, xml_path, data_structure='folder', composer=None):
         self.xml_path = xml_path
         self.folder_path = os.path.dirname(xml_path)
-        self.composer = None
+        self.composer = composer
         self.data_structure = data_structure
         self.pedal_elongate = False
         self.perf_file_list = []
 
     def _load_list_of_performances(self):
         files_in_folder = os.listdir(self.folder_path)
+        files_in_folder = [x for x in files_in_folder if x.endswith('.mid')]
         perf_file_list = []
         if self.data_structure == 'folder':
             for file in files_in_folder:
-                if file.endswith('.mid') and not file in ('midi.mid', 'midi_cleaned.mid'):
+                if file not in ('midi.mid', 'midi_cleaned.mid'):
                     perf_file_list.append(self.folder_path + '/' + file)
         else:
+            piece_name = os.path.splitext(os.path.basename(self.xml_path))[0]
             for file in files_in_folder:
-                pass
-
+                if file == piece_name + '.mid':
+                    continue
+                elif piece_name in file:
+                    perf_file_list.append(self.folder_path + '/' + file)
         self.perf_file_list = perf_file_list
 
     def _check_perf_align(self):
@@ -287,7 +306,7 @@ class PieceMeta:
                 aligned_perf.append(perf)
                 continue
             self.align_score_and_perf_with_nakamura(os.path.abspath(perf))
-            if os.path.isfile(align_file_name):
+            if os.path.isfile(align_file_name): # check once again whether the alignment was successful
                 aligned_perf.append(perf)
 
         self.perf_file_list = aligned_perf
@@ -295,9 +314,12 @@ class PieceMeta:
     def align_score_and_perf_with_nakamura(self, midi_file_path):
         file_folder, file_name = ntpath.split(midi_file_path)
         perform_midi = midi_file_path
-        score_midi = os.path.join(file_folder, 'midi_cleaned.mid')
-        if not os.path.isfile(score_midi):
-            score_midi = os.path.join(file_folder, 'midi.mid')
+        if self.data_structure == 'folder':
+            score_midi = os.path.join(file_folder, 'midi_cleaned.mid')
+            if not os.path.isfile(score_midi):
+                score_midi = os.path.join(file_folder, 'midi.mid')
+        else: #self.data_structure =='file'
+            score_midi =  os.path.splitext(self.xml_path)[0] + '.mid'
         print(perform_midi)
         print(score_midi)
 
@@ -309,6 +331,7 @@ class PieceMeta:
             subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
         except:
             print('Error to process {}'.format(midi_file_path))
+            os.chdir(current_dir)
             pass
         else:
             shutil.move('infer_corresp.txt', midi_file_path.replace('.mid', '_infer_corresp.txt'))
@@ -318,10 +341,10 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-        path_split = copy.copy(self.folder_path).split('/')
 
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
+            path_split = copy.copy(self.folder_path).split('/')
             if path_split[0] == 'chopin_cleaned':
                 composer_name = path_split[1]
             else:
@@ -330,10 +353,9 @@ class PieceMeta:
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
             # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
-            dataset_folder_name_index = path_split.index('emotionDataset')
-            data_name = path_split[dataset_folder_name_index+1]
+            data_name = self.xml_path.name
             composer_name = data_name.split('.')[0]
-        
+
         self.composer = composer_name
 
 
@@ -348,7 +370,7 @@ class PerformData:
         self.midi_notes = self.midi.instruments[0].notes
         self.corresp_path = os.path.splitext(self.midi_path)[0] + '_infer_corresp.txt'
         self.corresp = matching.read_corresp(self.corresp_path)
-        self.perform_features = []
+        self.perform_features = {}
         self.match_between_xml_perf = None
         
         self.pairs = []
