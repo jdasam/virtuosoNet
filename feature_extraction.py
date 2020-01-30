@@ -44,7 +44,7 @@ class ScoreExtractor:
                              measure=measure_index,
                              voice=note.voice,
                              section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
-        locations = make_index_continuous(locations)
+        locations = feature_utils.make_index_continuous(locations)
         return locations
 
     def get_qpm_primo(self, piece_data):
@@ -55,7 +55,7 @@ class ScoreExtractor:
         return [note.pitch[1] for note in piece_data.xml_notes]
 
     def get_pitch(self, piece_data):
-        return [pitch_into_vector(
+        return [feature_utils.pitch_into_vector(
             note.pitch[1]) for note in piece_data.xml_notes]
 
     def get_duration(self, piece_data):
@@ -72,7 +72,7 @@ class ScoreExtractor:
         return [int(note.note_duration.preceded_by_grace_note) for note in piece_data.xml_notes]
 
     def get_time_sig_vec(self, piece_data):
-        return [time_signature_to_vector(note.tempo.time_signature) for note in piece_data.xml_notes]
+        return [feature_utils.time_signature_to_vector(note.tempo.time_signature) for note in piece_data.xml_notes]
 
     def get_following_rest(self, piece_data):
         return [note.following_rest_duration /
@@ -82,7 +82,7 @@ class ScoreExtractor:
         return [int(note.followed_by_fermata_rest) for note in piece_data.xml_notes]
 
     def get_notation(self, piece_data):
-        return [note_notation_to_vector(
+        return [feature_utils.note_notation_to_vector(
             note) for note in piece_data.xml_notes]
 
     def get_slur_beam_vec(self, piece_data):
@@ -105,7 +105,6 @@ class ScoreExtractor:
             dir_enc.dynamic_embedding(
                 dir_enc.direction_words_flatten(note.tempo), self.tem_emb_tab, len_vec=5)
             for note in piece_data.xml_notes]
-
 
     def get_xml_position(self, piece_data):
         total_length = xml_utils.cal_total_xml_length(
@@ -137,7 +136,7 @@ class ScoreExtractor:
             beat_positions = self.get_beat_position(piece_data)
         beat_importances = []
         for i, note in enumerate(piece_data.xml_notes):
-            importance = cal_beat_importance(
+            importance = feature_utils.cal_beat_importance(
                 beat_positions[i], note.tempo.time_numerator)
             beat_importances.append(importance)
         return beat_importances
@@ -179,7 +178,7 @@ class ScoreExtractor:
                 / note.state_fixed.divisions for note in piece_data.xml_notes]
 
     def get_composer_vec(self, piece_data):
-        return composer_name_to_vec(piece_data.meta.composer)
+        return feature_utils.composer_name_to_vec(piece_data.meta.composer)
 
     def get_tempo_primo(self, piece_data):
         tempo_primo_word = dir_enc.direction_words_flatten(
