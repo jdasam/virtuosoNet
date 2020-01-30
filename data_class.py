@@ -77,6 +77,7 @@ class DataSet:
         perform_extractor = feature_extraction.PerformExtractor(target_features)
         for piece in self.pieces:
             for perform in piece.performances:
+                print('Performance:', perform.midi_path)
                 for feature_name in target_features:
                     perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(piece, perform)
 
@@ -197,6 +198,9 @@ class PieceData:
         self.performances = []
         self.score_performance_match = []
 
+        self.score_match_list = []
+        self.score_pairs = []
+
         self.score_features = []
 
         self._load_score_xml()
@@ -272,17 +276,19 @@ class PieceMeta:
 
     def _load_list_of_performances(self):
         files_in_folder = os.listdir(self.folder_path)
+        files_in_folder = [x for x in files_in_folder if x.endswith('.mid')]
         perf_file_list = []
         if self.data_structure == 'folder':
             for file in files_in_folder:
-                if file.endswith('.mid') and not file in ('midi.mid', 'midi_cleaned.mid'):
+                if file not in ('midi.mid', 'midi_cleaned.mid'):
                     perf_file_list.append(self.folder_path + '/' + file)
         else:
-            piece_name = os.path.splitext(self.xml_path)[0]
+            piece_name = os.path.splitext(os.path.basename(self.xml_path))[0]
             for file in files_in_folder:
-                if piece_name in file:
+                if file == piece_name + '.mid':
+                    continue
+                elif piece_name in file:
                     perf_file_list.append(self.folder_path + '/' + file)
-
         self.perf_file_list = perf_file_list
 
     def _check_perf_align(self):
@@ -293,7 +299,7 @@ class PieceMeta:
                 aligned_perf.append(perf)
                 continue
             self.align_score_and_perf_with_nakamura(os.path.abspath(perf))
-            if os.path.isfile(align_file_name):
+            if os.path.isfile(align_file_name): # check once again whether the alignment was successful
                 aligned_perf.append(perf)
 
         self.perf_file_list = aligned_perf
@@ -301,9 +307,12 @@ class PieceMeta:
     def align_score_and_perf_with_nakamura(self, midi_file_path):
         file_folder, file_name = ntpath.split(midi_file_path)
         perform_midi = midi_file_path
-        score_midi = os.path.join(file_folder, 'midi_cleaned.mid')
-        if not os.path.isfile(score_midi):
-            score_midi = os.path.join(file_folder, 'midi.mid')
+        if self.data_structure == 'folder':
+            score_midi = os.path.join(file_folder, 'midi_cleaned.mid')
+            if not os.path.isfile(score_midi):
+                score_midi = os.path.join(file_folder, 'midi.mid')
+        else: #self.data_structure =='file'
+            score_midi =  os.path.splitext(self.xml_path)[0] + '.mid'
         print(perform_midi)
         print(score_midi)
 
@@ -315,6 +324,7 @@ class PieceMeta:
             subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
         except:
             print('Error to process {}'.format(midi_file_path))
+            os.chdir(current_dir)
             pass
         else:
             shutil.move('infer_corresp.txt', midi_file_path.replace('.mid', '_infer_corresp.txt'))
@@ -332,7 +342,7 @@ class PerformData:
         self.midi_notes = self.midi.instruments[0].notes
         self.corresp_path = os.path.splitext(self.midi_path)[0] + '_infer_corresp.txt'
         self.corresp = matching.read_corresp(self.corresp_path)
-        self.perform_features = []
+        self.perform_features = {}
         self.match_between_xml_perf = None
         
         self.pairs = []
