@@ -32,6 +32,7 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
 class DataSet:
     def __init__(self, path, data_structure='folder'):
         self.path = path
+        self.dataset_name = copy.copy(path).split('/')[-1]
         self.pieces = []
         self.performances = []
         self.performs_by_tag = {}
@@ -54,7 +55,7 @@ class DataSet:
         # musicxml_list = sorted(path.glob('**.xml'))
         for xml in musicxml_list:
             try:
-                piece = PieceData(xml, data_structure=self.data_structure)
+                piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
                 self.pieces.append(piece)
             except Exception as ex:
                 print('Error type :', ex)
@@ -193,8 +194,8 @@ class DataSet:
 
 # score data class
 class PieceData:
-    def __init__(self, xml_path, data_structure='folder', composer=None):
-        self.meta = PieceMeta(xml_path, data_structure, composer=composer)
+    def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
+        self.meta = PieceMeta(xml_path, data_structure, dataset_name=dataset_name, composer=composer)
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
@@ -215,7 +216,6 @@ class PieceData:
         self.meta._load_composer_name()
 
     def _load_score_xml(self):
-        print(self.meta.xml_path)
         self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
@@ -271,9 +271,10 @@ class PieceData:
 
 # score meta data class
 class PieceMeta:
-    def __init__(self, xml_path, data_structure='folder', composer=None):
+    def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
         self.xml_path = xml_path
         self.folder_path = os.path.dirname(xml_path)
+        self.dataset_name = dataset_name
         self.composer = composer
         self.data_structure = data_structure
         self.pedal_elongate = False
@@ -339,14 +340,14 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-
+        print(self.folder_path)
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
             path_split = copy.copy(self.folder_path).split('/')
-            if path_split[0] == 'chopin_cleaned':
+            if path_split[0] == self.dataset_name:
                 composer_name = path_split[1]
             else:
-                dataset_folder_name_index = path_split.index('chopin_cleaned')
+                dataset_folder_name_index = path_split.index(self.dataset_name)
                 composer_name = path_split[dataset_folder_name_index+1]
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
