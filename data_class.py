@@ -8,6 +8,8 @@ import math
 import ntpath
 import shutil
 import subprocess
+from pathlib import Path
+import warnings
 import copy
 
 from .musicxml_parser import MusicXMLDocument
@@ -18,13 +20,13 @@ from . import feature_extraction
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
-                       'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
-                       'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
-                       'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
-                       'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
+                          'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
+                          'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
+                          'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
+                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
-                                'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                                'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
+                            'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
+                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
 # total data class
 class DataSet:
@@ -46,11 +48,13 @@ class DataSet:
         self._load_all_scores()
 
     def _load_all_scores(self):
-        musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
-                     f.endswith('xml')]
-
+        musicxml_list = sorted(self.path.glob('**.xml'))
         for xml in musicxml_list:
-            print('Piece path is ', xml)
+            composer_name = str(xml.relative_to(self.path).parts[0])
+            if composer_name == 'Mendelssohn':
+                warnings.warn(
+                    f"no matching composer: {composer_name}, replaced to Schubert")
+                composer_name = 'Schubert'
             try:
                 piece = PieceData(xml, data_structure=self.data_structure)
                 self.pieces.append(piece)
@@ -191,8 +195,8 @@ class DataSet:
 
 # score data class
 class PieceData:
-    def __init__(self, xml_path, data_structure='folder'):
-        self.meta = PieceMeta(xml_path, data_structure)
+    def __init__(self, xml_path, data_structure='folder', composer=None):
+        self.meta = PieceMeta(xml_path, data_structure, composer=composer)
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
@@ -213,7 +217,8 @@ class PieceData:
         self.meta._load_composer_name()
 
     def _load_score_xml(self):
-        self.xml_obj = MusicXMLDocument(self.meta.xml_path)
+        print(self.meta.xml_path)
+        self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
         self.measure_positions = self.xml_obj.get_measure_positions()
@@ -268,10 +273,10 @@ class PieceData:
 
 # score meta data class
 class PieceMeta:
-    def __init__(self, xml_path, data_structure='folder'):
+    def __init__(self, xml_path, data_structure='folder', composer=None):
         self.xml_path = xml_path
         self.folder_path = os.path.dirname(xml_path)
-        self.composer = None
+        self.composer = composer
         self.data_structure = data_structure
         self.pedal_elongate = False
         self.perf_file_list = []
