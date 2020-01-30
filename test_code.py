@@ -11,9 +11,9 @@ from . import data_class
 import _pickle as cPickle
 from pathlib import Path
 
-# data_set = data_class.DataSet('EmotionData/', 'name')
-# data_set.load_all_performances()
-# data_set.save_dataset('EmotionData.dat')
+data_set = data_class.DataSet('EmotionData/', 'name')
+data_set.load_all_performances()
+data_set.save_dataset('EmotionData.dat')
 #
 # test_piece = data_class.PieceData('EmotionData/Chopin.nocturne_op9_no2_.mm_1-12.musicxml', 'name')
 # print(test_piece.xml_notes[202].note_duration.duration)
@@ -23,10 +23,6 @@ from pathlib import Path
 with open('EmotionData.dat', "rb") as f:
     u = cPickle.Unpickler(f)
     data_set = u.load()
-
-for piece in data_set.pieces:
-    piece.meta.xml_path = Path(piece.meta.xml_path) 
-    piece.meta._load_composer_name()
 
 data_set.extract_all_features()
 #
