@@ -12,7 +12,7 @@ get feature information to generate or modify feature
 """
 
 import math
-import utils
+from . import utils
 
 def cal_beat_importance(beat_position, numerator):
     """ Returns beat importance in integer
