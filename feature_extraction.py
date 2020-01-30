@@ -308,7 +308,7 @@ class PerformExtractor:
 
     def get_velocity(self, piece_data, perform_data):
         '''
-        :param piece_data: 
+        :param piece_data:
         :param perform_data:
         :return: List of MIDI velocities of notes in score-performance pair.
         '''

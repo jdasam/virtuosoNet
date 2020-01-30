@@ -150,37 +150,38 @@ def get_dynamics(directions):
     cresc_name = ['crescendo', 'diminuendo']
     cresciuto_list = []
     num_relative = len(relative_dynamics)
-    for i in range(num_relative):
-        rel = relative_dynamics[i]
-        index = binaryIndex(absolute_dynamics_position, rel.xml_position)
-        rel.previous_dynamic = absolute_dynamics[index].type['content']
-        if rel.type['type'] == 'dynamic' and not rel.type['content'] in ['rf', 'rfz', 'rffz']: # sf, fz, sfz
-            rel.end_xml_position = rel.xml_position + 0.1
+    if len(absolute_dynamics) > 0:
+        for i in range(num_relative):
+            rel = relative_dynamics[i]
+            index = binaryIndex(absolute_dynamics_position, rel.xml_position)
+            rel.previous_dynamic = absolute_dynamics[index].type['content']
+            if rel.type['type'] == 'dynamic' and not rel.type['content'] in ['rf', 'rfz', 'rffz']: # sf, fz, sfz
+                rel.end_xml_position = rel.xml_position + 0.1
 
-        if not hasattr(rel, 'end_xml_position'):
-            for j in range(1, num_relative-i):
-                next_rel = relative_dynamics[i+j]
-                rel.end_xml_position = next_rel.xml_position
-                break
+            if not hasattr(rel, 'end_xml_position'):
+                for j in range(1, num_relative-i):
+                    next_rel = relative_dynamics[i+j]
+                    rel.end_xml_position = next_rel.xml_position
+                    break
 
-        if index+1 < len(absolute_dynamics):
-            rel.next_dynamic = absolute_dynamics[index+1] #.type['content']
-            if not hasattr(rel, 'end_xml_position') or absolute_dynamics[index+1].xml_position < rel.end_xml_position:
-                rel.end_xml_position = absolute_dynamics_position[index+1]
-        else:
-            rel.next_dynamic = absolute_dynamics[index]
-
-        if not hasattr(rel, 'end_xml_position'):
-            rel.end_xml_position = float("inf")
-
-        if (rel.type['type'] in cresc_name or crescendo_word_regularization(rel.type['content']) in cresc_name )\
-                and rel.end_xml_position < rel.next_dynamic.xml_position:
-            if rel.type['type'] in cresc_name:
-                cresc_type = rel.type['type']
+            if index+1 < len(absolute_dynamics):
+                rel.next_dynamic = absolute_dynamics[index+1] #.type['content']
+                if not hasattr(rel, 'end_xml_position') or absolute_dynamics[index+1].xml_position < rel.end_xml_position:
+                    rel.end_xml_position = absolute_dynamics_position[index+1]
             else:
-                cresc_type = crescendo_word_regularization(rel.type['content'])
-            cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, cresc_type)
-            cresciuto_list.append(cresciuto)
+                rel.next_dynamic = absolute_dynamics[index]
+
+            if not hasattr(rel, 'end_xml_position'):
+                rel.end_xml_position = float("inf")
+
+            if (rel.type['type'] in cresc_name or crescendo_word_regularization(rel.type['content']) in cresc_name )\
+                    and rel.end_xml_position < rel.next_dynamic.xml_position:
+                if rel.type['type'] in cresc_name:
+                    cresc_type = rel.type['type']
+                else:
+                    cresc_type = crescendo_word_regularization(rel.type['content'])
+                cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, cresc_type)
+                cresciuto_list.append(cresciuto)
 
     return absolute_dynamics, relative_dynamics, cresciuto_list
 
@@ -231,12 +232,13 @@ def get_tempos(directions):
                 if next_rel in relative_long_tempos:
                     rel.end_xml_position = next_rel.xml_position
                     break
-        index = binaryIndex(absolute_tempos_position, rel.xml_position)
-        rel.previous_tempo = absolute_tempos[index].type['content']
-        if index+1 < num_abs_tempos:
-            rel.next_tempo = absolute_tempos[index+1].type['content']
-            if not hasattr(rel, 'end_xml_position') or rel.end_xml_position > absolute_tempos_position[index+1]:
-                rel.end_xml_position = absolute_tempos_position[index+1]
+        if len(absolute_tempos)> 0:
+            index = binaryIndex(absolute_tempos_position, rel.xml_position)
+            rel.previous_tempo = absolute_tempos[index].type['content']
+            if index+1 < num_abs_tempos:
+                rel.next_tempo = absolute_tempos[index+1].type['content']
+                if not hasattr(rel, 'end_xml_position') or rel.end_xml_position > absolute_tempos_position[index+1]:
+                    rel.end_xml_position = absolute_tempos_position[index+1]
         if not hasattr(rel, 'end_xml_position'):
             rel.end_xml_position = float("inf")
 
@@ -330,6 +332,8 @@ def keyword_into_onehot(attribute, keywords):
 
 def direction_words_flatten(note_attribute):
     flatten_words = note_attribute.absolute
+    if flatten_words == None: # if absolute direction is None
+        flatten_words = ''
     if not note_attribute.relative == []:
         for rel in note_attribute.relative:
             if rel.type['type'] == 'words':
