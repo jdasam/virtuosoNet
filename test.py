@@ -1,6 +1,6 @@
-from data_class import PieceData
+from .data_class import PieceData
 from pathlib import Path
-from feature_extraction import ScoreExtractor, PerformExtractor
+from .feature_extraction import ScoreExtractor, PerformExtractor
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
@@ -10,7 +10,7 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
                             'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
-target = Path('test_examples/Beethoven/32-1')
+target = Path('refactory/test_examples/Beethoven/32-1')
 xml_name = 'musicxml_cleaned.musicxml'
 
 piece = PieceData(target / xml_name)

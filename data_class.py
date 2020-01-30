@@ -11,11 +11,11 @@ import subprocess
 from pathlib import Path
 import warnings
 
-from musicxml_parser import MusicXMLDocument
-from midi_utils import midi_utils
-import score_as_graph as score_graph, xml_midi_matching as matching
-import xml_utils
-import feature_extraction
+from .musicxml_parser import MusicXMLDocument
+from .midi_utils import midi_utils
+from . import score_as_graph as score_graph, xml_midi_matching as matching
+from . import xml_utils
+from . import feature_extraction
 
 ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
@@ -207,6 +207,7 @@ class PieceData:
         self.meta._check_perf_align()
 
     def _load_score_xml(self):
+        print(self.meta.xml_path)
         self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
