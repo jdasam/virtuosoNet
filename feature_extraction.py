@@ -1,10 +1,12 @@
-import xml_direction_encoding as dir_enc
-import xml_utils, utils, feature_utils
+from . import xml_direction_encoding as dir_enc
+from . import xml_utils, utils, feature_utils
 import copy
 import math
 
 
 class ScoreExtractor:
+    """
+    """
     def __init__(self, feature_keys):
         self.selected_feature_keys = feature_keys
 
