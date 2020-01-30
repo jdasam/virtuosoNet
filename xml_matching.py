@@ -717,18 +717,6 @@ def check_index_continuity(features):
         prev_measure = feat.measure_index
 
 
-def composer_name_to_vec(composer_name):
-    warnings.warn('this code is deprecated. use feature_extraction.composer_name_to_vec')
-    composer_name_list = ['Bach','Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Glinka', 'Haydn',
-                          'Liszt', 'Mozart', 'Prokofiev', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin']
-
-    index = composer_name_list.index(composer_name)
-    one_hot_vec = [0] * len(composer_name_list)
-    one_hot_vec[index] = 1
-
-    return one_hot_vec
-
-
 def read_score_perform_pair(path, perf_name, composer_name, means, stds, search_by_file_name=False):
     if search_by_file_name:
         folder_path = '/'.join(path.split('/')[0:-1]) + '/'
