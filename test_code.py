@@ -9,6 +9,7 @@
 # import pickle
 from . import data_class
 import _pickle as cPickle
+from pathlib import Path
 
 # data_set = data_class.DataSet('EmotionData/', 'name')
 # data_set.load_all_performances()
@@ -22,6 +23,10 @@ import _pickle as cPickle
 with open('EmotionData.dat', "rb") as f:
     u = cPickle.Unpickler(f)
     data_set = u.load()
+
+for piece in data_set.pieces:
+    piece.meta.xml_path = Path(piece.meta.xml_path) 
+    piece.meta._load_composer_name()
 
 data_set.extract_all_features()
 #

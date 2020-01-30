@@ -341,10 +341,10 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-        path_split = copy.copy(self.folder_path).split('/')
 
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
+            path_split = copy.copy(self.folder_path).split('/')
             if path_split[0] == 'chopin_cleaned':
                 composer_name = path_split[1]
             else:
@@ -353,10 +353,9 @@ class PieceMeta:
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
             # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
-            dataset_folder_name_index = path_split.index('emotionDataset')
-            data_name = path_split[dataset_folder_name_index+1]
+            data_name = self.xml_path.name
             composer_name = data_name.split('.')[0]
-        
+
         self.composer = composer_name
 
 
