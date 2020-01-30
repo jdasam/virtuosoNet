@@ -1,4 +1,5 @@
 from binary_index import binary_index
+
 import pretty_midi
 THRESHOLD = 64
 OVERLAP_THR = 0.03
