@@ -48,13 +48,11 @@ class DataSet:
         self._load_all_scores()
 
     def _load_all_scores(self):
-        musicxml_list = sorted(self.path.glob('**.xml'))
+        musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
+                     f.endswith('xml')]
+        # path = Path(self.path)
+        # musicxml_list = sorted(path.glob('**.xml'))
         for xml in musicxml_list:
-            composer_name = str(xml.relative_to(self.path).parts[0])
-            if composer_name == 'Mendelssohn':
-                warnings.warn(
-                    f"no matching composer: {composer_name}, replaced to Schubert")
-                composer_name = 'Schubert'
             try:
                 piece = PieceData(xml, data_structure=self.data_structure)
                 self.pieces.append(piece)
@@ -341,19 +339,21 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-
+        print(self.folder_path)
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
             path_split = copy.copy(self.folder_path).split('/')
-            if path_split[0] == 'chopin_cleaned':
+            #if path_split[0] == 'chopin_cleaned':
+            if path_split[0] == 'test_examples':
                 composer_name = path_split[1]
             else:
-                dataset_folder_name_index = path_split.index('chopin_cleaned')
+                #dataset_folder_name_index = path_split.index('chopin_cleaned')
+                dataset_folder_name_index = path_split.index('test_examples')
                 composer_name = path_split[dataset_folder_name_index+1]
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
             # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
-            data_name = self.xml_path.name
+            data_name = os.path.basename(self.xml_path)
             composer_name = data_name.split('.')[0]
 
         self.composer = composer_name
