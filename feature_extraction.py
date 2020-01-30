@@ -184,7 +184,7 @@ class PerformExtractor:
         self.selected_feature_keys = selected_feature_keys
 
     def extract_perform_features(self, piece_data, perform_data):
-        perform_data.perform_features = {}
+        # perform_data.perform_features = {}
         for feature_key in self.selected_feature_keys:
             perform_data.perform_features[feature_key] = getattr(self, 'get_' + feature_key)(piece_data, perform_data)
 
@@ -230,6 +230,8 @@ class PerformExtractor:
                 xml_duration = note.note_duration.duration
                 if xml_duration == 0:
                     articulation = 1
+                elif note.is_overlapped:
+                    articulation = 1
                 else:
                     duration_as_quarter = xml_duration / note.state_fixed.divisions
                     second_in_tempo = duration_as_quarter / tempo.qpm * 60
@@ -237,12 +239,17 @@ class PerformExtractor:
                         _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
                     else:
                         actual_second = midi.end - midi.start
-
                     articulation = actual_second / second_in_tempo
-                    if articulation > 6:
+                    if actual_second == 0:
+                        articulation = 1
+                    if articulation <= 0:
+                        # print('Articulation error: tempo.qpm was{}, ')
+                    # if articulation > 6:
                         print('check: articulation is {} in {}th note of perform {}. '
                               'Tempo QPM was {}, in-tempo duration was {} seconds and was performed in {} seconds'
                               .format(articulation, i , perform_data.midi_path, tempo.qpm, second_in_tempo, actual_second))
+                        print('xml_duration of note was {}'.format(xml_duration, note.state_fixed.divisions))
+                        print('midi start was {} and end was {}'.format(midi.start, midi.end))
                 articulation = math.log(articulation, 10)
             features.append(articulation)
 
