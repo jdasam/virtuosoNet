@@ -1,8 +1,37 @@
+""" Utilities for feature extraction
+
+Interface summary:
+
+        import feature_utils
+
+        pitch_vector = feature_utils.pitch_into_vector(pitch)
+
+call in feature_extraction.py
+
+get feature information to generate or modify feature
+"""
+
 import math
 import utils
 
 def cal_beat_importance(beat_position, numerator):
-    # beat_position : [0-1), note's relative position in measure
+    """ Returns beat importance in integer
+
+    Args:
+        beat_position (integer): [0-1), note's relative position in measure
+        numerator (integer): note tempo's time numerator 
+    
+    Returns:
+        beat_importance (integer): importance of each beat in integer format
+
+    Example:
+        (in feature_extraction.py -> ScoreExtractor().extract_score_features()._get_beat_importance())
+        >>> beat_positions = _get_beat_position(piece_data)
+        >>> for i, note in enumerate(piece_data.xml_notes):
+        >>>    importance = feature_utils.cal_beat_importance(
+                    beat_positions[i], note.tempo.time_numerator)
+
+    """
     if beat_position == 0:
         beat_importance = 4
     elif beat_position == 0.5 and numerator in [2, 4, 6, 12]:
@@ -34,6 +63,20 @@ def cal_beat_importance(beat_position, numerator):
 
 
 def pitch_into_vector(pitch):
+    """ Returns pitch vector from midi pitch value
+    octave value is normalized
+
+    Args:
+        pitch (integer) : pitch value in midi number
+
+    Returns:
+        pitch_vec (1-D list) : vector with [octave value, 12-class 1-hot vector] in shape (13, )
+    
+    Example:
+        (in feature_extraction.py -> ScoreExtractor().extract_score_features())
+        >>> features['pitch'] = [feature_utils.pitch_into_vector(
+            note.pitch[1]) for note in piece_data.xml_notes]
+    """
     # TODO: should be located in general file. maybe utils?
     pitch_vec = [0] * 13  # octave + pitch class
     octave = (pitch // 12) - 1
@@ -47,6 +90,22 @@ def pitch_into_vector(pitch):
 
 
 def time_signature_to_vector(time_signature):
+    """ Returns
+
+    Args:
+        time_signature
+    
+    Returns:
+        time signature vector (1-D list)
+            : appended list of numerator_vec and denominator_vec in shape (9, )
+              numerator_vec (1-D list) : multi-hot vector correspond to each numerator value (integer) in shape (5, )
+              denominator_vec (1-D list) : one-hot vector correspond to each denominator value (integer) in shape (4, )
+    
+    Example:
+        (in feature_extraction.py -> ScoreExtractor().extract_score_features())
+        >>> features['time_sig_vec'] = [feature_utils.time_signature_to_vector(
+            note.tempo.time_signature) for note in piece_data.xml_notes]
+    """
     numerator = time_signature.numerator
     denominator = time_signature.denominator
 
@@ -89,6 +148,20 @@ def time_signature_to_vector(time_signature):
 
 
 def note_notation_to_vector(note):
+    """ Returns note notation vector
+
+    Args:
+        note: Note() object in xml_notes
+
+    Returns:
+        notation_vec (1-D list): multi-hot vector represents note notation in shape (num_keywords, )
+    
+    Example:
+        (in feature_extraction.py -> ScoreExtractor().extract_score_features())
+        >>> features['notation'] = [feature_utils.note_notation_to_vector(
+                                        note) for note in piece_data.xml_notes]
+
+    """
     # trill, tenuto, accent, staccato, fermata
     keywords = ['is_trill', 'is_tenuto', 'is_accent', 'is_staccato',
                 'is_fermata', 'is_arpeggiate', 'is_strong_accent', 'is_cue', 'is_slash']
@@ -105,10 +178,23 @@ def note_notation_to_vector(note):
 
 
 def make_index_continuous(note_locations):
-    # Sometimes a beat or a measure can contain no notes at all.
-    # In this case, the sequence of beat index or measure indices of notes are not continuous,
-    # e.g. 0, 0, 0, 0, 1, 1, 1, 1, 4, 4, 4, 4 ...
-    # This function ommits the beat or measure without any notes so that entire sequence of indices become continuous
+    """ Returns continuous note location list
+
+    Sometimes a beat or a measure can contain no notes at all.
+    In this case, the sequence of beat index or measure indices of notes are not continuous,
+    e.g. 0, 0, 0, 0, 1, 1, 1, 1, 4, 4, 4, 4 ...
+    This function ommits the beat or measure without any notes so that entire sequence of indices become continuous
+    
+    Args:
+        note_locations (1-D list) : list of .NoteLocation object
+    
+    Returns:
+        note_locations (1-D list) : list of .NoteLocation object
+    
+    Example:
+        (in feature_extraction.py -> ScoreExtractor().extract_score_features())
+        >>> features['note_location'] = feature_utils.make_index_continuous(features['note_location'])
+    """
     prev_beat = 0
     prev_measure = 0
 
@@ -152,7 +238,20 @@ class Tempo:
 
 
 def cal_tempo_by_positions(beats, position_pairs):
-    #
+    """ Returns list of Tempo objects
+
+    Args:
+        beats (1-D list): list of beats in piece
+        position_pairs (1-D list): list of valid pair dictionaries {xml_note, midi_note} 
+    
+    Returns:
+        tempos (1-D list): list of .Tempo object
+    
+    Example:
+        (in feature_extraction.py -> PerformExtractor().get_beat_tempo())
+        >>> tempos = feature_utils.cal_tempo_by_positions(piece_data.beat_positions, perform_data.valid_position_pairs)
+        
+    """
     tempos = []
     num_beats = len(beats)
     previous_end = 0
@@ -190,10 +289,21 @@ def cal_tempo_by_positions(beats, position_pairs):
 
 
 def pedal_sigmoid(pedal_value, k=8):
+    """ Returns
+
+    Args:
+        pedal_value (integer) : pedal value in midi number
+        k (integer)
+    
+    Returns:
+        sigmoid_pedal (integer) : sigmoid pedal value
+
+    Example:
+        (in feature_extraction.py -> PerformExtractor().get_pedal_at_start())
+        >>> pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_at_start)
+    """
     sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
     return int(sigmoid_pedal)
-
-
 
 
 def get_trill_parameters():

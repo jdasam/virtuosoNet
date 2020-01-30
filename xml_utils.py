@@ -1,8 +1,20 @@
+""" Utilities for xml usage
+
+Interface summary:
+
+        import xml_utils
+
+        notes, pedals = xml_utils.xml_notes_to_midi(xml_notes)
+
+call in feature_extraction.py and data_class.py
+
+get xml information like note information to generate or modify xml information
+"""
 import pretty_midi
 import copy
 
-import xml_direction_encoding as dir_enc
-import pedal_cleaning, utils
+from . import xml_direction_encoding as dir_enc
+from . import pedal_cleaning, utils
 
 def xml_notes_to_midi(xml_notes):
     """ Returns midi-transformed xml notes in pretty_midi.Note() format
