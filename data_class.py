@@ -341,14 +341,16 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-
+        print(self.folder_path)
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
             path_split = copy.copy(self.folder_path).split('/')
-            if path_split[0] == 'chopin_cleaned':
+            #if path_split[0] == 'chopin_cleaned':
+            if path_split[0] == 'test_examples':
                 composer_name = path_split[1]
             else:
-                dataset_folder_name_index = path_split.index('chopin_cleaned')
+                #dataset_folder_name_index = path_split.index('chopin_cleaned')
+                dataset_folder_name_index = path_split.index('test_examples')
                 composer_name = path_split[dataset_folder_name_index+1]
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
