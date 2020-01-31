@@ -322,3 +322,36 @@ def composer_name_to_vec(composer_name):
     one_hot_vec[index] = 1
 
     return one_hot_vec
+
+
+def get_longer_level_dynamics(features, note_locations, length='beat'):
+    num_notes = len(features)
+
+    prev_beat = 0
+    prev_beat_index = 0
+    temp_beat_dynamic = []
+
+    longer_dynamics = [0] * num_notes
+
+    for i in range(num_notes):
+        if not features['align_matched'][i]:
+            continue
+        current_beat = getattr(note_locations[i], length)
+
+        if current_beat > prev_beat and temp_beat_dynamic != []:
+            prev_beat_dynamic = (sum(temp_beat_dynamic) / len(temp_beat_dynamic) + max(temp_beat_dynamic)) / 2
+            for j in range(prev_beat_index, i):
+                longer_dynamics[j] = prev_beat_dynamic
+            temp_beat_dynamic = []
+            prev_beat = current_beat
+            prev_beat_index = i
+
+        temp_beat_dynamic.append(features['velocity'][i])
+
+    if temp_beat_dynamic != []:
+        prev_beat_dynamic = (sum(temp_beat_dynamic) + max(temp_beat_dynamic)) / 2 / len(temp_beat_dynamic)
+
+        for j in range(prev_beat_index, num_notes):
+            longer_dynamics[j] = prev_beat_dynamic
+
+    return longer_dynamics

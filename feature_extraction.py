@@ -548,3 +548,25 @@ class PerformExtractor:
             if pair != [] and pair['xml'].staff == 1:
                 features[i] = perform.perform_features['non_abs_attack_deviation'][i]
         return features
+
+    def get_beat_dynamics(self, piece_data, perform_data):
+        if 'velocity' not in perform_data.perform_features:
+            perform_data.perform_features['velocity'] = self.get_velocity(piece_data, perform_data)
+        if 'align_matched' not in perform_data.perform_features:
+            perform_data.perform_features['align_matched'] = self.get_align_matched(piece_data, perform_data)
+        if 'note_location' not in piece_data.score_features:
+            score_extractor = ScoreExtractor(['note_location'])
+            piece_data.score_features = score_extractor.extract_score_features(piece_data)
+        return feature_utils.get_longer_level_dynamics(perform_data.perform_features, piece_data.score_features['note_location'], length='beat')
+
+    def get_measure_dynamics(self, piece_data, perform_data):
+        if 'velocity' not in perform_data.perform_features:
+            perform_data.perform_features['velocity'] = self.get_velocity(piece_data, perform_data)
+        if 'align_matched' not in perform_data.perform_features:
+            perform_data.perform_features['align_matched'] = self.get_align_matched(piece_data, perform_data)
+        if 'note_location' not in piece_data.score_features:
+            score_extractor = ScoreExtractor(['note_location'])
+            piece_data.score_features = score_extractor.extract_score_features(piece_data)
+
+        return feature_utils.get_longer_level_dynamics(perform_data.perform_features,
+                                                       piece_data.score_features['note_location'], length='measure')
