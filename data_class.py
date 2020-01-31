@@ -205,7 +205,7 @@ class PieceData:
         self.score_match_list = []
         self.score_pairs = []
 
-        self.score_features = []
+        self.score_features = {}
 
         self._load_score_xml()
         self._load_score_midi()
