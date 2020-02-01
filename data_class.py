@@ -118,19 +118,9 @@ class DataSet:
 
     def features_to_list(self, list_of_feat):
         feature_data = [[] for i in range(len(list_of_feat))]
-
         for perf in self.default_performances:
-            # perf_features = [[] for i in range(len(list_of_feat))]
             for i, feature_type in enumerate(list_of_feat):
-
-                # perf_features = [x for x in perf.perform_features[feature_type] if x is not None]
                 feature_data[i].append(perf.perform_features[feature_type])
-            # for feature in perf.perform_features:
-            #     for i, feat_key in enumerate(list_of_feat):
-            #         value = getattr(feature, feat_key)
-            #         if value is not None:
-            #             perf_features[i].append(value)
-            # feature_data.append(perf_features)
         return feature_data
 
     def get_average_by_perform(self, feature_data):
@@ -340,15 +330,17 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-        print(self.folder_path)
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
             path_split = copy.copy(self.folder_path).split('/')
             if path_split[0] == self.dataset_name:
                 composer_name = path_split[1]
             else:
-                dataset_folder_name_index = path_split.index(self.dataset_name)
-                composer_name = path_split[dataset_folder_name_index+1]
+                if self.dataset_name in path_split:
+                    dataset_folder_name_index = path_split.index(self.dataset_name)
+                    composer_name = path_split[dataset_folder_name_index+1]
+                else:
+                    composer_name = None
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
             # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
