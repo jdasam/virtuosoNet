@@ -1,4 +1,4 @@
-import torch
+import th
 import pickle
 import _pickle as cPickle
 import argparse
@@ -25,6 +25,11 @@ import style_analysis
 sys.modules['xml_matching'] = xml_matching
 
 
+# TODO: move xml_matching.
+def should_be_moved():
+    raise(NotImplementedError)
+
+xml_matching.read_score_perform_pair = should_be_moved
 
 #>>>>>>>>>>>>>>>> to parser
 LOSS_TYPE = args.trainingLoss
@@ -143,8 +148,8 @@ def main():
     args = parser.parse_args()
     
 
-torch.cuda.set_device(args.device)
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+th.cuda.set_device(args.device)
+DEVICE = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
 if args.sessMode == 'train' and not args.resumeTraining:
     NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
@@ -177,7 +182,7 @@ else:
     print('Error: Unclassified model code')
     # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
-optimizer = torch.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
+optimizer = th.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
 
 
 if LOSS_TYPE == 'MSE':
@@ -185,31 +190,31 @@ if LOSS_TYPE == 'MSE':
         if isinstance(aligned_status, int):
             data_size = pred.shape[-2] * pred.shape[-1]
         else:
-            data_size = torch.sum(aligned_status).item() * pred.shape[-1]
+            data_size = th.sum(aligned_status).item() * pred.shape[-1]
             if data_size == 0:
                 data_size = 1
         if target.shape != pred.shape:
             print('Error: The shape of the target and prediction for the loss calculation is different')
             print(target.shape, pred.shape)
-            return torch.zeros(1).to(DEVICE)
-        return torch.sum(((target - pred) ** 2) * aligned_status) / data_size
+            return th.zeros(1).to(DEVICE)
+        return th.sum(((target - pred) ** 2) * aligned_status) / data_size
 elif LOSS_TYPE == 'CE':
     # criterion = nn.CrossEntropyLoss()
     def criterion(pred, target, aligned_status=1):
         if isinstance(aligned_status, int):
             data_size = pred.shape[-2] * pred.shape[-1]
         else:
-            data_size = torch.sum(aligned_status).item() * pred.shape[-1]
+            data_size = th.sum(aligned_status).item() * pred.shape[-1]
             if data_size ==0:
                 data_size = 1
                 print('data size for loss calculation is zero')
-        return -1 * torch.sum((target * torch.log(pred) + (1-target) * torch.log(1-pred)) * aligned_status) / data_size
+        return -1 * th.sum((target * th.log(pred) + (1-target) * th.log(1-pred)) * aligned_status) / data_size
 
 
 def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
     warnings.warn('moved to utils.py', DeprecationWarning)
     save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
-    torch.save(state, save_name)
+    th.save(state, save_name)
     if is_best:
         best_name = model_name + '_' + filename + '_best.pth.tar'
         shutil.copyfile(save_name, best_name)
@@ -234,7 +239,7 @@ def edges_to_matrix(edges, num_notes):
             matrix[edge_type, edg[1], edg[0]] = 1
 
     matrix[num_keywords, :,:] = np.identity(num_notes)
-    matrix = torch.Tensor(matrix)
+    matrix = th.Tensor(matrix)
     return matrix
 
 
@@ -262,12 +267,13 @@ def edges_to_matrix_short(edges, slice_index):
         else:
             matrix[edge_type, edg[1]-slice_index[0], edg[0]-slice_index[0]] = 1
     matrix[num_keywords, :,:] = np.identity(num_notes)
-    matrix = torch.Tensor(matrix)
+    matrix = th.Tensor(matrix)
 
     return matrix
 
 
 def edges_to_sparse_tensor(edges):
+    warnings.warn('moved to graph.py', DeprecationWarning)
     num_keywords = len(GRAPH_KEYS)
     edge_list = []
     edge_type_list = []
@@ -282,15 +288,16 @@ def edges_to_sparse_tensor(edges):
         else:
             edge_type_list.append(edge_type)
 
-        edge_list = torch.LongTensor(edge_list)
-    edge_type_list = torch.FloatTensor(edge_type_list)
+        edge_list = th.LongTensor(edge_list)
+    edge_type_list = th.FloatTensor(edge_type_list)
 
-    matrix = torch.sparse.FloatTensor(edge_list.t(), edge_type_list)
+    matrix = th.sparse.FloatTensor(edge_list.t(), edge_type_list)
 
     return matrix
 
-
+#>>>>>>>>>>>>>> probably remove
 def categorize_value_to_vector(y, bins):
+    warnings.warn('deprecated', DeprecationWarning)
     vec_length = sum([len(x) for x in bins])
     num_notes = len(y)
     y_categorized = []
@@ -306,9 +313,10 @@ def categorize_value_to_vector(y, bins):
         y_categorized.append(total_vec)
 
     return y_categorized
-
+#<<<<<<<<<<<< probably remove
 
 def scale_model_prediction_to_original(prediction, MEANS, STDS):
+    warnings.warn('moved to inference.py', DeprecationWarning)
     for i in range(len(STDS)):
         for j in range(len(STDS[i])):
             if STDS[i][j] < 1e-4:
@@ -337,15 +345,15 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
 
     return prediction
 
-
 def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
+    warnings.warn('moved to inference.py', DeprecationWarning)
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
     test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
                                                                                        start_tempo, composer,
                                                                                        vel_pair)
-    batch_x = torch.Tensor(test_x)
+    batch_x = th.Tensor(test_x)
     num_notes = len(test_x)
-    input_y = torch.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
+    input_y = th.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
 
     if type(z) is dict:
         initial_z = z['z']
@@ -366,14 +374,14 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
             # hier_z = [z] * HIER_MODEL_PARAM.encoder.size
             hier_z = 'zero'
             final_z = initial_z
-        hier_input_y = torch.zeros(1, num_notes, HIER_MODEL.output_size)
+        hier_input_y = th.zeros(1, num_notes, HIER_MODEL.output_size)
         hier_output, _ = run_model_in_steps(batch_x, hier_input_y, graph, note_locations, initial_z=hier_z, model=HIER_MODEL)
         if 'measure' in args.hierCode:
             hierarchy_numbers = [x.measure for x in note_locations]
         else:
             hierarchy_numbers = [x.section for x in note_locations]
         hier_output_spanned = HIER_MODEL.span_beat_to_note_num(hier_output, hierarchy_numbers, len(test_x), 0)
-        combined_x = torch.cat((batch_x, hier_output_spanned), 2)
+        combined_x = th.cat((batch_x, hier_output_spanned), 2)
         prediction, _ = run_model_in_steps(combined_x, input_y, graph, note_locations, initial_z=final_z, model=MODEL)
     else:
         if type(initial_z) is list:
@@ -383,10 +391,10 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
         prediction, _ = run_model_in_steps(batch_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
 
 
-    trill_batch_x = torch.cat((batch_x, prediction), 2)
-    trill_prediction, _ = run_model_in_steps(trill_batch_x, torch.zeros(1, num_notes, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
+    trill_batch_x = th.cat((batch_x, prediction), 2)
+    trill_prediction, _ = run_model_in_steps(trill_batch_x, th.zeros(1, num_notes, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
 
-    prediction = torch.cat((prediction, trill_prediction), 2)
+    prediction = th.cat((prediction, trill_prediction), 2)
     prediction = scale_model_prediction_to_original(prediction, MEANS, STDS)
 
     output_features = xml_matching.model_prediction_to_feature(prediction)
@@ -406,6 +414,7 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
 
 
 def load_file_and_encode_style(path, perf_name, composer_name):
+    warnings.warn('moved to dataset.py', DeprecationWarning)
     test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(path, perf_name, composer_name, MEANS, STDS)
     qpm_primo = test_x[0][4]
 
@@ -422,7 +431,7 @@ def load_file_and_encode_style(path, perf_name, composer_name):
         elif HIER_BEAT:
             hierarchy_numbers = [x.beat for x in note_locations]
         hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, test_x.shape[1], 0)
-        input_concat = torch.cat((test_x, hier_outputs_spanned), 2)
+        input_concat = th.cat((test_x, hier_outputs_spanned), 2)
         batch_y = test_y[1].view(1, -1, MODEL.output_size)
         perform_z_note = encode_performance_style_vector(input_concat, batch_y, edges, note_locations, model=MODEL)
         perform_z = [perform_z_high, perform_z_note]
@@ -437,6 +446,7 @@ def load_file_and_encode_style(path, perf_name, composer_name):
 
 
 def load_all_file_and_encode_style(parsed_data, measure_only=False, emotion_data=False):
+    warnings.warn('moved to dataset.py', DeprecationWarning)
     total_z = []
     perf_name_list = []
     num_piece = len(parsed_data[0])
@@ -490,7 +500,8 @@ def load_all_file_and_encode_style(parsed_data, measure_only=False, emotion_data
     return total_z, perf_name_list
 
 def encode_performance_style_vector(input, input_y, edges, note_locations, model=MODEL):
-    with torch.no_grad():
+    warnings.warn('moved to utils.py', DeprecationWarning)
+    with th.no_grad():
         model_eval = model.eval()
         if edges is not None:
             edges = edges.to(DEVICE)
@@ -500,6 +511,7 @@ def encode_performance_style_vector(input, input_y, edges, note_locations, model
 
 
 def encode_all_emotionNet_data(path_list, style_keywords):
+    warnings.warn('moved to dataset.py', DeprecationWarning)
     perform_z_by_emotion = []
     perform_z_list_by_subject = []
     qpm_list_by_subject = []
@@ -518,7 +530,7 @@ def encode_all_emotionNet_data(path_list, style_keywords):
             for key in style_keywords:
                 perf_name = key + '_sub' + str(sub_idx+1)
                 perform_z_li, qpm_primo = load_file_and_encode_style(path, perf_name, composer_name)
-                perform_z_li = [torch.mean(torch.stack(z), 0, True) for z in perform_z_li]
+                perform_z_li = [th.mean(th.stack(z), 0, True) for z in perform_z_li]
                 indiv_perform_z.append(perform_z_li)
                 indiv_qpm.append(qpm_primo)
             for i in range(1, num_style):
@@ -533,7 +545,7 @@ def encode_all_emotionNet_data(path_list, style_keywords):
             emotion_mean_z = []
             for z_list in perform_z_list_by_subject:
                 emotion_mean_z.append(z_list[i][j])
-            mean_perform_z = torch.mean(torch.stack(emotion_mean_z), 0, True)
+            mean_perform_z = th.mean(th.stack(emotion_mean_z), 0, True)
             z_by_models.append(mean_perform_z)
         if i is not 0:
             emotion_qpm = []
@@ -551,8 +563,9 @@ def encode_all_emotionNet_data(path_list, style_keywords):
 
 
 def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, model=MODEL):
+    warnings.warn('moved to utils.py', DeprecationWarning)
     num_notes = input.shape[1]
-    with torch.no_grad():  # no need to track history in validation
+    with th.no_grad():  # no need to track history in validation
         model_eval = model.eval()
         total_output = []
         total_z = []
@@ -574,19 +587,20 @@ def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, m
             total_z.append((perf_mu, perf_var))
             total_output.append(temp_outputs)
 
-        outputs = torch.cat(total_output, 1)
+        outputs = th.cat(total_output, 1)
         return outputs, total_z
 
 
 def batch_time_step_run(data, model, batch_size=batch_size):
+    warnings.warn('moved to utils.py', DeprecationWarning)
     batch_start, batch_end = training_data['slice_idx']
     batch_x, batch_y = handle_data_in_tensor(data['x'][batch_start:batch_end], data['y'][batch_start:batch_end])
 
     batch_x = batch_x.view((batch_size, -1, NUM_INPUT))
     batch_y = batch_y.view((batch_size, -1, NUM_OUTPUT))
 
-    align_matched = torch.Tensor(data['align_matched'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
-    pedal_status = torch.Tensor(data['pedal_status'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
+    align_matched = th.Tensor(data['align_matched'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
+    pedal_status = th.Tensor(data['pedal_status'][batch_start:batch_end]).view((batch_size, -1, 1)).to(DEVICE)
 
     if training_data['graphs'] is not None:
         edges = training_data['graphs']
@@ -626,14 +640,14 @@ def batch_time_step_run(data, model, batch_size=batch_size):
         total_loss = tempo_loss + vel_loss
     elif TRILL:
         trill_bool = batch_x[:, :, is_trill_index_concated:is_trill_index_concated + 1]
-        if torch.sum(trill_bool) > 0:
+        if th.sum(trill_bool) > 0:
             total_loss = criterion(outputs, batch_y, trill_bool)
         else:
-            return torch.zeros(1), torch.zeros(1), torch.zeros(1),  torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
+            return th.zeros(1), th.zeros(1), th.zeros(1),  th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1)
 
     else:
         if 'isgn' in args.modelCode and args.intermediateLoss:
-            total_loss = torch.zeros(1).to(DEVICE)
+            total_loss = th.zeros(1).to(DEVICE)
             for out in total_out_list:
                 if model.is_baseline:
                     tempo_loss = criterion(out[:, :, 0:1],
@@ -668,27 +682,26 @@ def batch_time_step_run(data, model, batch_size=batch_size):
             total_loss = (tempo_loss + vel_loss + dev_loss + articul_loss + pedal_loss * 7) / 11
 
     if isinstance(perform_mu, bool):
-        perform_kld = torch.zeros(1)
+        perform_kld = th.zeros(1)
     else:
-        perform_kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+        perform_kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
         total_loss += perform_kld * kld_weight
     optimizer.zero_grad()
     total_loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+    th.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
     optimizer.step()
 
     if HIERARCHY:
-        return tempo_loss, vel_loss, torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), perform_kld
+        return tempo_loss, vel_loss, th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), perform_kld
     elif TRILL:
-        return torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), total_loss, torch.zeros(1)
+        return th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), total_loss, th.zeros(1)
     else:
-        return tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, torch.zeros(1), perform_kld
+        return tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, th.zeros(1), perform_kld
 
     # loss = criterion(outputs, batch_y)
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
 
-
-
+#>>>>>>>>>>> not decided
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
 
@@ -696,8 +709,8 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     start_beat = note_locations[start_index].beat
     num_beats = note_locations[num_notes+start_index-1].beat - start_beat + 1
 
-    pred_beat_tempo = torch.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
-    true_beat_tempo = torch.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
+    pred_beat_tempo = th.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
+    true_beat_tempo = th.zeros([num_beats, NUM_TEMPO_PARAM]).to(DEVICE)
     for i in range(num_notes):
         current_beat = note_locations[i+start_index].beat
         if current_beat > previous_beat:
@@ -707,8 +720,8 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
                     if note_locations[j+start_index].beat > current_beat:
                         break
                 if not i == j:
-                    pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, QPM_INDEX])
-                    true_beat_tempo[current_beat - start_beat] = torch.mean(true_x[0, i:j, QPM_INDEX])
+                    pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, QPM_INDEX])
+                    true_beat_tempo[current_beat - start_beat] = th.mean(true_x[0, i:j, QPM_INDEX])
             else:
                 pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
                 true_beat_tempo[current_beat-start_beat] = true_x[0,i,QPM_INDEX:QPM_INDEX + NUM_TEMPO_PARAM]
@@ -725,8 +738,8 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
 
 
 def handle_data_in_tensor(x, y, hierarchy_test=False):
-    x = torch.Tensor(x)
-    y = torch.Tensor(y)
+    x = th.Tensor(x)
+    y = th.Tensor(y)
     if HIER_MEAS:
         hierarchy_output = y[:,cons.MEAS_TEMPO_IDX:cons.MEAS_TEMPO_IDX+2]
     elif HIER_BEAT:
@@ -739,10 +752,10 @@ def handle_data_in_tensor(x, y, hierarchy_test=False):
     if HIERARCHY:
         y = hierarchy_output
     elif IN_HIER:
-        x = torch.cat((x,hierarchy_output), 1)
+        x = th.cat((x,hierarchy_output), 1)
         y = y[:, :NUM_PRIME_PARAM]
     elif TRILL:
-        x = torch.cat((x, y[:, :NUM_PRIME_PARAM]), 1)
+        x = th.cat((x, y[:, :NUM_PRIME_PARAM]), 1)
         y = y[: ,-num_trill_param:]
     else:
         y = y[:, :NUM_PRIME_PARAM]
@@ -758,7 +771,7 @@ class TraningSample():
     def __init__(self, index):
         self.index = index
         self.slice_indexes = None
-
+#<<<<<<<<<<< not decided
 
 ### training
 
@@ -777,7 +790,7 @@ if args.sessMode == 'train':
             print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
             # model_codes = ['prime', 'trill']
             filename = 'prime_' + args.modelCode + args.resume
-            checkpoint = torch.load(filename,  map_location=DEVICE)
+            checkpoint = th.load(filename,  map_location=DEVICE)
             best_valid_loss = checkpoint['best_valid_loss']
             MODEL.load_state_dict(checkpoint['state_dict'])
             MODEL.device = DEVICE
@@ -977,9 +990,9 @@ if args.sessMode == 'train':
             batch_x, batch_y = handle_data_in_tensor(test_x, test_y)
             batch_x = batch_x.view(1, -1, NUM_INPUT)
             batch_y = batch_y.view(1, -1, NUM_OUTPUT)
-            # input_y = torch.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
-            align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
-            pedal_status = torch.Tensor(pedal_status).view(1,-1,1).to(DEVICE)
+            # input_y = th.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(DEVICE)
+            align_matched = th.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
+            pedal_status = th.Tensor(pedal_status).view(1,-1,1).to(DEVICE)
             outputs, total_z = run_model_in_steps(batch_x, batch_y, graphs, note_locations)
 
             # valid_loss = criterion(outputs[:,:,NUM_TEMPO_PARAM:-num_trill_param], batch_y[:,:,NUM_TEMPO_PARAM:-num_trill_param], align_matched)
@@ -1002,26 +1015,26 @@ if args.sessMode == 'train':
                     tempo_loss += criterion(tempo_out_delta, tempo_true_delta) * DELTA_WEIGHT
                     vel_loss += criterion(vel_out_delta, vel_true_delta) * DELTA_WEIGHT
 
-                deviation_loss = torch.zeros(1)
-                articul_loss = torch.zeros(1)
-                pedal_loss = torch.zeros(1)
-                trill_loss = torch.zeros(1)
+                deviation_loss = th.zeros(1)
+                articul_loss = th.zeros(1)
+                pedal_loss = th.zeros(1)
+                trill_loss = th.zeros(1)
 
                 for z in total_z:
                     perform_mu, perform_var = z
-                    kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                     kld_loss_total.append(kld_loss.item())
             elif TRILL:
                 trill_bool = batch_x[:,:,is_trill_index_concated] == 1
                 trill_bool = trill_bool.float().view(1,-1,1).to(DEVICE)
                 trill_loss = criterion(outputs, batch_y, trill_bool)
 
-                tempo_loss = torch.zeros(1)
-                vel_loss = torch.zeros(1)
-                deviation_loss = torch.zeros(1)
-                articul_loss = torch.zeros(1)
-                pedal_loss = torch.zeros(1)
-                kld_loss = torch.zeros(1)
+                tempo_loss = th.zeros(1)
+                vel_loss = th.zeros(1)
+                deviation_loss = th.zeros(1)
+                articul_loss = th.zeros(1)
+                pedal_loss = th.zeros(1)
+                kld_loss = th.zeros(1)
                 kld_loss_total.append(kld_loss.item())
 
             else:
@@ -1038,10 +1051,10 @@ if args.sessMode == 'train':
                     deviation_loss = criterion(outputs[:, :, DEV_PARAM_IDX], batch_y[:, :, DEV_PARAM_IDX], align_matched)
                     articul_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX], batch_y[:, :, PEDAL_PARAM_IDX], pedal_status)
                     pedal_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX+1:], batch_y[:, :, PEDAL_PARAM_IDX+1:], align_matched)
-                    trill_loss = torch.zeros(1)
+                    trill_loss = th.zeros(1)
                 for z in total_z:
                     perform_mu, perform_var = z
-                    kld_loss = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                    kld_loss = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                     kld_loss_total.append(kld_loss.item())
 
             # valid_loss_total.append(valid_loss.item())
@@ -1100,12 +1113,12 @@ else:
         # model_codes = ['prime', 'trill']
         filename = 'prime_' + args.modelCode + args.resume
         print('device is ', args.device)
-        torch.cuda.set_device(args.device)
-        if torch.cuda.is_available():
+        th.cuda.set_device(args.device)
+        if th.cuda.is_available():
             map_location = lambda storage, loc: storage.cuda()
         else:
             map_location = 'cpu'
-        checkpoint = torch.load(filename, map_location=map_location)
+        checkpoint = th.load(filename, map_location=map_location)
         # args.start_epoch = checkpoint['epoch']
         # best_valid_loss = checkpoint['best_valid_loss']
         MODEL.load_state_dict(checkpoint['state_dict'])
@@ -1116,7 +1129,7 @@ else:
         # optimizer.load_state_dict(checkpoint['optimizer'])
         # trill_filename = args.trillCode + args.resume
         trill_filename = args.trillCode + '_best.pth.tar'
-        checkpoint = torch.load(trill_filename, map_location=map_location)
+        checkpoint = th.load(trill_filename, map_location=map_location)
         TRILL_MODEL.load_state_dict(checkpoint['state_dict'])
         print("=> loaded checkpoint '{}' (epoch {})"
               .format(trill_filename, checkpoint['epoch']))
@@ -1125,7 +1138,7 @@ else:
             HIER_MODEL_PARAM = param.load_parameters(args.hierCode + '_param')
             HIER_MODEL = nnModel.HAN_Integrated(HIER_MODEL_PARAM, DEVICE, True).to(DEVICE)
             filename = 'prime_' + args.hierCode + args.resume
-            checkpoint = torch.load(filename, map_location=DEVICE)
+            checkpoint = th.load(filename, map_location=DEVICE)
             HIER_MODEL.load_state_dict(checkpoint['state_dict'])
             print("=> high-level model loaded checkpoint '{}' (epoch {})"
                   .format(filename, checkpoint['epoch']))
@@ -1269,8 +1282,8 @@ else:
                 # print('Zero Sampled Correlation: ', zero_sample_correlation_total[-1])
 
             batch_x, batch_y = handle_data_in_tensor(test_x, test_y, hierarchy_test=IN_HIER)
-            align_matched = torch.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
-            pedal_status = torch.Tensor(pedal_status).view(1, -1, 1).to(DEVICE)
+            align_matched = th.Tensor(align_matched).view(1, -1, 1).to(DEVICE)
+            pedal_status = th.Tensor(pedal_status).view(1, -1, 1).to(DEVICE)
 
             if IN_HIER:
                 batch_x = batch_x.view((1, -1, HIER_MODEL.input_size))
@@ -1281,7 +1294,7 @@ else:
                 elif HIER_BEAT:
                     hierarchy_numbers = [x.beat for x in note_locations]
                 hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, batch_x.shape[1], 0)
-                input_concat = torch.cat((batch_x, hier_outputs_spanned),2)
+                input_concat = th.cat((batch_x, hier_outputs_spanned),2)
                 batch_y = batch_y[1].view(1,-1, MODEL.output_size)
                 outputs, perform_z = run_model_in_steps(input_concat, batch_y, graphs, note_locations, model=MODEL)
 
@@ -1289,7 +1302,7 @@ else:
                 zero_hier_outputs, _ = run_model_in_steps(batch_x, hier_y, graphs, note_locations, model=HIER_MODEL,
                                                         initial_z='zero')
                 zero_hier_spanned = HIER_MODEL.span_beat_to_note_num(zero_hier_outputs, hierarchy_numbers, batch_x.shape[1], 0)
-                zero_input_concat = torch.cat((batch_x, zero_hier_spanned),2)
+                zero_input_concat = th.cat((batch_x, zero_hier_spanned),2)
                 zero_prediction, _ = run_model_in_steps(zero_input_concat, batch_y, graphs, note_locations, model=MODEL)
 
             else:
@@ -1340,14 +1353,14 @@ else:
                                          pedal_status)
                 pedal_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX + 1:], batch_y[:, :, PEDAL_PARAM_IDX + 1:],
                                        align_matched)
-                trill_loss = torch.zeros(1)
+                trill_loss = th.zeros(1)
 
             piece_kld = []
             for z in perform_z:
                 perform_mu, perform_var = z
-                kld = -0.5 * torch.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                 piece_kld.append(kld)
-            piece_kld = torch.mean(torch.stack(piece_kld))
+            piece_kld = th.mean(th.stack(piece_kld))
 
             piece_wise_loss.append((tempo_loss.item(), vel_loss.item(), deviation_loss.item(), articul_loss.item(), pedal_loss.item(), trill_loss.item(), piece_kld.item()))
 
@@ -1466,5 +1479,5 @@ else:
         emotion_list = cons.emotion_key_list
         perform_z_by_list = encode_all_emotionNet_data(path_list, emotion_list)
         for z_dict in perform_z_by_list:
-            z_dict['z'][0] = torch.Tensor(horowitz_z).to(DEVICE)
+            z_dict['z'][0] = th.Tensor(horowitz_z).to(DEVICE)
             load_file_and_generate_performance('test_pieces/schumann/', 'Schumann', z=z_dict, start_tempo=45)
