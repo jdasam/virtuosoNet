@@ -182,6 +182,10 @@ class DataSet:
                         self.performs_by_tag[tag].append(perform)
                         break
 
+    def update_dataset(self):
+        for piece in self.pieces:
+            piece.update_performances()
+
 # score data class
 class PieceData:
     def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
@@ -254,6 +258,17 @@ class PieceData:
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
 
+    def update_performances(self):
+        old_performances = copy.copy(self.meta.perf_file_list)
+        self.meta._load_list_of_performances()
+        self.meta._check_perf_align()
+        new_performances = self.meta.perf_file_list
+        for perf_path in new_performances:
+            if perf_path not in old_performances:
+                perform_data = PerformData(perf_path, self.meta)
+                self._align_perform_with_score(perform_data)
+                self.performances.append(perform_data)
+
     def __str__(self):
         text = 'Path name: {}, Composer Name: {}, Number of Performances: {}'.format(self.meta.xml_path, self.meta.composer, len(self.performances))
         return text
@@ -320,9 +335,24 @@ class PieceMeta:
             subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
         except:
             print('Error to process {}'.format(midi_file_path))
+            print('Trying to fix MIDI file {}'.format(midi_file_path))
             os.chdir(current_dir)
-            pass
+            shutil.copy(midi_file_path, midi_file_path+'old')
+            midi_utils.to_midi_zero(midi_file_path, save_midi=True, save_name=midi_file_path)
+            shutil.copy(midi_file_path, os.path.join(ALIGN_DIR, 'infer.mid'))
+            try:
+                os.chdir(ALIGN_DIR)
+                subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
+            except:
+                align_success = False
+                print('Fail to process {}'.format(midi_file_path))
+                os.chdir(current_dir)
+            else:
+                align_success = True
         else:
+            align_success = True
+
+        if align_success:
             shutil.move('infer_corresp.txt', midi_file_path.replace('.mid', '_infer_corresp.txt'))
             shutil.move('infer_match.txt', midi_file_path.replace('.mid', '_infer_match.txt'))
             shutil.move('infer_spr.txt', midi_file_path.replace('.mid', '_infer_spr.txt'))
@@ -348,7 +378,6 @@ class PieceMeta:
             composer_name = data_name.split('.')[0]
 
         self.composer = composer_name
-
 
 
 
