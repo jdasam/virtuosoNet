@@ -183,6 +183,18 @@ class DataSet:
                         break
 
     def update_dataset(self):
+        old_music_xml_list = [piece.meta.xml_path for piece in self.pieces]
+        cur_musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
+                         f.endswith('xml')]
+        for xml in cur_musicxml_list:
+            if xml not in old_music_xml_list:
+                print('Updated piece:', xml)
+                try:
+                    piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
+                    self.pieces.append(piece)
+                except Exception as ex:
+                    print('Error type :', ex)
+        self.num_pieces = len(self.pieces)
         for piece in self.pieces:
             piece.update_performances()
 
