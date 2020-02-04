@@ -15,6 +15,12 @@ num_dynamic_info = 0 # distance from marking, dynamics vector 4, mean_piano, for
 is_trill_index_score = -11
 is_trill_index_concated = -11 - (NUM_PRIME_PARAM + num_second_param)
 
+QPM_INDEX = 0
+# VOICE_IDX = 11
+TEMPO_IDX = 26
+QPM_PRIMO_IDX = 4
+TEMPO_PRIMO_IDX = -2
+
 
 MEAS_TEMPO_IDX = 13
 BEAT_TEMPO_IDX = 11

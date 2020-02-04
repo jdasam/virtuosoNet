@@ -42,17 +42,17 @@ RAND_TRAIN = args.randomTrain
 TRILL = False
 
 if 'measure' in args.modelCode or 'beat' in args.modelCode:
-    HIERARCHY = True
+HIERARCHY = True
 elif 'note' in args.modelCode:
-    IN_HIER = True  # In hierarchy mode
+IN_HIER = True  # In hierarchy mode
 if HIERARCHY or IN_HIER:
-    if 'measure' in args.modelCode or 'measure' in args.hierCode:
-        HIER_MEAS = True
-    elif 'beat' in args.modelCode or 'beat' in args.hierCode:
-        HIER_BEAT = True
+if 'measure' in args.modelCode or 'measure' in args.hierCode:
+    HIER_MEAS = True
+elif 'beat' in args.modelCode or 'beat' in args.hierCode:
+    HIER_BEAT = True
 
 if 'trill' in args.modelCode:
-    TRILL = True
+TRILL = True
 
 
 ### parameters
@@ -73,7 +73,7 @@ batch_size = 1
 #>>>>>>>>>>>>>>>> to parser.get_name
 
 print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
-      (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
+    (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
 num_key_augmentation = 1
 #<<<<<<<<<<<<<<<< to parser.get_name
@@ -82,14 +82,14 @@ num_key_augmentation = 1
 NUM_INPUT = 78
 NUM_PRIME_PARAM = 11
 if HIERARCHY:
-    NUM_OUTPUT = 2
+NUM_OUTPUT = 2
 elif TRILL:
-    NUM_INPUT += NUM_PRIME_PARAM
-    NUM_OUTPUT = 5
+NUM_INPUT += NUM_PRIME_PARAM
+NUM_OUTPUT = 5
 else:
-    NUM_OUTPUT = 11
+NUM_OUTPUT = 11
 if IN_HIER:
-    NUM_INPUT += 2
+NUM_INPUT += 2
 #<<<<<<<<<<<<<<<< remove
 
 #>>>>>>>>>>>>>>>> remove or constants
@@ -112,9 +112,9 @@ QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
 GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
 if args.slurEdge:
-    GRAPH_KEYS.append('slur')
+GRAPH_KEYS.append('slur')
 if args.voiceEdge:
-    GRAPH_KEYS.append('voice')
+GRAPH_KEYS.append('voice')
 N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 # mean_vel_start_index = 7
 # vel_vec_start_index = 33
@@ -122,455 +122,449 @@ N_EDGE_TYPE = len(GRAPH_KEYS) * 2
 
 #>>>>>>>>>>>>>>>> dataset
 with open(args.dataName + "_stat.dat", "rb") as f:
-    u = pickle._Unpickler(f)
-    u.encoding = 'latin1'
-    if args.trainingLoss == 'CE':
-        MEANS, STDS, BINS = u.load()
-        new_prime_param = 0
-        new_trill_param = 0
-        for i in range(NUM_PRIME_PARAM):
-            new_prime_param += len(BINS[i]) - 1
-        for i in range(NUM_PRIME_PARAM, NUM_PRIME_PARAM + num_trill_param - 1):
-            new_trill_param += len(BINS[i]) - 1
-        NUM_PRIME_PARAM = new_prime_param
-        print('New NUM_PRIME_PARAM: ', NUM_PRIME_PARAM)
-        num_trill_param = new_trill_param + 1
-        NUM_OUTPUT = NUM_PRIME_PARAM + num_trill_param
-        NUM_TEMPO_PARAM = len(BINS[0]) - 1
-    else:
-        MEANS, STDS = u.load()
+u = pickle._Unpickler(f)
+u.encoding = 'latin1'
+if args.trainingLoss == 'CE':
+    MEANS, STDS, BINS = u.load()
+    new_prime_param = 0
+    new_trill_param = 0
+    for i in range(NUM_PRIME_PARAM):
+        new_prime_param += len(BINS[i]) - 1
+    for i in range(NUM_PRIME_PARAM, NUM_PRIME_PARAM + num_trill_param - 1):
+        new_trill_param += len(BINS[i]) - 1
+    NUM_PRIME_PARAM = new_prime_param
+    print('New NUM_PRIME_PARAM: ', NUM_PRIME_PARAM)
+    num_trill_param = new_trill_param + 1
+    NUM_OUTPUT = NUM_PRIME_PARAM + num_trill_param
+    NUM_TEMPO_PARAM = len(BINS[0]) - 1
+else:
+    MEANS, STDS = u.load()
 #<<<<<<<<<<<<<<<<< dataset
 
 def main():
-
-    parser = get_parser()
-    random.seed(0)
-    args = parser.parse_args()
-    
-
 th.cuda.set_device(args.device)
 DEVICE = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
 if args.sessMode == 'train' and not args.resumeTraining:
-    NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
-    NET_PARAM.num_edge_types = N_EDGE_TYPE
-    NET_PARAM.training_args = args
-    param.save_parameters(NET_PARAM, args.modelCode + '_param')
+NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
+NET_PARAM.num_edge_types = N_EDGE_TYPE
+NET_PARAM.training_args = args
+param.save_parameters(NET_PARAM, args.modelCode + '_param')
 elif args.resumeTraining:
-    NET_PARAM = param.load_parameters(args.modelCode + '_param')
+NET_PARAM = param.load_parameters(args.modelCode + '_param')
 else:
-    NET_PARAM = param.load_parameters(args.modelCode + '_param')
-    TrillNET_Param = param.load_parameters(args.trillCode + '_param')
-    # if not hasattr(NET_PARAM, 'num_edge_types'):
-    #     NET_PARAM.num_edge_types = 10
-    # if not hasattr(TrillNET_Param, 'num_edge_types'):
-    #     TrillNET_Param.num_edge_types = 10
-    TRILL_MODEL = nnModel.TrillRNN(TrillNET_Param, DEVICE).to(DEVICE)
+NET_PARAM = param.load_parameters(args.modelCode + '_param')
+TrillNET_Param = param.load_parameters(args.trillCode + '_param')
+# if not hasattr(NET_PARAM, 'num_edge_types'):
+#     NET_PARAM.num_edge_types = 10
+# if not hasattr(TrillNET_Param, 'num_edge_types'):
+#     TrillNET_Param.num_edge_types = 10
+TRILL_MODEL = nnModel.TrillRNN(TrillNET_Param, DEVICE).to(DEVICE)
 
 
 if 'isgn' in args.modelCode:
-    MODEL = nnModel.ISGN(NET_PARAM, DEVICE).to(DEVICE)
+MODEL = nnModel.ISGN(NET_PARAM, DEVICE).to(DEVICE)
 elif 'han' in args.modelCode:
-    if 'ar' in args.modelCode:
-        step_by_step = True
-    else:
-        step_by_step = False
-    MODEL = nnModel.HAN_Integrated(NET_PARAM, DEVICE, step_by_step).to(DEVICE)
-elif 'trill' in args.modelCode:
-    MODEL = nnModel.TrillRNN(NET_PARAM, DEVICE).to(DEVICE)
+if 'ar' in args.modelCode:
+    step_by_step = True
 else:
-    print('Error: Unclassified model code')
-    # Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
+    step_by_step = False
+MODEL = nnModel.HAN_Integrated(NET_PARAM, DEVICE, step_by_step).to(DEVICE)
+elif 'trill' in args.modelCode:
+MODEL = nnModel.TrillRNN(NET_PARAM, DEVICE).to(DEVICE)
+else:
+print('Error: Unclassified model code')
+# Model = nnModel.HAN_VAE(NET_PARAM, DEVICE, False).to(DEVICE)
 
 optimizer = th.optim.Adam(MODEL.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
 
 
 if LOSS_TYPE == 'MSE':
-    def criterion(pred, target, aligned_status=1):
-        if isinstance(aligned_status, int):
-            data_size = pred.shape[-2] * pred.shape[-1]
-        else:
-            data_size = th.sum(aligned_status).item() * pred.shape[-1]
-            if data_size == 0:
-                data_size = 1
-        if target.shape != pred.shape:
-            print('Error: The shape of the target and prediction for the loss calculation is different')
-            print(target.shape, pred.shape)
-            return th.zeros(1).to(DEVICE)
-        return th.sum(((target - pred) ** 2) * aligned_status) / data_size
+def criterion(pred, target, aligned_status=1):
+    if isinstance(aligned_status, int):
+        data_size = pred.shape[-2] * pred.shape[-1]
+    else:
+        data_size = th.sum(aligned_status).item() * pred.shape[-1]
+        if data_size == 0:
+            data_size = 1
+    if target.shape != pred.shape:
+        print('Error: The shape of the target and prediction for the loss calculation is different')
+        print(target.shape, pred.shape)
+        return th.zeros(1).to(DEVICE)
+    return th.sum(((target - pred) ** 2) * aligned_status) / data_size
 elif LOSS_TYPE == 'CE':
-    # criterion = nn.CrossEntropyLoss()
-    def criterion(pred, target, aligned_status=1):
-        if isinstance(aligned_status, int):
-            data_size = pred.shape[-2] * pred.shape[-1]
-        else:
-            data_size = th.sum(aligned_status).item() * pred.shape[-1]
-            if data_size ==0:
-                data_size = 1
-                print('data size for loss calculation is zero')
-        return -1 * th.sum((target * th.log(pred) + (1-target) * th.log(1-pred)) * aligned_status) / data_size
+# criterion = nn.CrossEntropyLoss()
+def criterion(pred, target, aligned_status=1):
+    if isinstance(aligned_status, int):
+        data_size = pred.shape[-2] * pred.shape[-1]
+    else:
+        data_size = th.sum(aligned_status).item() * pred.shape[-1]
+        if data_size ==0:
+            data_size = 1
+            print('data size for loss calculation is zero')
+    return -1 * th.sum((target * th.log(pred) + (1-target) * th.log(1-pred)) * aligned_status) / data_size
 
 
 def save_checkpoint(state, is_best, filename=args.modelCode, model_name='prime'):
-    warnings.warn('moved to utils.py', DeprecationWarning)
-    save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
-    th.save(state, save_name)
-    if is_best:
-        best_name = model_name + '_' + filename + '_best.pth.tar'
-        shutil.copyfile(save_name, best_name)
+warnings.warn('moved to utils.py', DeprecationWarning)
+save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
+th.save(state, save_name)
+if is_best:
+    best_name = model_name + '_' + filename + '_best.pth.tar'
+    shutil.copyfile(save_name, best_name)
 
 
 
 def edges_to_matrix(edges, num_notes):
-    warnings.warn('moved to graph.py', DeprecationWarning)
-    if not MODEL.is_graph:
-        return None
-    num_keywords = len(GRAPH_KEYS)
-    matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
+warnings.warn('moved to graph.py', DeprecationWarning)
+if not MODEL.is_graph:
+    return None
+num_keywords = len(GRAPH_KEYS)
+matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
 
-    for edg in edges:
-        if edg[2] not in GRAPH_KEYS:
-            continue
-        edge_type = GRAPH_KEYS.index(edg[2])
-        matrix[edge_type, edg[0], edg[1]] = 1
-        if edge_type != 0:
-            matrix[edge_type+num_keywords, edg[1], edg[0]] = 1
-        else:
-            matrix[edge_type, edg[1], edg[0]] = 1
+for edg in edges:
+    if edg[2] not in GRAPH_KEYS:
+        continue
+    edge_type = GRAPH_KEYS.index(edg[2])
+    matrix[edge_type, edg[0], edg[1]] = 1
+    if edge_type != 0:
+        matrix[edge_type+num_keywords, edg[1], edg[0]] = 1
+    else:
+        matrix[edge_type, edg[1], edg[0]] = 1
 
-    matrix[num_keywords, :,:] = np.identity(num_notes)
-    matrix = th.Tensor(matrix)
-    return matrix
+matrix[num_keywords, :,:] = np.identity(num_notes)
+matrix = th.Tensor(matrix)
+return matrix
 
 
 def edges_to_matrix_short(edges, slice_index):
-    warnings.warn('moved to graph.py', DeprecationWarning)
-    if not MODEL.is_graph:
-        return None
-    num_keywords = len(GRAPH_KEYS)
-    # TODO: No ref for slice_idx
-    num_notes = slice_idx[1] - slice_idx[0]
+warnings.warn('moved to graph.py', DeprecationWarning)
+if not MODEL.is_graph:
+    return None
+num_keywords = len(GRAPH_KEYS)
+# TODO: No ref for slice_idx
+num_notes = slice_idx[1] - slice_idx[0]
 
-    matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
-    start_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[0])
-    end_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[1] + 1)
-    for i in range(start_edge_index, end_edge_index):
-        edg = edges[i]
-        if edg[2] not in GRAPH_KEYS:
-            continue
-        if edg[1] >= slice_index[1]:
-            continue
-        edge_type = GRAPH_KEYS.index(edg[2])
-        matrix[edge_type, edg[0]-slice_index[0], edg[1]-slice_index[0]] = 1
-        if edge_type != 0:
-            matrix[edge_type+num_keywords, edg[1]-slice_index[0], edg[0]-slice_index[0]] = 1
-        else:
-            matrix[edge_type, edg[1]-slice_index[0], edg[0]-slice_index[0]] = 1
-    matrix[num_keywords, :,:] = np.identity(num_notes)
-    matrix = th.Tensor(matrix)
+matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
+start_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[0])
+end_edge_index = xml_matching.binary_index_for_edge(edges, slice_index[1] + 1)
+for i in range(start_edge_index, end_edge_index):
+    edg = edges[i]
+    if edg[2] not in GRAPH_KEYS:
+        continue
+    if edg[1] >= slice_index[1]:
+        continue
+    edge_type = GRAPH_KEYS.index(edg[2])
+    matrix[edge_type, edg[0]-slice_index[0], edg[1]-slice_index[0]] = 1
+    if edge_type != 0:
+        matrix[edge_type+num_keywords, edg[1]-slice_index[0], edg[0]-slice_index[0]] = 1
+    else:
+        matrix[edge_type, edg[1]-slice_index[0], edg[0]-slice_index[0]] = 1
+matrix[num_keywords, :,:] = np.identity(num_notes)
+matrix = th.Tensor(matrix)
 
-    return matrix
+return matrix
 
 
 def edges_to_sparse_tensor(edges):
-    warnings.warn('moved to graph.py', DeprecationWarning)
-    num_keywords = len(GRAPH_KEYS)
-    edge_list = []
-    edge_type_list = []
+warnings.warn('moved to graph.py', DeprecationWarning)
+num_keywords = len(GRAPH_KEYS)
+edge_list = []
+edge_type_list = []
 
-    for edg in edges:
-        edge_type = GRAPH_KEYS.index(edg[2])
-        edge_list.append(edg[0:2])
-        edge_list.append([edg[1], edg[0]])
+for edg in edges:
+    edge_type = GRAPH_KEYS.index(edg[2])
+    edge_list.append(edg[0:2])
+    edge_list.append([edg[1], edg[0]])
+    edge_type_list.append(edge_type)
+    if edge_type != 0:
+        edge_type_list.append(edge_type+num_keywords)
+    else:
         edge_type_list.append(edge_type)
-        if edge_type != 0:
-            edge_type_list.append(edge_type+num_keywords)
-        else:
-            edge_type_list.append(edge_type)
 
-        edge_list = th.LongTensor(edge_list)
-    edge_type_list = th.FloatTensor(edge_type_list)
+    edge_list = th.LongTensor(edge_list)
+edge_type_list = th.FloatTensor(edge_type_list)
 
-    matrix = th.sparse.FloatTensor(edge_list.t(), edge_type_list)
+matrix = th.sparse.FloatTensor(edge_list.t(), edge_type_list)
 
-    return matrix
+return matrix
 
-#>>>>>>>>>>>>>> probably remove
+#>>>>>>>>>>>>>> to dataset.py probably remove
 def categorize_value_to_vector(y, bins):
-    warnings.warn('deprecated', DeprecationWarning)
-    vec_length = sum([len(x) for x in bins])
-    num_notes = len(y)
-    y_categorized = []
-    num_categorized_params = len(bins)
-    for i in range(num_notes):
-        note = y[i]
-        total_vec = []
-        for j in range(num_categorized_params):
-            temp_vec = [0] * (len(bins[j]) - 1)
-            temp_vec[int(note[j])] = 1
-            total_vec += temp_vec
-        total_vec.append(note[-1])  # add up trill
-        y_categorized.append(total_vec)
+warnings.warn('deprecated', DeprecationWarning)
+vec_length = sum([len(x) for x in bins])
+num_notes = len(y)
+y_categorized = []
+num_categorized_params = len(bins)
+for i in range(num_notes):
+    note = y[i]
+    total_vec = []
+    for j in range(num_categorized_params):
+        temp_vec = [0] * (len(bins[j]) - 1)
+        temp_vec[int(note[j])] = 1
+        total_vec += temp_vec
+    total_vec.append(note[-1])  # add up trill
+    y_categorized.append(total_vec)
 
-    return y_categorized
+return y_categorized
 #<<<<<<<<<<<< probably remove
 
 def scale_model_prediction_to_original(prediction, MEANS, STDS):
-    warnings.warn('moved to inference.py', DeprecationWarning)
-    for i in range(len(STDS)):
-        for j in range(len(STDS[i])):
-            if STDS[i][j] < 1e-4:
-                STDS[i][j] = 1
-    prediction = np.squeeze(np.asarray(prediction.cpu()))
-    num_notes = len(prediction)
-    if LOSS_TYPE == 'MSE':
-        for i in range(11):
-            prediction[:, i] *= STDS[1][i]
-            prediction[:, i] += MEANS[1][i]
-        for i in range(11, 15):
-            prediction[:, i] *= STDS[1][i+4]
-            prediction[:, i] += MEANS[1][i+4]
-    elif LOSS_TYPE == 'CE':
-        prediction_in_value = np.zeros((num_notes, 16))
-        for i in range(num_notes):
-            bin_range_start = 0
-            for j in range(15):
-                feature_bin_size = len(BINS[j]) - 1
-                feature_class = np.argmax(prediction[i, bin_range_start:bin_range_start + feature_bin_size])
-                feature_value = (BINS[j][feature_class] + BINS[j][feature_class + 1]) / 2
-                prediction_in_value[i, j] = feature_value
-                bin_range_start += feature_bin_size
-            prediction_in_value[i, 15] = prediction[i, -1]
-        prediction = prediction_in_value
+warnings.warn('moved to inference.py', DeprecationWarning)
+for i in range(len(STDS)):
+    for j in range(len(STDS[i])):
+        if STDS[i][j] < 1e-4:
+            STDS[i][j] = 1
+prediction = np.squeeze(np.asarray(prediction.cpu()))
+num_notes = len(prediction)
+if LOSS_TYPE == 'MSE':
+    for i in range(11):
+        prediction[:, i] *= STDS[1][i]
+        prediction[:, i] += MEANS[1][i]
+    for i in range(11, 15):
+        prediction[:, i] *= STDS[1][i+4]
+        prediction[:, i] += MEANS[1][i+4]
+elif LOSS_TYPE == 'CE':
+    prediction_in_value = np.zeros((num_notes, 16))
+    for i in range(num_notes):
+        bin_range_start = 0
+        for j in range(15):
+            feature_bin_size = len(BINS[j]) - 1
+            feature_class = np.argmax(prediction[i, bin_range_start:bin_range_start + feature_bin_size])
+            feature_value = (BINS[j][feature_class] + BINS[j][feature_class + 1]) / 2
+            prediction_in_value[i, j] = feature_value
+            bin_range_start += feature_bin_size
+        prediction_in_value[i, 15] = prediction[i, -1]
+    prediction = prediction_in_value
 
-    return prediction
+return prediction
 
 def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
-    warnings.warn('moved to inference.py', DeprecationWarning)
-    vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
-    test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
-                                                                                       start_tempo, composer,
-                                                                                       vel_pair)
-    batch_x = th.Tensor(test_x)
-    num_notes = len(test_x)
-    input_y = th.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
+warnings.warn('moved to inference.py', DeprecationWarning)
+vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
+test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
+                                                                                    start_tempo, composer,
+                                                                                    vel_pair)
+batch_x = th.Tensor(test_x)
+num_notes = len(test_x)
+input_y = th.zeros(1, num_notes, NUM_OUTPUT).to(DEVICE)
 
-    if type(z) is dict:
-        initial_z = z['z']
-        qpm_change = z['qpm']
-        z = z['key']
-        batch_x[:,QPM_PRIMO_IDX] = batch_x[:,QPM_PRIMO_IDX] + qpm_change
+if type(z) is dict:
+    initial_z = z['z']
+    qpm_change = z['qpm']
+    z = z['key']
+    batch_x[:,QPM_PRIMO_IDX] = batch_x[:,QPM_PRIMO_IDX] + qpm_change
+else:
+    initial_z = 'zero'
+
+if IN_HIER:
+    batch_x = batch_x.to(DEVICE).view(1, -1, HIER_MODEL.input_size)
+    graph = edges_to_matrix(edges, batch_x.shape[1])
+    MODEL.is_teacher_force = False
+    if type(initial_z) is list:
+        hier_z = initial_z[0]
+        final_z = initial_z[1]
     else:
-        initial_z = 'zero'
-
-    if IN_HIER:
-        batch_x = batch_x.to(DEVICE).view(1, -1, HIER_MODEL.input_size)
-        graph = edges_to_matrix(edges, batch_x.shape[1])
-        MODEL.is_teacher_force = False
-        if type(initial_z) is list:
-            hier_z = initial_z[0]
-            final_z = initial_z[1]
-        else:
-            # hier_z = [z] * HIER_MODEL_PARAM.encoder.size
-            hier_z = 'zero'
-            final_z = initial_z
-        hier_input_y = th.zeros(1, num_notes, HIER_MODEL.output_size)
-        hier_output, _ = run_model_in_steps(batch_x, hier_input_y, graph, note_locations, initial_z=hier_z, model=HIER_MODEL)
-        if 'measure' in args.hierCode:
-            hierarchy_numbers = [x.measure for x in note_locations]
-        else:
-            hierarchy_numbers = [x.section for x in note_locations]
-        hier_output_spanned = HIER_MODEL.span_beat_to_note_num(hier_output, hierarchy_numbers, len(test_x), 0)
-        combined_x = th.cat((batch_x, hier_output_spanned), 2)
-        prediction, _ = run_model_in_steps(combined_x, input_y, graph, note_locations, initial_z=final_z, model=MODEL)
+        # hier_z = [z] * HIER_MODEL_PARAM.encoder.size
+        hier_z = 'zero'
+        final_z = initial_z
+    hier_input_y = th.zeros(1, num_notes, HIER_MODEL.output_size)
+    hier_output, _ = run_model_in_steps(batch_x, hier_input_y, graph, note_locations, initial_z=hier_z, model=HIER_MODEL)
+    if 'measure' in args.hierCode:
+        hierarchy_numbers = [x.measure for x in note_locations]
     else:
-        if type(initial_z) is list:
-            initial_z = initial_z[0]
-        batch_x = batch_x.to(DEVICE).view(1, -1, NUM_INPUT)
-        graph = edges_to_matrix(edges, batch_x.shape[1])
-        prediction, _ = run_model_in_steps(batch_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
+        hierarchy_numbers = [x.section for x in note_locations]
+    hier_output_spanned = HIER_MODEL.span_beat_to_note_num(hier_output, hierarchy_numbers, len(test_x), 0)
+    combined_x = th.cat((batch_x, hier_output_spanned), 2)
+    prediction, _ = run_model_in_steps(combined_x, input_y, graph, note_locations, initial_z=final_z, model=MODEL)
+else:
+    if type(initial_z) is list:
+        initial_z = initial_z[0]
+    batch_x = batch_x.to(DEVICE).view(1, -1, NUM_INPUT)
+    graph = edges_to_matrix(edges, batch_x.shape[1])
+    prediction, _ = run_model_in_steps(batch_x, input_y, graph, note_locations, initial_z=initial_z, model=MODEL)
 
 
-    trill_batch_x = th.cat((batch_x, prediction), 2)
-    trill_prediction, _ = run_model_in_steps(trill_batch_x, th.zeros(1, num_notes, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
+trill_batch_x = th.cat((batch_x, prediction), 2)
+trill_prediction, _ = run_model_in_steps(trill_batch_x, th.zeros(1, num_notes, cons.num_trill_param), graph, note_locations, model=TRILL_MODEL)
 
-    prediction = th.cat((prediction, trill_prediction), 2)
-    prediction = scale_model_prediction_to_original(prediction, MEANS, STDS)
+prediction = th.cat((prediction, trill_prediction), 2)
+prediction = scale_model_prediction_to_original(prediction, MEANS, STDS)
 
-    output_features = xml_matching.model_prediction_to_feature(prediction)
-    output_features = xml_matching.add_note_location_to_features(output_features, note_locations)
-    if return_features:
-        return output_features
+output_features = xml_matching.model_prediction_to_feature(prediction)
+output_features = xml_matching.add_note_location_to_features(output_features, note_locations)
+if return_features:
+    return output_features
 
-    output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time=1,
-                                                           predicted=True)
-    output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml)
-    piece_name = path_name.split('/')
-    save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
+output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time=1,
+                                                        predicted=True)
+output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml)
+piece_name = path_name.split('/')
+save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
-    perf_worm.plot_performance_worm(output_features, save_name + '.png')
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
-                                               bool_pedal=args.boolPedal, disklavier=args.disklavier)
+perf_worm.plot_performance_worm(output_features, save_name + '.png')
+xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
+                                            bool_pedal=args.boolPedal, disklavier=args.disklavier)
 
 
 def load_file_and_encode_style(path, perf_name, composer_name):
-    warnings.warn('moved to dataset.py', DeprecationWarning)
-    test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(path, perf_name, composer_name, MEANS, STDS)
-    qpm_primo = test_x[0][4]
+warnings.warn('moved to dataset.py', DeprecationWarning)
+test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(path, perf_name, composer_name, MEANS, STDS)
+qpm_primo = test_x[0][4]
 
-    test_x, test_y = handle_data_in_tensor(test_x, test_y, hierarchy_test=IN_HIER)
-    edges = edges_to_matrix(edges, test_x.shape[0])
+test_x, test_y = handle_data_in_tensor(test_x, test_y, hierarchy_test=IN_HIER)
+edges = edges_to_matrix(edges, test_x.shape[0])
 
-    if IN_HIER:
-        test_x = test_x.view((1, -1, HIER_MODEL.input_size))
-        hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
-        perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, note_locations, model=HIER_MODEL)
-        hier_outputs, _ = run_model_in_steps(test_x, hier_y, edges, note_locations, model=HIER_MODEL)
-        if HIER_MEAS:
-            hierarchy_numbers = [x.measure for x in note_locations]
-        elif HIER_BEAT:
-            hierarchy_numbers = [x.beat for x in note_locations]
-        hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, test_x.shape[1], 0)
-        input_concat = th.cat((test_x, hier_outputs_spanned), 2)
-        batch_y = test_y[1].view(1, -1, MODEL.output_size)
-        perform_z_note = encode_performance_style_vector(input_concat, batch_y, edges, note_locations, model=MODEL)
-        perform_z = [perform_z_high, perform_z_note]
+if IN_HIER:
+    test_x = test_x.view((1, -1, HIER_MODEL.input_size))
+    hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
+    perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, note_locations, model=HIER_MODEL)
+    hier_outputs, _ = run_model_in_steps(test_x, hier_y, edges, note_locations, model=HIER_MODEL)
+    if HIER_MEAS:
+        hierarchy_numbers = [x.measure for x in note_locations]
+    elif HIER_BEAT:
+        hierarchy_numbers = [x.beat for x in note_locations]
+    hier_outputs_spanned = HIER_MODEL.span_beat_to_note_num(hier_outputs, hierarchy_numbers, test_x.shape[1], 0)
+    input_concat = th.cat((test_x, hier_outputs_spanned), 2)
+    batch_y = test_y[1].view(1, -1, MODEL.output_size)
+    perform_z_note = encode_performance_style_vector(input_concat, batch_y, edges, note_locations, model=MODEL)
+    perform_z = [perform_z_high, perform_z_note]
 
-    else:
-        batch_x = test_x.view((1, -1, NUM_INPUT))
-        batch_y = test_y.view((1, -1, NUM_OUTPUT))
-        perform_z = encode_performance_style_vector(batch_x, batch_y, edges, note_locations)
-        perform_z = [perform_z]
+else:
+    batch_x = test_x.view((1, -1, NUM_INPUT))
+    batch_y = test_y.view((1, -1, NUM_OUTPUT))
+    perform_z = encode_performance_style_vector(batch_x, batch_y, edges, note_locations)
+    perform_z = [perform_z]
 
-    return perform_z, qpm_primo
+return perform_z, qpm_primo
 
 
 def load_all_file_and_encode_style(parsed_data, measure_only=False, emotion_data=False):
-    warnings.warn('moved to dataset.py', DeprecationWarning)
-    total_z = []
-    perf_name_list = []
-    num_piece = len(parsed_data[0])
-    for i in range(num_piece):
-        piece_test_x = parsed_data[0][i]
-        piece_test_y = parsed_data[1][i]
-        piece_edges = parsed_data[2][i]
-        piece_note_locations = parsed_data[3][i]
-        piece_perf_name = parsed_data[4][i]
-        num_perf = len(piece_test_x)
-        if num_perf == 0:
-            continue
-        piece_z = []
-        for j in range(num_perf):
-            # test_x, test_y, edges, note_locations, perf_name = perf
-            if measure_only:
-                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=IN_HIER)
-                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
-                test_x = test_x.view((1, -1, HIER_MODEL.input_size))
-                hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
-                perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, piece_note_locations[j], model=HIER_MODEL)
-            else:
-                test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=False)
-                edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
-                test_x = test_x.view((1, -1, MODEL.input_size))
-                test_y = test_y.view(1, -1, MODEL.output_size)
-                perform_z_high = encode_performance_style_vector(test_x, test_y, edges, piece_note_locations[j],
-                                                                 model=MODEL)
-            # perform_z_high = perform_z_high.reshape(-1).cpu().numpy()
-            # piece_z.append(perform_z_high)
-            # perf_name_list.append(piece_perf_name[j])
-
-            perform_z_high = [z.reshape(-1).cpu().numpy() for z in perform_z_high]
-            piece_z += perform_z_high
-            perf_name_list += [piece_perf_name[j]] * len(perform_z_high)
-        if emotion_data:
-            for i, name in enumerate(piece_perf_name):
-                if name[-2:] == 'E1':
-                    or_idx = i
-                    break
-            or_z = piece_z.pop(or_idx)
-            piece_z = np.asarray(piece_z)
-            piece_z -= or_z
-            perf_name_list.pop(-(5-or_idx))
+warnings.warn('moved to dataset.py', DeprecationWarning)
+total_z = []
+perf_name_list = []
+num_piece = len(parsed_data[0])
+for i in range(num_piece):
+    piece_test_x = parsed_data[0][i]
+    piece_test_y = parsed_data[1][i]
+    piece_edges = parsed_data[2][i]
+    piece_note_locations = parsed_data[3][i]
+    piece_perf_name = parsed_data[4][i]
+    num_perf = len(piece_test_x)
+    if num_perf == 0:
+        continue
+    piece_z = []
+    for j in range(num_perf):
+        # test_x, test_y, edges, note_locations, perf_name = perf
+        if measure_only:
+            test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=IN_HIER)
+            edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
+            test_x = test_x.view((1, -1, HIER_MODEL.input_size))
+            hier_y = test_y[0].view(1, -1, HIER_MODEL.output_size)
+            perform_z_high = encode_performance_style_vector(test_x, hier_y, edges, piece_note_locations[j], model=HIER_MODEL)
         else:
-            piece_z = np.asarray(piece_z)
-            average_piece_z = np.average(piece_z, axis=0)
-            piece_z -= average_piece_z
-        total_z.append(piece_z)
-    total_z = np.concatenate(total_z, axis=0)
-    return total_z, perf_name_list
+            test_x, test_y = handle_data_in_tensor(piece_test_x[j], piece_test_y[j], hierarchy_test=False)
+            edges = edges_to_matrix(piece_edges[j], test_x.shape[0])
+            test_x = test_x.view((1, -1, MODEL.input_size))
+            test_y = test_y.view(1, -1, MODEL.output_size)
+            perform_z_high = encode_performance_style_vector(test_x, test_y, edges, piece_note_locations[j],
+                                                                model=MODEL)
+        # perform_z_high = perform_z_high.reshape(-1).cpu().numpy()
+        # piece_z.append(perform_z_high)
+        # perf_name_list.append(piece_perf_name[j])
+
+        perform_z_high = [z.reshape(-1).cpu().numpy() for z in perform_z_high]
+        piece_z += perform_z_high
+        perf_name_list += [piece_perf_name[j]] * len(perform_z_high)
+    if emotion_data:
+        for i, name in enumerate(piece_perf_name):
+            if name[-2:] == 'E1':
+                or_idx = i
+                break
+        or_z = piece_z.pop(or_idx)
+        piece_z = np.asarray(piece_z)
+        piece_z -= or_z
+        perf_name_list.pop(-(5-or_idx))
+    else:
+        piece_z = np.asarray(piece_z)
+        average_piece_z = np.average(piece_z, axis=0)
+        piece_z -= average_piece_z
+    total_z.append(piece_z)
+total_z = np.concatenate(total_z, axis=0)
+return total_z, perf_name_list
 
 def encode_performance_style_vector(input, input_y, edges, note_locations, model=MODEL):
-    warnings.warn('moved to utils.py', DeprecationWarning)
-    with th.no_grad():
-        model_eval = model.eval()
-        if edges is not None:
-            edges = edges.to(DEVICE)
-        encoded_z = model_eval(input, input_y, edges,
-                               note_locations=note_locations, start_index=0, return_z=True)
-    return encoded_z
+warnings.warn('moved to utils.py', DeprecationWarning)
+with th.no_grad():
+    model_eval = model.eval()
+    if edges is not None:
+        edges = edges.to(DEVICE)
+    encoded_z = model_eval(input, input_y, edges,
+                            note_locations=note_locations, start_index=0, return_z=True)
+return encoded_z
 
 
 def encode_all_emotionNet_data(path_list, style_keywords):
-    warnings.warn('moved to dataset.py', DeprecationWarning)
-    perform_z_by_emotion = []
-    perform_z_list_by_subject = []
-    qpm_list_by_subject = []
-    num_style = len(style_keywords)
-    if IN_HIER:
-        num_model = 2
+warnings.warn('moved to dataset.py', DeprecationWarning)
+perform_z_by_emotion = []
+perform_z_list_by_subject = []
+qpm_list_by_subject = []
+num_style = len(style_keywords)
+if IN_HIER:
+    num_model = 2
+else:
+    num_model = 1
+for pair in path_list:
+    subject_num = pair[2]
+    for sub_idx in range(subject_num):
+        indiv_perform_z = []
+        indiv_qpm = []
+        path = cons.emotion_folder_path + pair[0] + '/'
+        composer_name = pair[1]
+        for key in style_keywords:
+            perf_name = key + '_sub' + str(sub_idx+1)
+            perform_z_li, qpm_primo = load_file_and_encode_style(path, perf_name, composer_name)
+            perform_z_li = [th.mean(th.stack(z), 0, True) for z in perform_z_li]
+            indiv_perform_z.append(perform_z_li)
+            indiv_qpm.append(qpm_primo)
+        for i in range(1, num_style):
+            for j in range(num_model):
+                indiv_perform_z[i][j] = indiv_perform_z[i][j] - indiv_perform_z[0][j]
+            indiv_qpm[i] = indiv_qpm[i] - indiv_qpm[0]
+        perform_z_list_by_subject.append(indiv_perform_z)
+        qpm_list_by_subject.append(indiv_qpm)
+for i in range(num_style):
+    z_by_models = []
+    for j in range(num_model):
+        emotion_mean_z = []
+        for z_list in perform_z_list_by_subject:
+            emotion_mean_z.append(z_list[i][j])
+        mean_perform_z = th.mean(th.stack(emotion_mean_z), 0, True)
+        z_by_models.append(mean_perform_z)
+    if i is not 0:
+        emotion_qpm = []
+        for qpm_change in qpm_list_by_subject:
+            emotion_qpm.append(qpm_change[i])
+        mean_qpm_change = np.mean(emotion_qpm)
     else:
-        num_model = 1
-    for pair in path_list:
-        subject_num = pair[2]
-        for sub_idx in range(subject_num):
-            indiv_perform_z = []
-            indiv_qpm = []
-            path = cons.emotion_folder_path + pair[0] + '/'
-            composer_name = pair[1]
-            for key in style_keywords:
-                perf_name = key + '_sub' + str(sub_idx+1)
-                perform_z_li, qpm_primo = load_file_and_encode_style(path, perf_name, composer_name)
-                perform_z_li = [th.mean(th.stack(z), 0, True) for z in perform_z_li]
-                indiv_perform_z.append(perform_z_li)
-                indiv_qpm.append(qpm_primo)
-            for i in range(1, num_style):
-                for j in range(num_model):
-                    indiv_perform_z[i][j] = indiv_perform_z[i][j] - indiv_perform_z[0][j]
-                indiv_qpm[i] = indiv_qpm[i] - indiv_qpm[0]
-            perform_z_list_by_subject.append(indiv_perform_z)
-            qpm_list_by_subject.append(indiv_qpm)
-    for i in range(num_style):
-        z_by_models = []
-        for j in range(num_model):
-            emotion_mean_z = []
-            for z_list in perform_z_list_by_subject:
-                emotion_mean_z.append(z_list[i][j])
-            mean_perform_z = th.mean(th.stack(emotion_mean_z), 0, True)
-            z_by_models.append(mean_perform_z)
-        if i is not 0:
-            emotion_qpm = []
-            for qpm_change in qpm_list_by_subject:
-                emotion_qpm.append(qpm_change[i])
-            mean_qpm_change = np.mean(emotion_qpm)
-        else:
-            mean_qpm_change = 0
-        print(style_keywords[i], z_by_models, mean_qpm_change)
-        perform_z_by_emotion.append({'z': z_by_models, 'key': style_keywords[i], 'qpm': mean_qpm_change})
+        mean_qpm_change = 0
+    print(style_keywords[i], z_by_models, mean_qpm_change)
+    perform_z_by_emotion.append({'z': z_by_models, 'key': style_keywords[i], 'qpm': mean_qpm_change})
 
-    return perform_z_by_emotion
-        # with open(args.testPath + args.perfName + '_style' + '.dat', 'wb') as f:
-        #     pickle.dump(mean_perform_z, f, protocol=2)
+return perform_z_by_emotion
+    # with open(args.testPath + args.perfName + '_style' + '.dat', 'wb') as f:
+    #     pickle.dump(mean_perform_z, f, protocol=2)
 
 
 def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, model=MODEL):
-    warnings.warn('moved to utils.py', DeprecationWarning)
-    num_notes = input.shape[1]
-    with th.no_grad():  # no need to track history in validation
-        model_eval = model.eval()
-        total_output = []
-        total_z = []
-        measure_numbers = [x.measure for x in note_locations]
-        slice_indexes = dp.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
+warnings.warn('moved to utils.py', DeprecationWarning)
+num_notes = input.shape[1]
+with th.no_grad():  # no need to track history in validation
+    model_eval = model.eval()
+    total_output = []
+    total_z = []
+    measure_numbers = [x.measure for x in note_locations]
+    slice_indexes = dp.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
         if edges is not None:
             edges = edges.to(DEVICE)
 
@@ -701,7 +695,7 @@ def batch_time_step_run(data, model, batch_size=batch_size):
     # loss = criterion(outputs, batch_y)
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
 
-#>>>>>>>>>>> not decided
+#>>>>>>>>>>> utils.py not decided
 def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index):
     previous_beat = -1
 
@@ -768,77 +762,77 @@ def sigmoid(x, gain=1):
 
 
 class TraningSample():
-    def __init__(self, index):
-        self.index = index
-        self.slice_indexes = None
+def __init__(self, index):
+    self.index = index
+    self.slice_indexes = None
 #<<<<<<<<<<< not decided
 
 ### training
 
 if args.sessMode == 'train':
-    model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
-    print('Number of Network Parameters is ', params)
+model_parameters = filter(lambda p: p.requires_grad, MODEL.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print('Number of Network Parameters is ', params)
 
-    best_prime_loss = float("inf")
-    best_second_loss = float("inf")
-    best_trill_loss = float("inf")
-    start_epoch = 0
+best_prime_loss = float("inf")
+best_second_loss = float("inf")
+best_trill_loss = float("inf")
+start_epoch = 0
 
-    if args.resumeTraining and not args.trainTrill:
-        if os.path.isfile('prime_' + args.modelCode + args.resume):
-            print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
-            # model_codes = ['prime', 'trill']
-            filename = 'prime_' + args.modelCode + args.resume
-            checkpoint = th.load(filename,  map_location=DEVICE)
-            best_valid_loss = checkpoint['best_valid_loss']
-            MODEL.load_state_dict(checkpoint['state_dict'])
-            MODEL.device = DEVICE
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            NUM_UPDATED = checkpoint['training_step']
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(filename, checkpoint['epoch']))
-            start_epoch = checkpoint['epoch'] - 1
-            best_prime_loss = checkpoint['best_valid_loss']
-            print('Best valid loss was ', best_prime_loss)
+if args.resumeTraining and not args.trainTrill:
+    if os.path.isfile('prime_' + args.modelCode + args.resume):
+        print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
+        # model_codes = ['prime', 'trill']
+        filename = 'prime_' + args.modelCode + args.resume
+        checkpoint = th.load(filename,  map_location=DEVICE)
+        best_valid_loss = checkpoint['best_valid_loss']
+        MODEL.load_state_dict(checkpoint['state_dict'])
+        MODEL.device = DEVICE
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        NUM_UPDATED = checkpoint['training_step']
+        print("=> loaded checkpoint '{}' (epoch {})"
+                .format(filename, checkpoint['epoch']))
+        start_epoch = checkpoint['epoch'] - 1
+        best_prime_loss = checkpoint['best_valid_loss']
+        print('Best valid loss was ', best_prime_loss)
 
 
-    # load data
-    print('Loading the training data...')
-    training_data_name = args.dataName + ".dat"
-    if not os.path.isfile(training_data_name):
-        training_data_name = '/mnt/ssd1/jdasam_data/' + training_data_name
-    with open(training_data_name, "rb") as f:
-        # u = pickle._Unpickler(f)
-        # u.encoding = 'latin1'
-        u = cPickle.Unpickler(f)
-        # p = u.load()
-        # complete_xy = pickle.load(f)
-        complete_xy = u.load()
+# load data
+print('Loading the training data...')
+training_data_name = args.dataName + ".dat"
+if not os.path.isfile(training_data_name):
+    training_data_name = '/mnt/ssd1/jdasam_data/' + training_data_name
+with open(training_data_name, "rb") as f:
+    # u = pickle._Unpickler(f)
+    # u.encoding = 'latin1'
+    u = cPickle.Unpickler(f)
+    # p = u.load()
+    # complete_xy = pickle.load(f)
+    complete_xy = u.load()
 
-    train_xy = complete_xy['train']
-    test_xy = complete_xy['valid']
-    print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
-    print('training sample example', train_xy[0][0][0])
+train_xy = complete_xy['train']
+test_xy = complete_xy['valid']
+print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
+print('training sample example', train_xy[0][0][0])
 
-    train_model = MODEL
+train_model = MODEL
 
-    # total_step = len(train_loader)
-    for epoch in range(start_epoch, num_epochs):
-        print('current training step is ', NUM_UPDATED)
-        tempo_loss_total = []
-        vel_loss_total = []
-        dev_loss_total = []
-        articul_loss_total = []
-        pedal_loss_total = []
-        trill_loss_total = []
-        kld_total = []
+# total_step = len(train_loader)
+for epoch in range(start_epoch, num_epochs):
+    print('current training step is ', NUM_UPDATED)
+    tempo_loss_total = []
+    vel_loss_total = []
+    dev_loss_total = []
+    articul_loss_total = []
+    pedal_loss_total = []
+    trill_loss_total = []
+    kld_total = []
 
-        if RAND_TRAIN:
-            num_perf_data = len(train_xy)
-            remaining_samples = []
-            for i in range(num_perf_data):
-                remaining_samples.append(TraningSample(i))
+    if RAND_TRAIN:
+        num_perf_data = len(train_xy)
+        remaining_samples = []
+        for i in range(num_perf_data):
+            remaining_samples.append(TraningSample(i))
             while len(remaining_samples) > 0:
                 new_index = random.randrange(0, len(remaining_samples))
                 selected_sample = remaining_samples[new_index]

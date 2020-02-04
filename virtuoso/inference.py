@@ -1,5 +1,14 @@
 import numpy as np
+import argparse
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-mode", "--sessMode", type=str,
+                    default='train', help="train or test or testAll")
+parser.add_argument("-path", "--testPath", type=str,
+                    default="./test_pieces/bps_5_1/", help="folder path of test mat")
+parser.add_argument("-tempo", "--startTempo", type=int,
+                    default=0, help="start tempo. zero to use xml first tempo")
 
 def scale_model_prediction_to_original(prediction, MEANS, STDS):
     for i in range(len(STDS)):
@@ -33,40 +42,10 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
     return prediction
 
 
-def scale_model_prediction_to_original(prediction, MEANS, STDS):
-    warnings.warn('moved to inference.py', DeprecationWarning)
-    for i in range(len(STDS)):
-        for j in range(len(STDS[i])):
-            if STDS[i][j] < 1e-4:
-                STDS[i][j] = 1
-    prediction = np.squeeze(np.asarray(prediction.cpu()))
-    num_notes = len(prediction)
-    if LOSS_TYPE == 'MSE':
-        for i in range(11):
-            prediction[:, i] *= STDS[1][i]
-            prediction[:, i] += MEANS[1][i]
-        for i in range(11, 15):
-            prediction[:, i] *= STDS[1][i+4]
-            prediction[:, i] += MEANS[1][i+4]
-    elif LOSS_TYPE == 'CE':
-        prediction_in_value = np.zeros((num_notes, 16))
-        for i in range(num_notes):
-            bin_range_start = 0
-            for j in range(15):
-                feature_bin_size = len(BINS[j]) - 1
-                feature_class = np.argmax(
-                    prediction[i, bin_range_start:bin_range_start + feature_bin_size])
-                feature_value = (BINS[j][feature_class] +
-                                 BINS[j][feature_class + 1]) / 2
-                prediction_in_value[i, j] = feature_value
-                bin_range_start += feature_bin_size
-            prediction_in_value[i, 15] = prediction[i, -1]
-        prediction = prediction_in_value
-
-    return prediction
-
-def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
-
+def load_file_and_generate_performance(path_name, args, return_features=False):
+    composer=args.composer
+    z=args.latent
+    start_tempo=args.startTempo 
     vel_pair = (int(args.velocity.split(',')[0]), int(
         args.velocity.split(',')[1]))
     test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,

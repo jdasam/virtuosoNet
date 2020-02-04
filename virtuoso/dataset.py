@@ -1,5 +1,9 @@
 import numpy as np
 import torch as th
+import pickle
+
+from pyScoreParser import xml_matching
+
 
 def load_file_and_encode_style(path, perf_name, composer_name):
     test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(
@@ -152,3 +156,84 @@ def encode_all_emotionNet_data(path_list, style_keywords):
     return perform_z_by_emotion
     # with open(args.testPath + args.perfName + '_style' + '.dat', 'wb') as f:
     #     pickle.dump(mean_perform_z, f, protocol=2)
+
+
+def load_stat(args):
+    with open(args.dataName + "_stat.dat", "rb") as f:
+        u = pickle._Unpickler(f)
+        u.encoding = 'latin1'
+        if args.trainingLoss == 'CE':
+            MEANS, STDS, BINS = u.load()
+            new_prime_param = 0
+            new_trill_param = 0
+            for i in range(NUM_PRIME_PARAM):
+                new_prime_param += len(BINS[i]) - 1
+            for i in range(NUM_PRIME_PARAM, NUM_PRIME_PARAM + num_trill_param - 1):
+                new_trill_param += len(BINS[i]) - 1
+            NUM_PRIME_PARAM = new_prime_param
+            print('New NUM_PRIME_PARAM: ', NUM_PRIME_PARAM)
+            num_trill_param = new_trill_param + 1
+            NUM_OUTPUT = NUM_PRIME_PARAM + num_trill_param
+            NUM_TEMPO_PARAM = len(BINS[0]) - 1
+        else:
+            MEANS, STDS = u.load()
+            BINS = None
+    return MEANS, STDS, BINS
+
+
+def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
+    # TODO: update to adapt pyScoreParser
+    xml_object, xml_notes = xml_matching.read_xml_to_notes(path_name)
+    beats = xml_object.get_beat_positions()
+    measure_positions = xml_object.get_measure_positions()
+    features = xml_matching.extract_score_features(
+        xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
+    features = make_index_continuous(features, score=True)
+    composer_vec = composer_name_to_vec(composer_name)
+    edges = score_graph.make_edge(xml_notes)
+
+    for i in range(len(stds[0])):
+        if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
+            stds[0][i] = 1
+
+    test_x = []
+    note_locations = []
+    for feat in features:
+        temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
+                  (feat.beat_importance -
+                   means[0][2])/stds[0][2], (feat.measure_length-means[0][3])/stds[0][3],
+                  (feat.qpm_primo - means[0][4]) /
+                  stds[0][4], (feat.following_rest - means[0][5]) / stds[0][5],
+                  (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+                  (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7],
+                  feat.beat_position, feat.xml_position, feat.grace_order,
+                  feat.preceded_by_grace_note, feat.followed_by_fermata_rest] \
+            + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + \
+            feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
+        # temp_x.append(feat.is_beat)
+        test_x.append(temp_x)
+        note_locations.append(feat.note_location)
+
+    return test_x, xml_notes, xml_object, edges, note_locations
+
+
+class PerformDataset():
+    def __init__(self, data_path, split, graph=False, samples=None):
+
+    def __len__(self):
+        return NumberOfPieces
+
+    def files(self):
+        return NotImplementedError
+
+class YamahaDataset(PerformDataset):
+    def __init__(self, data_path, split, graph=False, samples=None):
+
+    def __getitem__(self, index):
+        return input_features, output_features, score_graph
+
+    def __len__(self):
+        return NumberOfSegments
+    
+    def files(self):
+        # load yamaha set data utilize pyScoreParser.PieceData
