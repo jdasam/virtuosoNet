@@ -59,103 +59,109 @@ def load_parameters(file_name):
         return net_params
 
 
-def initialize_model_parameters_by_code(model_code):
-    net_param = NetParams()
-    net_param.input_size = cons.SCORE_INPUT
-    net_param.output_size = cons.NUM_PRIME_PARAM
+def initialize_model_parameters_by_code(args):
+    model_config = ModelConfig()
+    model_config.input_size = cons.SCORE_INPUT
+    model_config.output_size = cons.NUM_PRIME_PARAM
 
-    if 'isgn' in model_code:
-        net_param.note.layers = 2
-        net_param.note.size = 128
-        net_param.measure.layers = 2
-        net_param.measure.size = 64
-        net_param.final.margin = 32
+    if args.slurEdge:
+        model_config.graph_keys.append('slur')
+    if args.voiceEdge:
+        model_config.graph_keys.append('voice')
+    model_config.num_edge_types = len(model_config.graph_keys) * 2
 
-        net_param.encoded_vector_size = 16
-        net_param.encoder.size = 128
-        net_param.encoder.layers = 2
+    if 'isgn' in args.modelCode:
+        model_config.note.layers = 2
+        model_config.note.size = 128
+        model_config.measure.layers = 2
+        model_config.measure.size = 64
+        model_config.final.margin = 32
 
-        net_param.time_reg.layers = 2
-        net_param.time_reg.size = 32
-        net_param.graph_iteration = 4
-        net_param.sequence_iteration = 3
+        model_config.encoded_vector_size = 16
+        model_config.encoder.size = 128
+        model_config.encoder.layers = 2
 
-        net_param.final.input = (net_param.note.size + net_param.measure.size * 2) * 2
-        net_param.encoder.input = (net_param.note.size + net_param.measure.size * 2) * 2 \
+        model_config.time_reg.layers = 2
+        model_config.time_reg.size = 32
+        model_config.graph_iteration = 4
+        model_config.sequence_iteration = 3
+
+        model_config.final.input = (model_config.note.size + model_config.measure.size * 2) * 2
+        model_config.encoder.input = (model_config.note.size + model_config.measure.size * 2) * 2 \
                                   + cons.NUM_PRIME_PARAM
-        if 'sggnn_note' in model_code:
-            net_param.final.input += net_param.note.size
-            net_param.encoder.input += net_param.note.size
+        if 'sggnn_note' in args.modelCode:
+            model_config.final.input += model_config.note.size
+            model_config.encoder.input += model_config.note.size
 
-        if 'baseline' in model_code:
-            net_param.is_baseline = True
+        if 'baseline' in args.modelCode:
+            model_config.is_baseline = True
 
-    elif 'han' in model_code:
-        net_param.note.layers = 2
-        net_param.note.size = 128
-        net_param.beat.layers = 2
-        net_param.beat.size = 128
-        net_param.measure.layers = 1
-        net_param.measure.size = 128
-        net_param.final.layers = 1
-        net_param.final.size = 64
-        net_param.voice.layers = 2
-        net_param.voice.size = 128
-        net_param.performance.size = 128
+    elif 'han' in args.modelCode:
+        model_config.note.layers = 2
+        model_config.note.size = 128
+        model_config.beat.layers = 2
+        model_config.beat.size = 128
+        model_config.measure.layers = 1
+        model_config.measure.size = 128
+        model_config.final.layers = 1
+        model_config.final.size = 64
+        model_config.voice.layers = 2
+        model_config.voice.size = 128
+        model_config.performance.size = 128
 
         # net_param.num_attention_head = 1
-        net_param.encoded_vector_size = 16
-        net_param.encoder.size = 64
-        net_param.encoder.layers = 2
-        net_param.encoder.input = (net_param.note.size + net_param.beat.size +
-                                   net_param.measure.size + net_param.voice.size) * 2 \
-                                  + net_param.performance.size
+        model_config.encoded_vector_size = 16
+        model_config.encoder.size = 64
+        model_config.encoder.layers = 2
+        model_config.encoder.input = (model_config.note.size + model_config.beat.size +
+                                   model_config.measure.size + model_config.voice.size) * 2 \
+                                  + model_config.performance.size
         num_tempo_info = 3  # qpm primo, tempo primo
         num_dynamic_info = 0
-        net_param.final.input = (net_param.note.size + net_param.voice.size + net_param.beat.size +
-                                 net_param.measure.size) * 2 + net_param.encoder.size + \
+        model_config.final.input = (model_config.note.size + model_config.voice.size + model_config.beat.size +
+                                 model_config.measure.size) * 2 + model_config.encoder.size + \
                                 num_tempo_info + num_dynamic_info
-        if 'graph' in model_code:
-            net_param.is_graph = True
-            net_param.graph_iteration = 3
-            net_param.encoder.input = (net_param.note.size + net_param.beat.size +
-                                       net_param.measure.size) * 2 \
+        if 'graph' in args.modelCode:
+            model_config.is_graph = True
+            model_config.graph_iteration = 3
+            model_config.encoder.input = (model_config.note.size + model_config.beat.size +
+                                       model_config.measure.size) * 2 \
                                       + cons.NUM_PRIME_PARAM
-            net_param.final.input = (net_param.note.size +  net_param.beat.size +
-                                     net_param.measure.size) * 2 + net_param.encoder.size + \
+            model_config.final.input = (model_config.note.size +  model_config.beat.size +
+                                     model_config.measure.size) * 2 + model_config.encoder.size + \
                                     num_tempo_info + num_dynamic_info
-        if 'ar' in model_code:
-            net_param.final.input += net_param.output_size
+        if 'ar' in args.modelCode:
+            model_config.final.input += model_config.output_size
 
-        if 'teacher' in model_code:
-            net_param.is_teacher_force = True
-        if 'baseline' in model_code:
-            net_param.is_baseline = True
-            net_param.encoder.input = net_param.note.size * 2 + cons.NUM_PRIME_PARAM
-            net_param.final.input = net_param.note.size * 2 + net_param.encoder.size + num_tempo_info + num_dynamic_info + net_param.output_size
+        if 'teacher' in args.modelCode:
+            model_config.is_teacher_force = True
+        if 'baseline' in args.modelCode:
+            model_config.is_baseline = True
+            model_config.encoder.input = model_config.note.size * 2 + cons.NUM_PRIME_PARAM
+            model_config.final.input = model_config.note.size * 2 + model_config.encoder.size + num_tempo_info + num_dynamic_info + model_config.output_size
 
-    elif 'trill' in model_code:
-        net_param.input_size = cons.SCORE_INPUT + cons.NUM_PRIME_PARAM
-        net_param.output_size = cons.num_trill_param
-        net_param.note.layers = 2
-        net_param.note.size = 32
+    elif 'trill' in args.modelCode:
+        model_config.input_size = cons.SCORE_INPUT + cons.NUM_PRIME_PARAM
+        model_config.output_size = cons.num_trill_param
+        model_config.note.layers = 2
+        model_config.note.size = 32
 
     else:
         print('Unclassified model code')
 
-    if 'measure' in model_code:
-        net_param.hierarchy_level = 'measure'
-        net_param.output_size = 2
+    if 'measure' in args.modelCode:
+        model_config.hierarchy_level = 'measure'
+        model_config.output_size = 2
         # net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
-    elif 'beat' in model_code:
-        net_param.hierarchy_level = 'beat'
-        net_param.output_size = 2
+    elif 'beat' in args.modelCode:
+        model_config.hierarchy_level = 'beat'
+        model_config.output_size = 2
         # net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
-    elif 'note' in model_code:
-        net_param.input_size += 2
+    elif 'note' in args.modelCode:
+        model_config.input_size += 2
 
-    if 'altv' in model_code:
-        net_param.is_test_version = True
+    if 'altv' in args.modelCode:
+        model_config.is_test_version = True
 
-    return net_param
+    return model_config
 

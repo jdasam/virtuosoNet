@@ -47,19 +47,22 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
+
     # Perhaps it can be handle in graph.py? 
-    GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
-    if args.slurEdge:
-        GRAPH_KEYS.append('slur')
-    if args.voiceEdge:
-        GRAPH_KEYS.append('voice')
-    N_EDGE_TYPE = len(GRAPH_KEYS) * 2
+    # GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
+    # if args.slurEdge:
+    #     GRAPH_KEYS.append('slur')
+    # if args.voiceEdge:
+    #     GRAPH_KEYS.append('voice')
+    # N_EDGE_TYPE = len(GRAPH_KEYS) * 2
+    # Moved to model_parameters
+
 
     # Suggestion: 
     # load parameter directly.
     # save model param in checkpoint?
     if args.sessMode == 'train' and not args.resumeTraining:
-        NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
+        NET_PARAM = param.initialize_model_parameters_by_code(args)
         NET_PARAM.num_edge_types = N_EDGE_TYPE
         NET_PARAM.training_args = args
         param.save_parameters(NET_PARAM, args.modelCode + '_param')
@@ -99,31 +102,6 @@ def main():
 
 
     # TODO: to single function
-    if LOSS_TYPE == 'MSE':
-        def criterion(pred, target, aligned_status=1):
-            if isinstance(aligned_status, int):
-                data_size = pred.shape[-2] * pred.shape[-1]
-            else:
-                data_size = th.sum(aligned_status).item() * pred.shape[-1]
-                if data_size == 0:
-                    data_size = 1
-            if target.shape != pred.shape:
-                print('Error: The shape of the target and prediction for the loss calculation is different')
-                print(target.shape, pred.shape)
-                return th.zeros(1).to(DEVICE)
-            return th.sum(((target - pred) ** 2) * aligned_status) / data_size
-    elif LOSS_TYPE == 'CE':
-        # criterion = nn.CrossEntropyLoss()
-        def criterion(pred, target, aligned_status=1):
-            if isinstance(aligned_status, int):
-                data_size = pred.shape[-2] * pred.shape[-1]
-            else:
-                data_size = th.sum(aligned_status).item() * pred.shape[-1]
-                if data_size ==0:
-                    data_size = 1
-                    print('data size for loss calculation is zero')
-            return -1 * th.sum((target * th.log(pred) + (1-target) * th.log(1-pred)) * aligned_status) / data_size
-
     # load dataset
     
 
