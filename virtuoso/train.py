@@ -46,6 +46,7 @@ def train(args,
     best_second_loss = float("inf")
     best_trill_loss = float("inf")
     start_epoch = 0
+    NUM_UPDATED = 0
 
     if args.resumeTraining and not args.trainTrill:
         # Load trained-model to resume the training process
@@ -64,7 +65,6 @@ def train(args,
             start_epoch = checkpoint['epoch'] - 1
             best_prime_loss = checkpoint['best_valid_loss']
             print('Best valid loss was ', best_prime_loss)
-
 
     # load data
     print('Loading the training data...')
@@ -117,7 +117,7 @@ def train(args,
 
                 if selected_sample.slice_indexes is None:
                     measure_numbers = [x.measure for x in note_locations]
-                    if args.hier_meas and args.hierarchy:
+                    if model.config.hierarchy == 'measure':
                         selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
                                                                                                measure_numbers,
                                                                                                measure_steps=time_steps)
@@ -125,7 +125,7 @@ def train(args,
                     else:
                         selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
 
-                num_slice = len(selected_sample.slice_inde)
+                num_slice = len(selected_sample.slice_indexes)
                 selected_idx = random.randrange(0,num_slice)
                 slice_idx = selected_sample.slice_indexes[selected_idx]
 
@@ -136,7 +136,7 @@ def train(args,
 
                 key_lists = [0]
                 key = 0
-                for i in range():
+                for i in range(args.num_key_augmentation):
                     while key in key_lists:
                         key = random.randrange(-5, 7)
                     key_lists.append(key)
