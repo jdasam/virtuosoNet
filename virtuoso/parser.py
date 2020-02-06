@@ -15,12 +15,6 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
     parser.add_argument("-voice", "--voiceEdge", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-    # TODO: no redundancy?
-    parser.add_argument("--hierarcy", default=False)
-    parser.add_argument("--in_hier", default=False)
-    parser.add_argument("--hier_beat", default=False)   
-    parser.add_argument("--hier_model", default=False)   
-    parser.add_argument("--hier_meas", default=False)   
     
     # training parameters
     parser.add_argument("-vel", "--velocity", type=str,
@@ -82,6 +76,9 @@ def get_parser():
                         ) 
     parser.add_argument("-loss", "--trainingLoss", type=str,
                         default='MSE', help='type of training loss')
+    parser.add_argument("--batch_size",
+                        type=int,
+                        default=1)
     
     # environment options
     parser.add_argument("-dev", "--device", type=int,
