@@ -62,14 +62,13 @@ def main():
     # load parameter directly.
     # save model param in checkpoint?
     if args.sessMode == 'train' and not args.resumeTraining:
-        NET_PARAM = param.initialize_model_parameters_by_code(args)
-        NET_PARAM.num_edge_types = N_EDGE_TYPE
-        NET_PARAM.training_args = args
-        param.save_parameters(NET_PARAM, args.modelCode + '_param')
+        model_config = param.initialize_model_parameters_by_code(args)
+        model_config.training_args = args
+        param.save_parameters(model_config, args.modelCode + '_param')
     elif args.resumeTraining:
-        NET_PARAM = param.load_parameters(args.modelCode + '_param')
+        model_config = param.load_parameters(args.modelCode + '_param')
     else:
-        NET_PARAM = param.load_parameters(args.modelCode + '_param')
+        model_config = param.load_parameters(args.modelCode + '_param')
         TrillNET_Param = param.load_parameters(args.trillCode + '_param')
         # if not hasattr(NET_PARAM, 'num_edge_types')
         #     NET_PARAM.num_edge_types = 10
@@ -78,15 +77,15 @@ def main():
         TRILL_MODEL = modelzoo.TrillRNN(TrillNET_Param, device).to(device)
 
     if 'isgn' in args.modelCode:
-        MODEL = modelzoo.ISGN(NET_PARAM, device).to(device)
+        MODEL = modelzoo.ISGN(model_config, device).to(device)
     elif 'han' in args.modelCode:
         if 'ar' in args.modelCode:
             step_by_step = True
         else:
             step_by_step = False
-        MODEL = modelzoo.HAN_Integrated(NET_PARAM, device, step_by_step).to(device)
+        MODEL = modelzoo.HAN_Integrated(model_config, device, step_by_step).to(device)
     elif 'trill' in args.modelCode:
-        MODEL = modelzoo.TrillRNN(NET_PARAM, device).to(device)
+        MODEL = modelzoo.TrillRNN(model_config, device).to(device)
     else:
         print('Error: Unclassified model code')
         # Model = modelzoo.HAN_VAE(NET_PARAM, device, False).to(device)
