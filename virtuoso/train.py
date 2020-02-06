@@ -48,6 +48,7 @@ def train(args,
     start_epoch = 0
 
     if args.resumeTraining and not args.trainTrill:
+        # Load trained-model to resume the training process
         if os.path.isfile('prime_' + args.modelCode + args.resume):
             print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
             # model_codes = ['prime', 'trill']
@@ -151,7 +152,7 @@ def train(args,
                                      'slice_idx': slice_idx, 'kld_weight': kld_weight}
 
                     tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-                        utils.batch_time_step_run(training_data, model=train_model)
+                        utils.batch_time_step_run(training_data, model=train_model, args=args)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     dev_loss_total.append(dev_loss.item())
@@ -237,10 +238,7 @@ def train(args,
             align_matched = xy_tuple[3]
             pedal_status = xy_tuple[4]
             edges = xy_tuple[5]
-            if model.is_graph:
-                graphs = graph.edges_to_matrix(edges, len(test_x))
-            else:
-                graphs = None
+            graphs = graph.edges_to_matrix(edges, len(test_x), model.config)
             if args.loss == 'CE':
                 test_y = categorize_value_to_vector(test_y, bins)
 
@@ -490,7 +488,7 @@ def test(args,
             align_matched = xy_tuple[3]
             pedal_status = xy_tuple[4]
             edges = xy_tuple[5]
-            graphs = graph.edges_to_matrix(edges, len(test_x))
+            graphs = graph.edges_to_matrix(edges, len(test_x), model.config)
             if args.loss == 'CE':
                 test_y = categorize_value_to_vector(test_y, bins)
 
