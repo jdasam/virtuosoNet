@@ -142,9 +142,10 @@ def initialize_model_parameters_by_code(args):
 
     elif 'trill' in args.modelCode:
         model_config.input_size = cons.SCORE_INPUT + cons.NUM_PRIME_PARAM
-        model_config.output_size = cons.num_trill_param
+        model_config.output_size = cons.NUM_TRILL_PARAM
         model_config.note.layers = 2
         model_config.note.size = 32
+        model_config.is_trill = True
 
     else:
         print('Unclassified model code')

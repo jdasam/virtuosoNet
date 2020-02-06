@@ -43,7 +43,6 @@ def train(args,
     print('Number of Network Parameters is ', params)
 
     best_prime_loss = float("inf")
-    best_second_loss = float("inf")
     best_trill_loss = float("inf")
     start_epoch = 0
     NUM_UPDATED = 0
@@ -152,7 +151,7 @@ def train(args,
                                      'slice_idx': slice_idx, 'kld_weight': kld_weight}
 
                     tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-                        utils.batch_time_step_run(training_data, model=train_model, args=args)
+                        utils.batch_train_run(training_data, model=train_model, args=args, optimizer=optimizer)
                     tempo_loss_total.append(tempo_loss.item())
                     vel_loss_total.append(vel_loss.item())
                     dev_loss_total.append(dev_loss.item())
@@ -340,7 +339,7 @@ def train(args,
         is_best_trill = mean_trill_loss < best_trill_loss
         best_trill_loss = min(mean_trill_loss, best_trill_loss)
 
-        if args.trainTrill:
+        if model.config.is_trill:
             utils.save_checkpoint({
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),

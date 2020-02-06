@@ -15,7 +15,7 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
     parser.add_argument("-voice", "--voiceEdge", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-    
+
     # training parameters
     parser.add_argument("-vel", "--velocity", type=str,
                         default='50,65', help="mean velocity of piano and forte")
