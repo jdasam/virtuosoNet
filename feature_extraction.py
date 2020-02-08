@@ -14,7 +14,6 @@ class ScoreExtractor:
         self.tem_emb_tab = dir_enc.define_tempo_embedding_table()
 
     def extract_score_features(self, piece_data):
-        piece_data.score_features = dict()
         for key in self.selected_feature_keys:
             piece_data.score_features[key] = getattr(
                 self, 'get_' + key)(piece_data)        
@@ -570,3 +569,6 @@ class PerformExtractor:
 
         return feature_utils.get_longer_level_dynamics(perform_data.perform_features,
                                                        piece_data.score_features['note_location'], length='measure')
+
+    def get_staff(self, piece_data, perform_data):
+        return [note.staff for note in piece_data.xml_notes]
