@@ -139,36 +139,36 @@ def make_midi_measure_seconds(pairs, measure_positions):
     return measure_seconds
 
 
-def binary_index_for_edge(alist, item):
-    first = 0
-    last = len(alist) - 1
-    midpoint = 0
-
-    if (item < alist[first][0]):
-        return 0
-
-    while first < last:
-        midpoint = (first + last) // 2
-        currentElement = alist[midpoint][0]
-
-        if currentElement < item:
-            if alist[midpoint + 1][0] > item:
-                return midpoint
-            else:
-                first = midpoint + 1
-            if first == last and alist[last][0] > item:
-                return midpoint
-        elif currentElement > item:
-            last = midpoint - 1
-        else:
-            if midpoint + 1 == len(alist):
-                return midpoint
-            while midpoint >= 1 and alist[midpoint - 1][0] == item:
-                midpoint -= 1
-                if midpoint == 0:
-                    return midpoint
-            return midpoint
-    return last
+# def binary_index_for_edge(alist, item):
+#     first = 0
+#     last = len(alist) - 1
+#     midpoint = 0
+#
+#     if (item < alist[first][0]):
+#         return 0
+#
+#     while first < last:
+#         midpoint = (first + last) // 2
+#         currentElement = alist[midpoint][0]
+#
+#         if currentElement < item:
+#             if alist[midpoint + 1][0] > item:
+#                 return midpoint
+#             else:
+#                 first = midpoint + 1
+#             if first == last and alist[last][0] > item:
+#                 return midpoint
+#         elif currentElement > item:
+#             last = midpoint - 1
+#         else:
+#             if midpoint + 1 == len(alist):
+#                 return midpoint
+#             while midpoint >= 1 and alist[midpoint - 1][0] == item:
+#                 midpoint -= 1
+#                 if midpoint == 0:
+#                     return midpoint
+#             return midpoint
+#     return last
 
 
 def model_prediction_to_feature(prediction):
