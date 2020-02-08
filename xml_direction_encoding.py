@@ -165,15 +165,14 @@ def get_dynamics(directions):
             rel.end_xml_position = rel.xml_position + 0.1
 
         if not hasattr(rel, 'end_xml_position'):
+        # if rel.end_xml_position is None:
             for j in range(1, num_relative-i):
                 next_rel = relative_dynamics[i+j]
                 rel.end_xml_position = next_rel.xml_position
                 break
 
-        if len(absolute_dynamics) > 0 and \
-                (hasattr(rel, 'end_xml_position') or
-                 absolute_dynamics[index + 1].xml_position < rel.end_xml_position):
-                rel.end_xml_position = absolute_dynamics_position[index + 1]
+        if len(absolute_dynamics) > 0 and hasattr(rel, 'end_xml_position') and absolute_dynamics[index + 1].xml_position < rel.end_xml_position:
+            rel.end_xml_position = absolute_dynamics_position[index + 1]
 
         if not hasattr(rel, 'end_xml_position'):
             rel.end_xml_position = float("inf")
