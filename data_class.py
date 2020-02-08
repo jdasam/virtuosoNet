@@ -23,10 +23,11 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
-                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
+                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo', 'note_location']
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
+                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight',
+                            'beat_dynamics', 'measure_tempo', 'measure_dynamics']
 
 # total data class
 class DataSet:
@@ -54,6 +55,7 @@ class DataSet:
         # path = Path(self.path)
         # musicxml_list = sorted(path.glob('**.xml'))
         for xml in musicxml_list:
+            print('piece path:', xml)
             try:
                 piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
                 self.pieces.append(piece)
@@ -207,6 +209,7 @@ class PieceData:
         self.num_notes = 0
         self.performances = []
         self.score_performance_match = []
+        self.notes_graph = []
 
         self.score_match_list = []
         self.score_pairs = []
