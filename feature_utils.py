@@ -325,7 +325,7 @@ def composer_name_to_vec(composer_name):
 
 
 def get_longer_level_dynamics(features, note_locations, length='beat'):
-    num_notes = len(features)
+    num_notes = len(note_locations)
 
     prev_beat = 0
     prev_beat_index = 0
