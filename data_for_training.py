@@ -94,11 +94,11 @@ class PairDataset:
             formatted_data['graph'] = pair_data.graph_edges
 
             if pair_data.split_type == 'train':
-                training_data.append(pair_data)
+                training_data.append(formatted_data)
             elif pair_data.split_type == 'valid':
-                validation_data.append(pair_data)
+                validation_data.append(formatted_data)
             elif pair_data.split_type == 'test':
-                test_data.append(pair_data)
+                test_data.append(formatted_data)
 
         with open(save_name + ".dat", "wb") as f:
             pickle.dump({'train': training_data, 'valid': validation_data}, f, protocol=2)
