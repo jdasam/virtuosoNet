@@ -29,7 +29,7 @@ def xml_notes_to_midi(xml_notes):
     Example:
         (in data_class.py -> make_score_midi())
         >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
-        
+
     """
     midi_notes = []
     for note in xml_notes:
@@ -64,7 +64,7 @@ def find_tempo_change(xml_notes):
     Example:
         (in data_class.py -> _load_score_xml()
         >>> self.section_positions = xml_utils.find_tempo_change(self.xml_notes)
-        
+
     """
     # TODO: This function can be simplified if it takes xml_obj or directions as the input
     tempo_change_positions = []
