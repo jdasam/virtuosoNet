@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 import warnings
 import copy
+from abc import abstractmethod
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
@@ -18,7 +19,7 @@ from . import score_as_graph as score_graph, xml_midi_matching as matching
 from . import xml_utils
 from . import feature_extraction
 
-ALIGN_DIR = '/home/jdasam/AlignmentTool_v190813'
+align_dir = '/home/jdasam/AlignmentTool_v190813'
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
@@ -31,7 +32,7 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
 
 # total data class
 class DataSet:
-    def __init__(self, path, data_structure='folder'):
+    def __init__(self, path):
         self.path = path
         self.dataset_name = copy.copy(path).split('/')[-1]
         self.pieces = []
@@ -45,10 +46,17 @@ class DataSet:
         self.num_performance_notes = 0
 
         self.default_performances = self.performances
-        self.data_structure = data_structure
 
         self._load_all_scores()
 
+    @classmethod
+    @abstractmethod
+    def load_data(self):
+        '''return scores, score_midis, performances'''
+        raise NotImplementedError
+
+    
+    '''
     def _load_all_scores(self):
         musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
                      f.endswith('xml')]
@@ -62,7 +70,7 @@ class DataSet:
             except Exception as ex:
                 print('Error type :', ex)
         self.num_pieces = len(self.pieces)
-
+    '''
     def load_all_performances(self):
         for piece in self.pieces:
             piece._load_performances()
@@ -202,8 +210,8 @@ class DataSet:
 
 # score data class
 class PieceData:
-    def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
-        self.meta = PieceMeta(xml_path, data_structure, dataset_name=dataset_name, composer=composer)
+    def __init__(self, xml_path, perform_lists, score_midi_path=None, composer=None):
+        self.meta = PieceMeta(xml_path, perform_lists=perform_lists, score_midi_path=score_midi_path, composer=composer)
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
@@ -216,37 +224,37 @@ class PieceData:
 
         self.score_features = {}
 
-        self._load_score_xml()
-        self._load_score_midi()
+        self._load_score_xml(xml_path)
+        self._load_score_midi(score_midi_path)
         self._match_score_xml_to_midi()
 
-        self.meta._load_list_of_performances()
         self.meta._check_perf_align()
-        self.meta._load_composer_name()
 
-    def _load_score_xml(self):
-        self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
+    def _load_score_xml(self, xml_path):
+        self.xml_obj = MusicXMLDocument(xml_path)
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
         self.measure_positions = self.xml_obj.get_measure_positions()
         self.beat_positions = self.xml_obj.get_beat_positions()
         self.section_positions = xml_utils.find_tempo_change(self.xml_notes)
 
-    def _load_score_midi(self):
+    def _load_score_midi(self, score_midi_path):
+        '''
         if self.meta.data_structure == 'folder':
             midi_file_name = self.meta.folder_path + '/midi_cleaned.mid'
         else: # data_structure == 'name'
             midi_file_name = os.path.splitext(self.meta.xml_path)[0] + '.mid'
-        if not os.path.isfile(midi_file_name):
-            self.make_score_midi(midi_file_name)
-        self.score_midi = midi_utils.to_midi_zero(midi_file_name)
+        ''' 
+        if not os.path.isfile(score_midi_path):
+            self.make_score_midi(score_midi_path)
+        self.score_midi = midi_utils.to_midi_zero(score_midi_path)
         self.score_midi_notes = self.score_midi.instruments[0].notes
         self.score_midi_notes.sort(key=lambda x:x.start)
 
     def make_score_midi(self, midi_file_name):
         midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
         xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
-
+        
     def _get_direction_encoded_notes(self):
         notes, rests = self.xml_obj.get_notes()
         directions = self.xml_obj.get_directions()
@@ -274,10 +282,9 @@ class PieceData:
         perform._count_matched_notes()
 
     def update_performances(self):
-        old_performances = copy.copy(self.meta.perf_file_list)
-        self.meta._load_list_of_performances()
+        old_performances = copy.copy(self.meta.perform_lists)
         self.meta._check_perf_align()
-        new_performances = self.meta.perf_file_list
+        new_performances = self.meta.perform_lists
         for perf_path in new_performances:
             if perf_path not in old_performances:
                 perform_data = PerformData(perf_path, self.meta)
@@ -291,62 +298,39 @@ class PieceData:
 
 # score meta data class
 class PieceMeta:
-    def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
+    def __init__(self, xml_path, perform_lists, score_midi_path, composer=None):
         self.xml_path = xml_path
         self.folder_path = os.path.dirname(xml_path)
-        self.dataset_name = dataset_name
         self.composer = composer
-        self.data_structure = data_structure
         self.pedal_elongate = False
-        self.perf_file_list = []
-
-    def _load_list_of_performances(self):
-        files_in_folder = os.listdir(self.folder_path)
-        files_in_folder = [x for x in files_in_folder if x.endswith('.mid')]
-        perf_file_list = []
-        if self.data_structure == 'folder':
-            for file in files_in_folder:
-                if file not in ('midi.mid', 'midi_cleaned.mid'):
-                    perf_file_list.append(self.folder_path + '/' + file)
-        else:
-            piece_name = os.path.splitext(os.path.basename(self.xml_path))[0]
-            for file in files_in_folder:
-                if file == piece_name + '.mid':
-                    continue
-                elif piece_name in file:
-                    perf_file_list.append(self.folder_path + '/' + file)
-        self.perf_file_list = perf_file_list
+        self.perform_lists = perform_lists
+        self.score_midi_path = score_midi_path
 
     def _check_perf_align(self):
+        # TODO Why these are here?
         aligned_perf = []
-        for perf in self.perf_file_list:
+        for perf in self.perform_lists:
             align_file_name = os.path.splitext(perf)[0] + '_infer_corresp.txt'
             if os.path.isfile(align_file_name):
                 aligned_perf.append(perf)
                 continue
-            self.align_score_and_perf_with_nakamura(os.path.abspath(perf))
+            self.align_score_and_perf_with_nakamura(os.path.abspath(perf), self.score_midi_path)
             if os.path.isfile(align_file_name): # check once again whether the alignment was successful
                 aligned_perf.append(perf)
 
         self.perf_file_list = aligned_perf
 
-    def align_score_and_perf_with_nakamura(self, midi_file_path):
+    def align_score_and_perf_with_nakamura(self, midi_file_path, score_midi_path):
         file_folder, file_name = ntpath.split(midi_file_path)
         perform_midi = midi_file_path
-        if self.data_structure == 'folder':
-            score_midi = os.path.join(file_folder, 'midi_cleaned.mid')
-            if not os.path.isfile(score_midi):
-                score_midi = os.path.join(file_folder, 'midi.mid')
-        else: #self.data_structure =='file'
-            score_midi =  os.path.splitext(self.xml_path)[0] + '.mid'
         print(perform_midi)
-        print(score_midi)
+        print(score_midi_path)
 
-        shutil.copy(perform_midi, os.path.join(ALIGN_DIR, 'infer.mid'))
-        shutil.copy(score_midi, os.path.join(ALIGN_DIR, 'score.mid'))
+        shutil.copy(perform_midi, os.path.join(align_dir, 'infer.mid'))
+        shutil.copy(score_midi_path, os.path.join(align_dir, 'score.mid'))
         current_dir = os.getcwd()
         try:
-            os.chdir(ALIGN_DIR)
+            os.chdir(align_dir)
             subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
         except:
             print('Error to process {}'.format(midi_file_path))
@@ -354,9 +338,9 @@ class PieceMeta:
             os.chdir(current_dir)
             shutil.copy(midi_file_path, midi_file_path+'old')
             midi_utils.to_midi_zero(midi_file_path, save_midi=True, save_name=midi_file_path)
-            shutil.copy(midi_file_path, os.path.join(ALIGN_DIR, 'infer.mid'))
+            shutil.copy(midi_file_path, os.path.join(align_dir, 'infer.mid'))
             try:
-                os.chdir(ALIGN_DIR)
+                os.chdir(align_dir)
                 subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
             except:
                 align_success = False
@@ -371,9 +355,10 @@ class PieceMeta:
             shutil.move('infer_corresp.txt', midi_file_path.replace('.mid', '_infer_corresp.txt'))
             shutil.move('infer_match.txt', midi_file_path.replace('.mid', '_infer_match.txt'))
             shutil.move('infer_spr.txt', midi_file_path.replace('.mid', '_infer_spr.txt'))
-            shutil.move('score_spr.txt', os.path.join(ALIGN_DIR, '_score_spr.txt'))
+            shutil.move('score_spr.txt', os.path.join(align_dir, '_score_spr.txt'))
             os.chdir(current_dir)
-    
+
+    ''' 
     def _load_composer_name(self):
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
@@ -393,7 +378,7 @@ class PieceMeta:
             composer_name = data_name.split('.')[0]
 
         self.composer = composer_name
-
+    '''
 
 
 # performance data class
