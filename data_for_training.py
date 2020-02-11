@@ -184,6 +184,24 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
             value = [(x - stats[key]['mean']) / stats[key]['stds'] for x in value]
         return value
 
+    def add_to_list(alist, item):
+        if isinstance(item, list):
+            alist += item
+        else:
+            alist.append(item)
+        return alist
+
+    def cal_dimension(data_with_all_features):
+        total_length = 0
+        for feat_data in data_with_all_features:
+            if isinstance(feat_data[0], list):
+                length = len(feat_data[0])
+            else:
+                length = 1
+            total_length += length
+        return total_length
+
+
     for key in input_keys:
         value = check_if_global_and_normalize(key)
         input_data.append(value)
@@ -191,7 +209,30 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
         value = check_if_global_and_normalize(key)
         output_data.append(value)
 
-    input_data = np.asarray(input_data).transpose()
-    output_data = np.asarray(output_data).transpose()
+    input_dimension = cal_dimension(input_data)
+    output_dimension = cal_dimension(output_data)
 
-    return input_data, output_data
+    input_array = np.zeros((feature_data['num_notes'], input_dimension))
+    output_array = np.zeros((feature_data['num_notes'], output_dimension))
+
+    current_idx = 0
+
+    for value in input_data:
+        if isinstance(value[0], list):
+            length = len(value[0])
+            input_array[:, current_idx:current_idx + length] = value
+        else:
+            length = 1
+            input_array[:,current_idx] = value
+        current_idx += length
+    current_idx = 0
+    for value in output_data:
+        if isinstance(value[0], list):
+            length = len(value[0])
+            output_array[:, current_idx:current_idx + length] = value
+        else:
+            length = 1
+            output_array[:,current_idx] = value
+        current_idx += length
+
+    return input_array, output_array
