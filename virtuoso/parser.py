@@ -5,6 +5,9 @@ def get_parser():
     parser = argparse.ArgumentParser("virtuosonet")
     parser.add_argument("-data", "--dataName", type=str,
                         default="training_data", help="dat file name")
+    parser.add_argument("-test_data", "--test_dataName", type=str,
+                        default="test_data", help="dat file name")
+                          
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
 
@@ -32,7 +35,7 @@ def get_parser():
                         default=Path('checkpoints'),
                         help='folder to store checkpoints')    
     parser.add_argument("--evals",
-                        type='Path',
+                        type=Path,
                         default=Path('evals'))
     parser.add_argument("--save",
                         action="store_true",)
@@ -107,6 +110,8 @@ def get_parser():
     parser.add_argument("-dskl", "--disklavier", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
+    parser.add_argument('-seed', default=0)
+    parser.add_argument('-sessMode', default='train')
     return parser
 
 

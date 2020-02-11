@@ -15,7 +15,7 @@ from . import graph
 from . import utils
 from . import model_constants as const
 from . import nnModel
-from . import dataset
+# from . import dataset
 from . import inference
 
 def sigmoid(x, gain=1):
@@ -29,6 +29,9 @@ class TraningSample():
 
 def train(args,
           model,
+          model_config,
+          train_data,
+          valid_data,
           device,
           optimizer, 
           num_epochs, 
@@ -64,7 +67,7 @@ def train(args,
             start_epoch = checkpoint['epoch'] - 1
             best_prime_loss = checkpoint['best_valid_loss']
             print('Best valid loss was ', best_prime_loss)
-
+    '''
     # load data
     print('Loading the training data...')
     training_data_name = args.dataName + ".dat"
@@ -79,6 +82,9 @@ def train(args,
 
     train_xy = complete_xy['train']
     test_xy = complete_xy['valid']
+    '''
+    train_xy = train_data
+    test_xy = valid_data
     print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
     print('training sample example', train_xy[0][0][0])
 
@@ -104,14 +110,19 @@ def train(args,
             while len(remaining_samples) > 0:
                 new_index = random.randrange(0, len(remaining_samples))
                 selected_sample = remaining_samples[new_index]
-                train_x = train_xy[selected_sample.index][0]
-                train_y = train_xy[selected_sample.index][1]
-                if args.trainingLoss == 'CE':
-                    train_y = categorize_value_to_vector(train_y, bins)
-                note_locations = train_xy[selected_sample.index][2]
-                align_matched = train_xy[selected_sample.index][3]
-                pedal_status = train_xy[selected_sample.index][4]
-                edges = train_xy[selected_sample.index][5]
+                # train_x = train_xy[selected_sample.index][0]
+                # train_y = train_xy[selected_sample.index][1]
+                train_x = train_xy['input_data'][selected_sample.index]
+                train_y = train_xy['output_data'][selected_sample.index]
+                # if args.loss == 'CE':
+                #     train_y = categorize_value_to_vector(train_y, bins)
+                note_locations = train_xy['note_location'][selected_sample.index]
+                align_matched = train_xy['align_matched'][selected_sample.index]
+                # TODO: which variable would be corresponds to pedal status?
+                # pedal_status = train_xy[selected_sample.index][4]
+                pedal_status = train_xy['articulation_loss_weight'][selected_sample.index]
+                edges = train_xy['graph'][selected_sample.index]
+
                 data_size = len(train_x)
 
                 if selected_sample.slice_indexes is None:
@@ -129,7 +140,7 @@ def train(args,
                 slice_idx = selected_sample.slice_indexes[selected_idx]
 
                 if model.is_graph:
-                    graphs = graph.edges_to_matrix_short(edges, slice_idx)
+                    graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
                 else:
                     graphs = None
 
@@ -231,15 +242,16 @@ def train(args,
         kld_loss_total = []
 
         for xy_tuple in test_xy:
-            test_x = xy_tuple[0]
-            test_y = xy_tuple[1]
-            note_locations = xy_tuple[2]
-            align_matched = xy_tuple[3]
-            pedal_status = xy_tuple[4]
-            edges = xy_tuple[5]
+            test_x = xy_tuple['input_data']
+            test_y = xy_tuple['output_data']
+            note_locations = xy_tuple['note_location']
+            align_matched = xy_tuple['align_matched']
+            # TODO: need check
+            pedal_status = xy_tuple['articulation_loss_weight']
+            edges = xy_tuple['graph']
             graphs = graph.edges_to_matrix(edges, len(test_x), model.config)
-            if args.loss == 'CE':
-                test_y = categorize_value_to_vector(test_y, bins)
+            # if args.loss == 'CE':
+            #     test_y = categorize_value_to_vector(test_y, bins)
 
             batch_x, batch_y = utils.handle_data_in_tensor(test_x, test_y, args, device)
             batch_x = batch_x.view(1, -1, NUM_INPUT)
@@ -292,7 +304,7 @@ def train(args,
                 kld_loss_total.append(kld_loss.item())
 
             else:
-                tempo_loss = utils.cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0, qpm_idx, criterion, args, device)
+                tempo_loss = utils.cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0, args, device)
                 if args.loss =='CE':
                     vel_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM:const.NUM_TEMPO_PARAM+len(bins[1])], batch_y[:,:,const.NUM_TEMPO_PARAM:const.NUM_TEMPO_PARAM+len(bins[1])], align_matched)
                     deviation_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM+len(bins[1]):const.NUM_TEMPO_PARAM+len(bins[1])+len(bins[2])],
@@ -363,7 +375,7 @@ def train(args,
 # elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation']:
 # ### test session
 
-
+'''
 def test(args,
          model,
          TRILL_model,
@@ -685,7 +697,7 @@ def test(args,
 
         with open(args.modelCode + "_cor.dat", "wb") as f:
             pickle.dump(model_cor, f, protocol=2)
-
+'''
 
 def train_model(dataset, model, kwargs):
     '''

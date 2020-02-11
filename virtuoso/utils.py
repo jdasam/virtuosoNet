@@ -4,6 +4,8 @@ from . import model_constants as const
 from . import data_process as dp
 
 
+QPM_INDEX = 0
+
 def save_checkpoint(state, is_best, filename='isgn', model_name='prime'):
     save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
     th.save(state, save_name)
