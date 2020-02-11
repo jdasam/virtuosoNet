@@ -114,6 +114,7 @@ class DataSet:
     '''
 
     def _sort_performances(self):
+        # TODO: move to EmotionDataset
         self.performances.sort(key=lambda x:x.midi_path)
         for tag in self.performs_by_tag:
             self.performs_by_tag[tag].sort(key=lambda x:x.midi_path)
@@ -200,6 +201,7 @@ class DataSet:
         return measure_average_features
 
     def _divide_by_tag(self, list_of_tag):
+        # TODO: move to EmotionDataset
         # example of list_of_tag = ['professional', 'amateur']
         for tag in list_of_tag:
             self.performs_by_tag[tag] = []
@@ -211,6 +213,7 @@ class DataSet:
                         break
 
     def update_dataset(self):
+        # TODO: TGK: I didn't get the usage. is there method to load dataset other than creating?
         '''
         old_music_xml_list = [piece.meta.xml_path for piece in self.pieces]
         cur_musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
@@ -249,7 +252,11 @@ class PieceData:
         self._match_score_xml_to_midi()
 
         self.meta._check_perf_align()
-
+        for perform in perform_lists:
+            perform_data = PerformData(perform, self.meta)
+            self._align_perform_with_score(perform_data)
+            self.performances.append(perform_data)
+        
     def _load_score_xml(self, xml_path):
         self.xml_obj = MusicXMLDocument(xml_path)
         self._get_direction_encoded_notes()
@@ -259,12 +266,6 @@ class PieceData:
         self.section_positions = xml_utils.find_tempo_change(self.xml_notes)
 
     def _load_score_midi(self, score_midi_path):
-        '''
-        if self.meta.data_structure == 'folder':
-            midi_file_name = self.meta.folder_path + '/midi_cleaned.mid'
-        else: # data_structure == 'name'
-            midi_file_name = os.path.splitext(self.meta.xml_path)[0] + '.mid'
-        ''' 
         if not os.path.isfile(score_midi_path):
             self.make_score_midi(score_midi_path)
         self.score_midi = midi_utils.to_midi_zero(score_midi_path)
@@ -453,7 +454,6 @@ class YamahaDataset(DataSet):
         score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
         composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
 
-        files_in_folder = [x for x in xml_list] 
         perform_lists = []
         for xml in xml_list:
             midis = sorted(xml.parent.glob('*.mid')) + sorted(xml.parent.glob('*.MID'))
@@ -474,16 +474,13 @@ class EmotionDataset(DataSet):
     def load_data(self):
         path = Path(self.path)
         xml_list = sorted(path.glob('**/*.musicxml'))
-        raise NotImplementedError
-        score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
-        composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
+        score_midis = [xml.stem + '_midi_cleaned.mid' for xml in xml_list]
+        composers = [xml.stem.split('.')[0] for xml in xml_list]
 
-        files_in_folder = [x for x in xml_list] 
         perform_lists = []
         for xml in xml_list:
-            midis = sorted(xml.parent.glob('*.mid'))
+            midis = sorted(xml.parent.glob(f'{xml.stem}*.mid'))
             midis = [str(midi) for midi in midis if midi.name not in ['midi.mid', 'midi_cleaned.mid']]
-            midis = [midi for midi in midis if not 'XP' in midi]
             perform_lists.append(midis)
 
         # Path -> string wrapper

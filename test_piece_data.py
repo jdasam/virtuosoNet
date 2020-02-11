@@ -10,10 +10,11 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
                             'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
 
-target = Path('refactory/test_examples/Beethoven/32-1')
+target = 'refactory/test_examples/Beethoven/32-1'
+performance = 'refactory/test_examples/Beethoven/32-1/DupreeF03.mid'
 xml_name = 'musicxml_cleaned.musicxml'
 
-piece = PieceData(target / xml_name)
+piece = PieceData(target + '/' + xml_name, [performance], target + '/' + 'midi.mid', composer='Beethoven')
 first_note = dict(duration= 60, midi_ticks= 27.5, seconds= 0.20833333333333334, pitch= 'Eb4', MIDI_pitch= 63, voice= 5, velocity= 64)
 assert (piece.xml_notes[0].note_duration.duration == 60 and
         piece.xml_notes[0].note_duration.midi_ticks == 27.5 and
