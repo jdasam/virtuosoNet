@@ -12,6 +12,7 @@ from pathlib import Path
 import warnings
 import copy
 from abc import abstractmethod
+from tqdm import tqdm
 
 from .musicxml_parser import MusicXMLDocument
 from .midi_utils import midi_utils
@@ -30,13 +31,20 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
                             'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight',
                             'beat_dynamics', 'measure_tempo', 'measure_dynamics']
 
+
 # total data class
 class DataSet:
     def __init__(self, path):
         self.path = path
-        self.dataset_name = copy.copy(path).split('/')[-1]
+
         self.pieces = []
+        self.scores = []
+        self.score_midis = []
+        self.perform_midis = []
+        self.composers = []
+
         self.performances = []
+        
         self.performs_by_tag = {}
         self.flattened_performs_by_tag = []
 
@@ -45,14 +53,22 @@ class DataSet:
         self.num_score_notes = 0
         self.num_performance_notes = 0
 
-        self.default_performances = self.performances
+        # self.default_perforddmances = self.performances
+        # TGK: what for?
 
-        self._load_all_scores()
+        # self._load_all_scores()
+
+        scores, score_midis, perform_midis, composers = self.load_data()
+        self.scores = scores
+        self.score_midis = score_midis
+        self.perform_midis = perform_midis
+        self.composers = composers
+        self.load_all_performances(scores, perform_midis, score_midis, composers)
 
     @classmethod
     @abstractmethod
     def load_data(self):
-        '''return scores, score_midis, performances'''
+        '''return scores, score_midis, performances, composers'''
         raise NotImplementedError
 
     
@@ -71,14 +87,23 @@ class DataSet:
                 print('Error type :', ex)
         self.num_pieces = len(self.pieces)
     '''
-    def load_all_performances(self):
-        for piece in self.pieces:
-            piece._load_performances()
-            for perf in piece.performances:
-                self.performances.append(perf)
 
+    def load_all_performances(self, scores, perform_midis, score_midis, composers):
+        for n in tqdm(range(len(scores))):
+            try:
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n])
+                self.pieces.append(piece)
+                for perf in piece.performances:
+                    self.performances.append(perf)
+            except Exception as ex:
+                # TODO: TGK: this is ambiguous. Can we specify which file 
+                # (score? performance? matching?) and in which function the error occur?
+                print(f'Error while processing {scores[n]}. Error type :{ex}')
+            
         self.num_performances = len(self.performances)
 
+    '''
+    # TGK : same as extract_selected_features(DEFAULT_SCORE_FEATURES) ...
     def extract_all_features(self):
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
@@ -86,14 +111,7 @@ class DataSet:
             piece.score_features = score_extractor.extract_score_features(piece)
             for perform in piece.performances:
                 perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
-
-    def extract_selected_features(self, target_features):
-        perform_extractor = feature_extraction.PerformExtractor(target_features)
-        for piece in self.pieces:
-            for perform in piece.performances:
-                print('Performance:', perform.midi_path)
-                for feature_name in target_features:
-                    perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(piece, perform)
+    '''
 
     def _sort_performances(self):
         self.performances.sort(key=lambda x:x.midi_path)
@@ -114,7 +132,7 @@ class DataSet:
     def save_features_as_csv(self, features, feature_names, path='features.csv'):
         feature_type_name = ['MIDI Path'] + feature_names
         feature_with_name = [feature_type_name]
-        perform_names = [x.midi_path for x in self.default_performances]
+        perform_names = [x.midi_path for x in self.performances]
         for i,feature_by_perf in enumerate(features):
             feature_by_perf = [perform_names[i]] + feature_by_perf
             feature_with_name.append(feature_by_perf)
@@ -128,7 +146,7 @@ class DataSet:
 
     def features_to_list(self, list_of_feat):
         feature_data = [[] for i in range(len(list_of_feat))]
-        for perf in self.default_performances:
+        for perf in self.performances:
             for i, feature_type in enumerate(list_of_feat):
                 feature_data[i].append(perf.perform_features[feature_type])
         return feature_data
@@ -150,7 +168,7 @@ class DataSet:
 
     def get_average_feature_by_measure(self, list_of_features):
         measure_average_features = [[] for i in range(len(list_of_features))]
-        for p_index, perf in enumerate(self.default_performances):
+        for p_index, perf in enumerate(self.performances):
             features_in_performance = [ [] for i in range(len(list_of_features))]
             features_in_previous_measure = [ [] for i in range(len(list_of_features))]
             previous_measure = 0
@@ -193,18 +211,20 @@ class DataSet:
                         break
 
     def update_dataset(self):
+        '''
         old_music_xml_list = [piece.meta.xml_path for piece in self.pieces]
         cur_musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
                          f.endswith('xml')]
-        for xml in cur_musicxml_list:
+        for xml in self.pieces:
             if xml not in old_music_xml_list:
                 print('Updated piece:', xml)
                 try:
-                    piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
+                    piece = PieceData(xml, self.piece)
                     self.pieces.append(piece)
                 except Exception as ex:
                     print('Error type :', ex)
         self.num_pieces = len(self.pieces)
+        '''
         for piece in self.pieces:
             piece.update_performances()
 
@@ -250,7 +270,18 @@ class PieceData:
         self.score_midi = midi_utils.to_midi_zero(score_midi_path)
         self.score_midi_notes = self.score_midi.instruments[0].notes
         self.score_midi_notes.sort(key=lambda x:x.start)
+        
+    def extract_perform_features(self, target_features):
+        perform_extractor = feature_extraction.PerformExtractor(target_features)
+        for perform in self.performances:
+            print('Performance:', perform.midi_path)
+            for feature_name in target_features:
+                perform.perform_features[feature_name] = getattr(perform_extractor, 'get_'+ feature_name)(self, perform)
 
+    def extract_score_features(self, target_features):
+        score_extractor = feature_extraction.ScoreExtractor(target_features)
+        self.score_features = score_extractor.extract_score_features(self)
+    
     def make_score_midi(self, midi_file_name):
         midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
         xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
@@ -268,7 +299,7 @@ class PieceData:
         self.score_pairs = matching.make_xml_midi_pair(self.xml_notes, self.score_midi_notes, self.score_match_list)
 
     def _load_performances(self):
-        for perf_midi_name in self.meta.perf_file_list:
+        for perf_midi_name in self.meta.perform_lists:
             perform_data = PerformData(perf_midi_name, self.meta)
             self._align_perform_with_score(perform_data)
             self.performances.append(perform_data)
@@ -323,8 +354,6 @@ class PieceMeta:
     def align_score_and_perf_with_nakamura(self, midi_file_path, score_midi_path):
         file_folder, file_name = ntpath.split(midi_file_path)
         perform_midi = midi_file_path
-        print(perform_midi)
-        print(score_midi_path)
 
         shutil.copy(perform_midi, os.path.join(align_dir, 'infer.mid'))
         shutil.copy(score_midi_path, os.path.join(align_dir, 'score.mid'))
@@ -412,3 +441,52 @@ class PerformData:
                 self.num_matched_notes += 1
         print(
             'Number of Matched Notes: ' + str(self.num_matched_notes) + ', unmatched notes: ' + str(self.num_unmatched_notes))
+
+
+class YamahaDataset(DataSet):
+    def __init__(self, path):
+        super().__init__(path)
+
+    def load_data(self):
+        path = Path(self.path)
+        xml_list = sorted(path.glob('**/*.musicxml'))
+        score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
+        composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
+
+        files_in_folder = [x for x in xml_list] 
+        perform_lists = []
+        for xml in xml_list:
+            midis = sorted(xml.parent.glob('*.mid')) + sorted(xml.parent.glob('*.MID'))
+            midis = [str(midi) for midi in midis if midi.name not in ['midi.mid', 'midi_cleaned.mid']]
+            midis = [midi for midi in midis if not 'XP' in midi]
+            perform_lists.append(midis)
+
+        # Path -> string wrapper
+        xml_list = [str(xml) for xml in xml_list]
+        score_midis = [str(midi) for midi in score_midis]
+        return xml_list, score_midis, perform_lists, composers
+
+
+class EmotionDataset(DataSet):
+    def __init__(self, path):
+        super().__init__(path)
+
+    def load_data(self):
+        path = Path(self.path)
+        xml_list = sorted(path.glob('**/*.musicxml'))
+        raise NotImplementedError
+        score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
+        composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
+
+        files_in_folder = [x for x in xml_list] 
+        perform_lists = []
+        for xml in xml_list:
+            midis = sorted(xml.parent.glob('*.mid'))
+            midis = [str(midi) for midi in midis if midi.name not in ['midi.mid', 'midi_cleaned.mid']]
+            midis = [midi for midi in midis if not 'XP' in midi]
+            perform_lists.append(midis)
+
+        # Path -> string wrapper
+        xml_list = [str(xml) for xml in xml_list]
+        score_midis = [str(midi) for midi in score_midis]
+        return xml_list, score_midis, perform_lists, composers
