@@ -30,7 +30,7 @@ def get_parser():
     parser.add_argument("--master")
 
     # save options
-    parser.add_argument("--checkopints", 
+    parser.add_argument("--checkpoints", 
                         type=Path,
                         default=Path('checkpoints'),
                         help='folder to store checkpoints')    

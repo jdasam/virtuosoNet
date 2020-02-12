@@ -7,6 +7,7 @@ import copy
 import numpy as np
 import torch as th
 import pickle
+from tqdm import tqdm
 
 from .parser import get_parser
 from .utils import categorize_value_to_vector
@@ -98,30 +99,101 @@ def train(args,
         trill_loss_total = []
         kld_total = []
 
-        num_perf_data = len(train_xy)
-        remaining_samples = []
-        for i in range(num_perf_data):
-            remaining_samples.append(TraningSample(i))
-        # while len(remaining_samples) > 0:
-        for i in range(5):
-            new_index = random.randrange(0, len(remaining_samples))
-            selected_sample = remaining_samples[new_index]
-            # train_x = train_xy[selected_sample.index][0]
-            # train_y = train_xy[selected_sample.index][1]
-            train_x = train_xy[selected_sample.index]['input_data']
-            train_y = train_xy[selected_sample.index]['output_data']
-            # if args.loss == 'CE':
-            #     train_y = categorize_value_to_vector(train_y, bins)
-            note_locations = train_xy[selected_sample.index]['note_location']
-            align_matched = train_xy[selected_sample.index]['align_matched']
-            # TODO: which variable would be corresponds to pedal status?
-            # pedal_status = train_xy[selected_sample.index][4]
-            pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
-            edges = train_xy[selected_sample.index]['graph']
+        # if RAND_TRAIN:
+        if True:
+            num_perf_data = len(train_xy)
+            remaining_samples = []
+            for i in range(num_perf_data):
+                remaining_samples.append(TraningSample(i))
+            
+            random.shuffle(remaining_samples)
+            # while len(remaining_samples) > 0:
+            for idx in tqdm(range(len(remaining_samples))):
+                # idx = random.randrange(0, len(remaining_samples))
+                selected_sample = remaining_samples[idx]
+                # train_x = train_xy[selected_sample.index][0]
+                # train_y = train_xy[selected_sample.index][1]
+                train_x = train_xy[selected_sample.index]['input_data']
+                train_y = train_xy[selected_sample.index]['output_data']
+                # if args.loss == 'CE':
+                #     train_y = categorize_value_to_vector(train_y, bins)
+                note_locations = train_xy[selected_sample.index]['note_location']
+                align_matched = train_xy[selected_sample.index]['align_matched']
+                # TODO: which variable would be corresponds to pedal status?
+                # pedal_status = train_xy[selected_sample.index][4]
+                pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
+                edges = train_xy[selected_sample.index]['graph']
 
-            data_size = len(train_x)
+                data_size = len(train_x)
 
-            if selected_sample.slice_indexes is None:
+                if selected_sample.slice_indexes is None:
+                    measure_numbers = [x.measure for x in note_locations]
+                    if model.config.hierarchy_level == 'measure':
+                        selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                               measure_numbers,
+                                                                                               measure_steps=time_steps)
+
+                    else:
+                        selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
+
+                num_slice = len(selected_sample.slice_indexes)
+                selected_idx = random.randrange(0,num_slice)
+                slice_idx = selected_sample.slice_indexes[selected_idx]
+
+                if model.config.is_graph:
+                    graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
+                else:
+                    graphs = None
+
+                key_lists = [0]
+                key = 0
+                for i in range(args.num_key_augmentation):
+                    while key in key_lists:
+                        key = random.randrange(-5, 7)
+                    key_lists.append(key)
+
+                for i in range(args.num_key_augmentation+1):
+                    key = key_lists[i]
+                    temp_train_x = dp.key_augmentation(train_x, key)
+                    kld_weight = sigmoid((NUM_UPDATED - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
+
+                    training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
+                                     'note_locations': note_locations,
+                                     'align_matched': align_matched, 'pedal_status': pedal_status,
+                                     'slice_idx': slice_idx, 'kld_weight': kld_weight}
+
+                    tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
+                        utils.batch_train_run(training_data, model=train_model, args=args, optimizer=optimizer)
+                    tempo_loss_total.append(tempo_loss.item())
+                    vel_loss_total.append(vel_loss.item())
+                    dev_loss_total.append(dev_loss.item())
+                    articul_loss_total.append(articul_loss.item())
+                    pedal_loss_total.append(pedal_loss.item())
+                    trill_loss_total.append(trill_loss.item())
+                    kld_total.append(kld.item())
+                    NUM_UPDATED += 1
+
+                # del selected_sample.slice_indexes[selected_idx]
+                if len(selected_sample.slice_indexes) == 0:
+                    # print('every slice in the sample is trained')
+                    # del remaining_samples[idx]
+        '''
+        else:
+            for xy_tuple in train_xy:
+                train_x = xy_tuple[0]
+                train_y = xy_tuple[1]
+                if args.trainingLoss == 'CE':
+                    train_y = categorize_value_to_vector(train_y, bins)
+                note_locations = xy_tuple[2]
+                align_matched = xy_tuple[3]
+                pedal_status = xy_tuple[4]
+                edges = xy_tuple[5]
+
+                data_size = len(note_locations)
+                if model.is_graph:
+                    graphs = edges_to_matrix(edges, data_size)
+                else:
+                    graphs = None
                 measure_numbers = [x.measure for x in note_locations]
                 if model.config.hierarchy_level == 'measure':
                     selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
