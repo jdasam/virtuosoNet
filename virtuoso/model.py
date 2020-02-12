@@ -567,8 +567,8 @@ class HAN_Integrated(nn.Module):
             self.lstm = nn.LSTM(self.config.note.size, self.config.note.size, self.config.note.layers,
                                 batch_first=True, bidirectional=True, dropout=DROP_OUT)
 
-        if not self.is_baseline:
-            if self.is_graph:
+        if not self.config.is_baseline:
+            if self.config.is_graph:
                 self.beat_attention = ContextAttention(self.config.note.size * 2, self.config.num_attention_head)
                 self.beat_rnn = nn.LSTM(self.config.note.size * 2, self.config.beat.size,
                                         self.config.beat.layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
@@ -585,15 +585,15 @@ class HAN_Integrated(nn.Module):
             self.perform_style_to_measure = nn.LSTM(self.config.measure.size * 2 + self.config.encoder.size,
                                                     self.config.encoder.size, num_layers=1, bidirectional=False)
 
-            if self.config.hierarchy == 'measure':
+            if self.config.hierarchy_level == 'measure':
                 self.output_lstm = nn.LSTM(self.config.measure.size * 2 + self.config.encoder.size + self.config.output_size,
                                            self.config.final.size, num_layers=self.config.final.layers, batch_first=True)
-            elif self.config.hierarchy == 'beat':
+            elif self.config.hierarchy_level == 'beat':
                 self.output_lstm = nn.LSTM((self.config.beat.size + self.config.measure.size) * 2 + self.config.encoder.size + self.config.output_size,
                                            self.config.final.size, num_layers=self.config.final.layers, batch_first=True)
             else:
                 if self.step_by_step:
-                    if self.config.test_version:
+                    if self.config.is_test_version:
                         self.beat_tempo_forward = nn.LSTM(
                             (self.config.beat.size + self.config.measure.size) * 2 + 2 - 1 + self.config.output_size + self.config.encoder.size,
                             self.config.beat.size,
@@ -622,18 +622,18 @@ class HAN_Integrated(nn.Module):
             nn.ReLU(),
         )
 
-        if self.hierarchy:
+        if self.config.hierarchy_level:
             self.fc = nn.Linear(self.config.final.size, self.config.output_size)
         else:
             self.output_lstm = nn.LSTM(self.config.final.input, self.config.final.size, num_layers=self.config.final.layers,
                                        batch_first=True, bidirectional=False)
-            if self.is_baseline:
+            if self.config.is_baseline:
                 self.fc = nn.Linear(self.config.final.size, self.config.output_size)
             else:
                 self.fc = nn.Linear(self.config.final.size, self.config.output_size - 1)
 
         self.performance_note_encoder = nn.LSTM(self.config.encoder.size, self.config.encoder.size, bidirectional=True)
-        if self.encoder_size % self.num_attention_head == 0:
+        if self.config.encoder.size % self.config.num_attention_head == 0:
             self.performance_measure_attention = ContextAttention(self.config.encoder.size * 2, self.config.num_attention_head)
         else:
             self.performance_measure_attention = ContextAttention(self.config.encoder.size * 2, self.config.encoder.size * 2)
@@ -641,7 +641,7 @@ class HAN_Integrated(nn.Module):
             nn.Linear(self.config.input_size, self.config.note.size),
             nn.Dropout(DROP_OUT),
             nn.ReLU(),
-            nn.Linear(self.config.note.size, self.confignote.size),
+            nn.Linear(self.config.note.size, self.config.note.size),
             nn.Dropout(DROP_OUT),
             nn.ReLU()
         )
