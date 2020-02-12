@@ -102,8 +102,7 @@ def train(args,
         remaining_samples = []
         for i in range(num_perf_data):
             remaining_samples.append(TraningSample(i))
-        # while len(remaining_samples) > 0:
-        for i in range(5):
+        while len(remaining_samples) > 0:
             new_index = random.randrange(0, len(remaining_samples))
             selected_sample = remaining_samples[new_index]
             # train_x = train_xy[selected_sample.index][0]
