@@ -115,8 +115,8 @@ class ISGN(nn.Module):
         super(ISGN, self).__init__()
         self.device = device
         self.config = model_config
-        # self.num_graph_iteration = model_config.graph_iteration
-        # self.num_sequence_iteration = model_config.sequence_iteration
+        # self.graph_iteration = model_config.graph_iteration
+        # self.sequence_iteration = model_config.sequence_iteration
         # self.is_graph = True
         # self.config.is_baseline = model_config.is_baseline
         # if hasattr(model_config, 'is_test_version') and model_config.is_test_version:
@@ -129,7 +129,7 @@ class ISGN(nn.Module):
         # self.num_layers = model_config.net_size.note.layer
         # self.note_hidden_size = model_config.net_size.note.size
         # self.num_measure_layers = model_config.net_size.measure.layer
-        # self.measure_hidden_size = model_config.net_size.measure.size
+        # self.config.measure.size = model_config.net_size.measure.size
         # self.final_hidden_size = model_config.net_size.final.size
         # self.config.final.input = model_config.net_size.final.input
         # self.config.encoder.size = model_config.net_size.encoder.size
@@ -348,8 +348,8 @@ class ISGN(nn.Module):
             out_with_result = torch.cat(
                 (note_out, perform_z_batched, tempo_info_in_note, initial_beat_hidden, initial_output, initial_margin), 2)
 
-            for i in range(self.config.num_sequence_iteration):
-                out_with_result = self.final_graph(out_with_result, edges, iteration=self.config.num_graph_iteration)
+            for i in range(self.config.sequence_iteration):
+                out_with_result = self.final_graph(out_with_result, edges, iteration=self.config.graph_iteration)
                 initial_out = out_with_result[:, :, -self.config.output_size - self.config.final.margin:
                                                     -self.config.final.margin]
                 changed_margin = out_with_result[:,:, -self.config.final.margin:]
@@ -377,8 +377,8 @@ class ISGN(nn.Module):
                 # (note_out, measure_perform_style_spanned, initial_beat_hidden, initial_output, initial_margin), 2)
                 (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
 
-            for i in range(self.config.num_sequence_iteration):
-                out_with_result = self.final_graph(out_with_result, edges, iteration=self.config.num_graph_iteration)
+            for i in range(self.config.sequence_iteration):
+                out_with_result = self.final_graph(out_with_result, edges, iteration=self.config.graph_iteration)
                 initial_out = out_with_result[:, :,
                               -self.config.output_size - self.config.final.margin: -self.config.final.margin]
                 changed_margin = out_with_result[:, :, -self.config.final.margin:]
@@ -409,13 +409,13 @@ class ISGN(nn.Module):
         # 1. Run feed-forward network by note level
         num_notes = nodes.shape[1]
         notes_dense_hidden = self.note_fc(nodes)
-        initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.measure_hidden_size * 2)).to(self.device)
+        initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.config.measure.size * 2)).to(self.device)
         notes_and_measure_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
-        for i in range(self.config.num_sequence_iteration):
+        for i in range(self.config.sequence_iteration):
         # for i in range(3):
-            notes_hidden = self.graph_1st(notes_and_measure_hidden, adjacency_matrix, iteration=self.config.num_graph_iteration)
+            notes_hidden = self.graph_1st(notes_and_measure_hidden, adjacency_matrix, iteration=self.config.graph_iteration)
             notes_between = self.graph_between(notes_hidden)
-            notes_hidden_second = self.graph_2nd(notes_between, adjacency_matrix, iteration=self.config.num_graph_iteration)
+            notes_hidden_second = self.graph_2nd(notes_between, adjacency_matrix, iteration=self.config.graph_iteration)
             notes_hidden_cat = torch.cat((notes_hidden[:,:, -self.config.note.size:],
                                           notes_hidden_second[:,:, -self.config.note.size:]), -1)
 
@@ -423,7 +423,7 @@ class ISGN(nn.Module):
                                                   start_index, lower_is_note=True)
             measure_hidden, _ = self.measure_rnn(measure_nodes)
             measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden, measure_numbers, num_notes, start_index)
-            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.config.note.size:]),-1)
+            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.config.note.size:]),1)
 
         final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
         return final_out, measure_hidden
