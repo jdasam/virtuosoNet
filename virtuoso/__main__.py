@@ -4,18 +4,24 @@ from pathlib import Path
 from torch import distributed, nn
 from torch.nn.parallel.distributed import DistributedDataParallel
 import torch as th
+import _pickle as cPickle
 
 from .parser import get_parser, get_name
 from . import model as modelzoo
 from . import model_parameters as param
+from . import train
+from . import utils
+
 
 def main():
     parser = get_parser()
     # random.seed(0)
     args = parser.parse_args()
-    name = get_name(parser, args)    
+    # name = get_name(parser, args)  # TODO: make model code via get_name
+    name = args.modelCode
     print(f"Experiment {name}")
 
+    '''
     eval_folder = args.evals / name
     eval_folder.mkdir(exist_ok=True, parents=True)
     args.logs.mkdir(exist_ok=True)
@@ -23,6 +29,7 @@ def main():
     eval_folder.mkdir(exist_ok=True, parents=True)
     args.checkpoints.mkdir(exist_ok=True, parents=True)
     args.models.mkdir(exist_ok=True, parents=True)
+    '''
 
     if args.device is None:
         device = "cpu"
@@ -93,14 +100,69 @@ def main():
     optimizer = th.optim.Adam(
         MODEL.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
-    
     checkpoint = args.checkpoints / f"{name}.th"
     checkpoint_tmp = args.checkpoints / f"{name}.th.tmp"
     if args.restart and checkpoint.exists():
         checkpoint.unlink()
 
-
     # TODO: to single function
     # load dataset
-    
 
+    with open(args.data, "rb") as f:
+        u = cPickle.Unpickler(f)
+        data_set = u.load()
+    with open(args.test_data, "rb") as f:
+        u = cPickle.Unpickler(f)
+        test_data_set = u.load()
+    train_data = data_set['train']
+    valid_data = data_set['valid']   
+    test_data = test_data_set
+
+    '''
+    if args.loss == 'MSE':
+        def criterion(pred, target, aligned_status=1):
+            if isinstance(aligned_status, int):
+                data_size = pred.shape[-2] * pred.shape[-1]
+            else:
+                data_size = th.sum(aligned_status).item() * pred.shape[-1]
+                if data_size == 0:
+                    data_size = 1
+            if target.shape != pred.shape:
+                print('Error: The shape of the target and prediction for the loss calculation is different')
+                print(target.shape, pred.shape)
+                return th.zeros(1).to(device)
+            return th.sum(((target - pred) ** 2) * aligned_status) / data_size
+
+    elif args.loss == 'CE':
+        # criterion = nn.CrossEntropyLoss()
+        def criterion(pred, target, aligned_status=1):
+            if isinstance(aligned_status, int):
+                data_size = pred.shape[-2] * pred.shape[-1]
+            else:
+                data_size = th.sum(aligned_status).item() * pred.shape[-1]
+                if data_size == 0:
+                    data_size = 1
+                    print('data size for loss calculation is zero')
+            return -1 * th.sum((target * th.log(pred) + (1-target) * th.log(1-pred)) * aligned_status) / data_size
+    '''
+    criterion = utils.criterion
+
+    num_input = train_data['input_data'].shape[-1]
+    num_output = train_data['output_data'].shape[-1]
+    train.train(args,
+                MODEL,
+                model_config,
+                train_data,
+                valid_data,
+                device,
+                optimizer, 
+                args.num_epochs, 
+                None,  # TODO: bins: what should be? 
+                args.time_steps,
+                criterion, 
+                num_input, 
+                num_output)
+
+
+if __name__ == "__main__":
+    main()

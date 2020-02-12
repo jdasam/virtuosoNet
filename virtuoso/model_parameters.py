@@ -29,7 +29,7 @@ class NetParams:
 
 class ModelConfig(NetParams):
     def __init__(self):
-        super(NetParams, self).__init__()
+        super().__init__()
         self.input_size = 0
         self.output_size = 0
         self.graph_iteration = 5

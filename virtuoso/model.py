@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import random
 import numpy
 import math
-import model_constants as cons
+from . import model_constants as cons
 
 
 DROP_OUT = 0.1
@@ -118,7 +118,7 @@ class ISGN(nn.Module):
         # self.num_graph_iteration = model_config.graph_iteration
         # self.num_sequence_iteration = model_config.sequence_iteration
         # self.is_graph = True
-        # self.is_baseline = model_config.is_baseline
+        self.is_baseline = model_config.is_baseline
         # if hasattr(model_config, 'is_test_version') and model_config.is_test_version:
         #     self.is_test_version = True
         # else:
