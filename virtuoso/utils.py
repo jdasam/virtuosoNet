@@ -4,8 +4,6 @@ from . import model_constants as const
 from . import data_process as dp
 
 
-QPM_INDEX = 0
-
 def save_checkpoint(state, is_best, filename='isgn', model_name='prime'):
     save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
     th.save(state, save_name)
@@ -238,7 +236,7 @@ def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index, args, mo
                     if note_locations[j+start_index].beat > current_beat:
                         break
                 if not i == j:
-                    pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, const.QPM_INDEX])
+                            pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, const.QPM_INDEX])
                     true_beat_tempo[current_beat - start_beat] = th.mean(true_x[0, i:j, const.QPM_INDEX])
             else:
                 pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,const.QPM_INDEX:const.QPM_INDEX + const.NUM_TEMPO_PARAM]
