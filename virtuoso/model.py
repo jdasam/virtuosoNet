@@ -638,7 +638,7 @@ class HAN_Integrated(nn.Module):
         else:
             self.performance_measure_attention = ContextAttention(self.config.encoder.size * 2, self.config.encoder.size * 2)
         self.performance_embedding_layer = nn.Sequential(
-            nn.Linear(self.config.input_size, self.config.note.size),
+            nn.Linear(self.config.output_size, self.config.note.size),
             nn.Dropout(DROP_OUT),
             nn.ReLU(),
             nn.Linear(self.config.note.size, self.config.note.size),
@@ -672,7 +672,6 @@ class HAN_Integrated(nn.Module):
         voice_numbers = [x.voice for x in note_locations]
 
         num_notes = x.size(1)
-
         if self.config.is_baseline:
             note_out = self.note_fc(x)
             note_out, _ = self.lstm(note_out)
@@ -697,7 +696,7 @@ class HAN_Integrated(nn.Module):
             perform_var = 0
         else:
             expanded_y = self.performance_embedding_layer(y)
-            if self.is_baseline:
+            if self.config.is_baseline:
                 perform_concat = torch.cat((note_out, expanded_y), 2)
             else:
                 perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, expanded_y), 2)
@@ -730,7 +729,7 @@ class HAN_Integrated(nn.Module):
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
         perform_z = perform_z.view(-1)
 
-        if not self.is_baseline:
+        if not self.config.is_baseline:
             tempo_hidden = self.init_hidden(1,1,x.size(0), self.config.beat.size)
             num_beats = beat_hidden_out.size(1)
             result_nodes = torch.zeros(num_beats, self.config.output_size - 1).to(self.device)
@@ -742,7 +741,7 @@ class HAN_Integrated(nn.Module):
             measure_perform_style_spanned = self.span_beat_to_note_num(measure_perform_style, measure_numbers,
                                                                        num_notes, start_index)
 
-        if self.hierarchy:
+        if self.config.hierarchy_level and not self.config.is_dependent:
             if self.hierarchy == 'measure':
                 hierarchy_numbers = measure_numbers
                 hierarchy_nodes = measure_hidden_out
@@ -820,7 +819,7 @@ class HAN_Integrated(nn.Module):
                                 prev_tempo = true_tempos[0,current_beat-1,:]
 
                             tempos = torch.zeros(1, num_beats, 1).to(self.device)
-                            if self.config.test_version:
+                            if self.config.is_test_version:
                                 beat_tempo_cat = torch.cat((beat_hidden_out[0, current_beat, :],
                                                             measure_hidden_out[0, current_measure, :], prev_tempo,
                                                             x[0,i,self.config.input_size-2:self.config.input_size-1],
@@ -844,7 +843,7 @@ class HAN_Integrated(nn.Module):
                         if self.config.is_teacher_force and i > 0 and random.random() < rand_threshold:
                             prev_out = torch.cat((prev_tempo, y[0, i - 1, 1:]))
 
-                        if self.config.test_version:
+                        if self.config.is_test_version:
                             out_combined = torch.cat(
                                 (note_out[0, i, :], beat_hidden_out[0, current_beat, :],
                                  measure_hidden_out[0, current_measure, :],
@@ -908,9 +907,9 @@ class HAN_Integrated(nn.Module):
                 return out, perform_mu, perform_var, score_combined
 
     def run_offline_score_model(self, x, edges, beat_numbers, measure_numbers, voice_numbers, start_index):
-        hidden = self.init_hidden(self.num_layers, 2, x.size(0), self.hidden_size)
-        beat_hidden = self.init_hidden(self.num_beat_layers, 2, x.size(0), self.beat_hidden_size)
-        measure_hidden = self.init_hidden(self.num_measure_layers, 2, x.size(0), self.measure_hidden_size)
+        hidden = self.init_hidden(self.config.note.layers, 2, x.size(0), self.config.note.size)
+        beat_hidden = self.init_hidden(self.config.beat.layers, 2, x.size(0), self.config.beat.size)
+        measure_hidden = self.init_hidden(self.config.measure.layers, 2, x.size(0), self.config.measure.size)
 
         x = self.note_fc(x)
 

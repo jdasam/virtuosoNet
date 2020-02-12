@@ -1,6 +1,7 @@
 import copy
 import random
 import math
+import numpy as np
 
 PITCH_VEC_IDX = 13
 PITCH_SCL_IDX = 0
@@ -17,7 +18,7 @@ def key_augmentation(data_x, key_change):
     for data in data_x_aug:
         octave = data[pitch_start_index]
         pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
-        pitch_class = pitch_class_vec.index(1)
+        pitch_class = list(pitch_class_vec).index(1)
         new_pitch = pitch_class + key_change
         if new_pitch < 0:
             octave -= 0.25

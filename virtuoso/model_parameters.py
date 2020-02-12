@@ -38,12 +38,14 @@ class ModelConfig(NetParams):
         self.is_teacher_force = False
         self.is_baseline = False
         self.hierarchy_level = None
+        self.is_dependent = False
         self.is_simplified = False
         self.is_test_version = False
         self.is_trill = False
         self.training_args = None
         self.graph_keys = ['onset', 'forward', 'melisma', 'rest']
         self.num_edge_types = len(self.graph_keys) * 2
+        self.loss_type = 'MSE'
 
 
 
@@ -160,6 +162,11 @@ def initialize_model_parameters_by_code(args):
         # net_param.encoder.input += 2 - cons.NUM_PRIME_PARAM
     elif 'note' in args.modelCode:
         model_config.input_size += 2
+        model_config.is_dependent = True
+        if 'measure' in args.hierCode:
+            model_config.hierarchy_level = 'measure'
+        elif 'beat' in args.hierCode:
+            model_config.hierarchy_level = 'beat'
 
     if 'altv' in args.modelCode:
         model_config.is_test_version = True
