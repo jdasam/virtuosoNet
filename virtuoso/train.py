@@ -7,7 +7,6 @@ import copy
 import numpy as np
 import torch as th
 import pickle
-from tqdm import tqdm
 
 from .parser import get_parser
 from .utils import categorize_value_to_vector
