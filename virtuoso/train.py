@@ -7,7 +7,6 @@ import copy
 import numpy as np
 import torch as th
 import pickle
-from tqdm import tqdm
 
 from .parser import get_parser
 from .utils import categorize_value_to_vector
@@ -103,6 +102,7 @@ def train(args,
         remaining_samples = []
         for i in range(num_perf_data):
             remaining_samples.append(TraningSample(i))
+
         while len(remaining_samples) > 0:
             new_index = random.randrange(0, len(remaining_samples))
             selected_sample = remaining_samples[new_index]
