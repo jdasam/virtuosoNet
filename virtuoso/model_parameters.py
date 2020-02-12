@@ -73,6 +73,7 @@ def initialize_model_parameters_by_code(args):
     model_config.num_edge_types = len(model_config.graph_keys) * 2
 
     if 'isgn' in args.modelCode:
+        model_config.is_graph = True
         model_config.note.layers = 2
         model_config.note.size = 128
         model_config.measure.layers = 2
