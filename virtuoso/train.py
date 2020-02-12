@@ -29,7 +29,6 @@ class TraningSample():
 
 def train(args,
           model,
-          model_config,
           train_data,
           valid_data,
           device,
@@ -99,132 +98,79 @@ def train(args,
         trill_loss_total = []
         kld_total = []
 
-        # if RAND_TRAIN:
-        if True:
-            num_perf_data = len(train_xy)
-            remaining_samples = []
-            for i in range(num_perf_data):
-                remaining_samples.append(TraningSample(i))
-            while len(remaining_samples) > 0:
-                new_index = random.randrange(0, len(remaining_samples))
-                selected_sample = remaining_samples[new_index]
-                # train_x = train_xy[selected_sample.index][0]
-                # train_y = train_xy[selected_sample.index][1]
-                train_x = train_xy[selected_sample.index]['input_data']
-                train_y = train_xy[selected_sample.index]['output_data']
-                # if args.loss == 'CE':
-                #     train_y = categorize_value_to_vector(train_y, bins)
-                note_locations = train_xy[selected_sample.index]['note_location']
-                align_matched = train_xy[selected_sample.index]['align_matched']
-                # TODO: which variable would be corresponds to pedal status?
-                # pedal_status = train_xy[selected_sample.index][4]
-                pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
-                edges = train_xy[selected_sample.index]['graph']
+        num_perf_data = len(train_xy)
+        remaining_samples = []
+        for i in range(num_perf_data):
+            remaining_samples.append(TraningSample(i))
+        # while len(remaining_samples) > 0:
+        for i in range(5):
+            new_index = random.randrange(0, len(remaining_samples))
+            selected_sample = remaining_samples[new_index]
+            # train_x = train_xy[selected_sample.index][0]
+            # train_y = train_xy[selected_sample.index][1]
+            train_x = train_xy[selected_sample.index]['input_data']
+            train_y = train_xy[selected_sample.index]['output_data']
+            # if args.loss == 'CE':
+            #     train_y = categorize_value_to_vector(train_y, bins)
+            note_locations = train_xy[selected_sample.index]['note_location']
+            align_matched = train_xy[selected_sample.index]['align_matched']
+            # TODO: which variable would be corresponds to pedal status?
+            # pedal_status = train_xy[selected_sample.index][4]
+            pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
+            edges = train_xy[selected_sample.index]['graph']
 
-                data_size = len(train_x)
+            data_size = len(train_x)
 
-                if selected_sample.slice_indexes is None:
-                    measure_numbers = [x.measure for x in note_locations]
-                    if model.config.hierarchy_level == 'measure':
-                        selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
-                                                                                               measure_numbers,
-                                                                                               measure_steps=time_steps)
-
-                    else:
-                        selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
-
-                num_slice = len(selected_sample.slice_indexes)
-                selected_idx = random.randrange(0,num_slice)
-                slice_idx = selected_sample.slice_indexes[selected_idx]
-
-                if model.config.is_graph:
-                    graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
-                else:
-                    graphs = None
-
-                key_lists = [0]
-                key = 0
-                for i in range(args.num_key_augmentation):
-                    while key in key_lists:
-                        key = random.randrange(-5, 7)
-                    key_lists.append(key)
-
-                for i in range(args.num_key_augmentation+1):
-                    key = key_lists[i]
-                    temp_train_x = dp.key_augmentation(train_x, key)
-                    kld_weight = sigmoid((NUM_UPDATED - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
-
-                    training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
-                                     'note_locations': note_locations,
-                                     'align_matched': align_matched, 'pedal_status': pedal_status,
-                                     'slice_idx': slice_idx, 'kld_weight': kld_weight}
-
-                    tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-                        utils.batch_train_run(training_data, model=train_model, args=args, optimizer=optimizer)
-                    tempo_loss_total.append(tempo_loss.item())
-                    vel_loss_total.append(vel_loss.item())
-                    dev_loss_total.append(dev_loss.item())
-                    articul_loss_total.append(articul_loss.item())
-                    pedal_loss_total.append(pedal_loss.item())
-                    trill_loss_total.append(trill_loss.item())
-                    kld_total.append(kld.item())
-                    NUM_UPDATED += 1
-
-                del selected_sample.slice_indexes[selected_idx]
-                if len(selected_sample.slice_indexes) == 0:
-                    # print('every slice in the sample is trained')
-                    del remaining_samples[new_index]
-        '''
-        else:
-            for xy_tuple in train_xy:
-                train_x = xy_tuple[0]
-                train_y = xy_tuple[1]
-                if args.trainingLoss == 'CE':
-                    train_y = categorize_value_to_vector(train_y, bins)
-                note_locations = xy_tuple[2]
-                align_matched = xy_tuple[3]
-                pedal_status = xy_tuple[4]
-                edges = xy_tuple[5]
-
-                data_size = len(note_locations)
-                if model.is_graph:
-                    graphs = edges_to_matrix(edges, data_size)
-                else:
-                    graphs = None
+            if selected_sample.slice_indexes is None:
                 measure_numbers = [x.measure for x in note_locations]
-                # graphs = edges_to_sparse_tensor(edges)
-                total_batch_num = int(math.ceil(data_size / (time_steps * batch_size)))
+                if model.config.hierarchy_level == 'measure':
+                    selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                           measure_numbers,
+                                                                                           measure_steps=time_steps)
 
-                key_lists = [0]
-                key = 0
-                for i in range(num_key_augmentation):
-                    while key in key_lists:
-                        key = random.randrange(-5, 7)
-                    key_lists.append(key)
+                else:
+                    selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
 
-                for i in range(num_key_augmentation+1):
-                    key = key_lists[i]
-                    temp_train_x = dp.key_augmentation(train_x, key)
-                    slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
-                    kld_weight = sigmoid((NUM_UPDATED - KLD_SIG) / (KLD_SIG/10)) * KLD_MAX
+            num_slice = len(selected_sample.slice_indexes)
+            selected_idx = random.randrange(0,num_slice)
+            slice_idx = selected_sample.slice_indexes[selected_idx]
 
-                    for slice_idx in slice_indexes:
-                        training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
-                                         'note_locations': note_locations,
-                                         'align_matched': align_matched, 'pedal_status': pedal_status,
-                                         'slice_idx': slice_idx, 'kld_weight': kld_weight}
+            if model.config.is_graph:
+                graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
+            else:
+                graphs = None
 
-                        tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-                            batch_time_step_run(training_data, model=train_model)
-                        tempo_loss_total.append(tempo_loss.item())
-                        vel_loss_total.append(vel_loss.item())
-                        dev_loss_total.append(dev_loss.item())
-                        articul_loss_total.append(articul_loss.item())
-                        pedal_loss_total.append(pedal_loss.item())
-                        trill_loss_total.append(trill_loss.item())
-                        kld_total.append(kld.item())
-                        NUM_UPDATED += 1
-        '''
+            key_lists = [0]
+            key = 0
+            for i in range(args.num_key_augmentation):
+                while key in key_lists:
+                    key = random.randrange(-5, 7)
+                key_lists.append(key)
+
+            for i in range(args.num_key_augmentation+1):
+                key = key_lists[i]
+                temp_train_x = dp.key_augmentation(train_x, key)
+                kld_weight = sigmoid((NUM_UPDATED - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
+
+                training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
+                                 'note_locations': note_locations,
+                                 'align_matched': align_matched, 'pedal_status': pedal_status,
+                                 'slice_idx': slice_idx, 'kld_weight': kld_weight}
+
+                tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
+                    utils.batch_train_run(training_data, model=train_model, args=args, optimizer=optimizer)
+                tempo_loss_total.append(tempo_loss.item())
+                vel_loss_total.append(vel_loss.item())
+                dev_loss_total.append(dev_loss.item())
+                articul_loss_total.append(articul_loss.item())
+                pedal_loss_total.append(pedal_loss.item())
+                trill_loss_total.append(trill_loss.item())
+                kld_total.append(kld.item())
+                NUM_UPDATED += 1
+            # print(sum([len(x.slice_indexes) for x in remaining_samples if x]))
+            if len(selected_sample.slice_indexes) == 0:
+                print('every slice in the sample is trained')
+                del remaining_samples[new_index]
         print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
               .format(epoch + 1, num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
                       np.mean(dev_loss_total), np.mean(articul_loss_total), np.mean(pedal_loss_total), np.mean(trill_loss_total), np.mean(kld_total)))
@@ -260,10 +206,10 @@ def train(args,
             outputs, total_z = utils.run_model_in_steps(batch_x, batch_y, args, graphs, note_locations, model, device)
 
             # valid_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM:-const.num_trill_param], batch_y[:,:,const.NUM_TEMPO_PARAM:-const.num_trill_param], align_matched)
-            if args.hierarchy:
-                if args.hier_meas:
+            if model.config.hierarchy_level and not model.config.is_dependent:
+                if model.config.hierarchy_level == 'measure':
                     hierarchy_numbers = [x.measure for x in note_locations]
-                elif args.hier_beat:
+                elif model.config.hierarchy_level == 'beat':
                     hierarchy_numbers = [x.beat for x in note_locations]
                 tempo_y = model.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, 0, 0)
                 vel_y = model.note_tempo_infos_to_beat(batch_y, hierarchy_numbers, 0, 1)
@@ -279,7 +225,7 @@ def train(args,
                     tempo_loss += criterion(tempo_out_delta, tempo_true_delta) * args.delta_weight
                     vel_loss += criterion(vel_out_delta, vel_true_delta) * args.delta_weight
 
-                deviation_loss = th.zeros(1)
+                dev_loss = th.zeros(1)
                 articul_loss = th.zeros(1)
                 pedal_loss = th.zeros(1)
                 trill_loss = th.zeros(1)
@@ -288,43 +234,31 @@ def train(args,
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                     kld_loss_total.append(kld_loss.item())
-            elif args.trill:
+            elif model.config.is_trill:
                 trill_bool = batch_x[:,:, const.is_trill_index_concated] == 1
                 trill_bool = trill_bool.float().view(1,-1,1).to(device)
                 trill_loss = criterion(outputs, batch_y, trill_bool)
 
                 tempo_loss = th.zeros(1)
                 vel_loss = th.zeros(1)
-                deviation_loss = th.zeros(1)
+                dev_loss = th.zeros(1)
                 articul_loss = th.zeros(1)
                 pedal_loss = th.zeros(1)
                 kld_loss = th.zeros(1)
                 kld_loss_total.append(kld_loss.item())
 
             else:
-                tempo_loss = utils.cal_tempo_loss_in_beat(outputs, batch_y, note_locations, 0, args, device)
-                if args.loss =='CE':
-                    vel_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM:const.NUM_TEMPO_PARAM+len(bins[1])], batch_y[:,:,const.NUM_TEMPO_PARAM:const.NUM_TEMPO_PARAM+len(bins[1])], align_matched)
-                    deviation_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM+len(bins[1]):const.NUM_TEMPO_PARAM+len(bins[1])+len(bins[2])],
-                                            batch_y[:,:,const.NUM_TEMPO_PARAM+len(bins[1]):const.NUM_TEMPO_PARAM+len(bins[1])+len(bins[2])])
-                    pedal_loss = criterion(outputs[:,:,const.NUM_TEMPO_PARAM+len(bins[1])+len(bins[2]):-const.num_trill_param],
-                                            batch_y[:,:,const.NUM_TEMPO_PARAM+len(bins[1])+len(bins[2]):-const.num_trill_param])
-                    trill_loss = criterion(outputs[:,:,-const.num_trill_param:], batch_y[:,:,-const.num_trill_param:])
-                else:
-                    vel_loss = criterion(outputs[:, :, const.VEL_PARAM_IDX], batch_y[:, :, const.VEL_PARAM_IDX], align_matched)
-                    deviation_loss = criterion(outputs[:, :, const.DEV_PARAM_IDX], batch_y[:, :, const.DEV_PARAM_IDX], align_matched)
-                    articul_loss = criterion(outputs[:, :, const.PEDAL_PARAM_IDX], batch_y[:, :, const.PEDAL_PARAM_IDX], pedal_status)
-                    pedal_loss = criterion(outputs[:, :, const.PEDAL_PARAM_IDX+1:], batch_y[:, :, const.PEDAL_PARAM_IDX+1:], align_matched)
-                    trill_loss = th.zeros(1)
+                valid_loss, tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss = utils.cal_loss_by_output_type(outputs, batch_y, align_matched, pedal_status, args, model.config, note_locations, 0)
                 for z in total_z:
                     perform_mu, perform_var = z
                     kld_loss = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                     kld_loss_total.append(kld_loss.item())
+                trill_loss = th.zeros(1)
 
             # valid_loss_total.append(valid_loss.item())
             tempo_loss_total.append(tempo_loss.item())
             vel_loss_total.append(vel_loss.item())
-            deviation_loss_total.append(deviation_loss.item())
+            deviation_loss_total.append(dev_loss.item())
             articul_loss_total.append(articul_loss.item())
             pedal_loss_total.append(pedal_loss.item())
             trill_loss_total.append(trill_loss.item())

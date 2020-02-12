@@ -42,9 +42,9 @@ def run_model_in_steps(input, input_y, args, edges, note_locations, model, devic
             else:
                 batch_graph = None
             batch_input = input[:, batch_start:batch_end, :].view(
-                1, -1, model.input_size)
+                1, -1, model.config.input_size)
             batch_input_y = input_y[:, batch_start:batch_end, :].view(
-                1, -1, model.output_size)
+                1, -1, model.config.output_size)
             temp_outputs, perf_mu, perf_var, _ = model_eval(batch_input, batch_input_y, batch_graph,
                                                             note_locations=note_locations, start_index=batch_start, initial_z=initial_z)
             total_z.append((perf_mu, perf_var))
@@ -105,7 +105,7 @@ def batch_train_run(data, model, args, optimizer):
         trill_bool = batch_x[:, :,
                              const.is_trill_index_concated:const.is_trill_index_concated + 1]
         if th.sum(trill_bool) > 0:
-            total_loss = criterion(outputs, batch_y, trill_bool)
+            total_loss = criterion(outputs, batch_y,  model.config, trill_bool)
         else:
             return th.zeros(1), th.zeros(1), th.zeros(1),  th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1)
 

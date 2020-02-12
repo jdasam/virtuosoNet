@@ -150,7 +150,6 @@ def main():
 
     train.train(args,
                 MODEL,
-                model_config,
                 train_data,
                 valid_data,
                 device,
