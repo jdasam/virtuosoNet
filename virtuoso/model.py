@@ -118,7 +118,7 @@ class ISGN(nn.Module):
         # self.num_graph_iteration = model_config.graph_iteration
         # self.num_sequence_iteration = model_config.sequence_iteration
         # self.is_graph = True
-        self.is_baseline = model_config.is_baseline
+        # self.config.is_baseline = model_config.is_baseline
         # if hasattr(model_config, 'is_test_version') and model_config.is_test_version:
         #     self.is_test_version = True
         # else:
@@ -141,7 +141,7 @@ class ISGN(nn.Module):
         # self.num_edge_types = model_config.num_edge_types
         # self.final_graph_margin_size = model_config.net_size.final.margin
 
-        if self.is_baseline:
+        if self.config.is_baseline:
             self.final_graph_input_size = self.final_input + self.encoder_size + 8 + self.output_size + self.final_graph_margin_size + self.time_regressive_size * 2
             self.final_beat_hidden_idx = self.final_input + self.encoder_size + 8 # tempo info
         else:
@@ -222,7 +222,7 @@ class ISGN(nn.Module):
 
         self.final_graph = GatedGraph(self.config.final.input, self.config.num_edge_types, self.device,
                                       self.config.output_size + self.config.final.margin)
-        if self.is_baseline:
+        if self.config.is_baseline:
             self.tempo_rnn = nn.LSTM(self.config.final.margin + self.config.output_size, self.config.time_reg.size,
                                      num_layers=self.config.time_reg.layers, batch_first=True, bidirectional=True)
             self.final_measure_attention = ContextAttention(self.config.output_size, 1)
@@ -337,7 +337,7 @@ class ISGN(nn.Module):
 
         # for i in range(2):
 
-        if self.is_baseline:
+        if self.config.is_baseline:
             tempo_vector = x[:, :, TEMPO_IDX:TEMPO_IDX + 5].view(1, -1, 5)
             tempo_info_in_note = torch.cat((qpm_primo, tempo_primo, tempo_vector), 2)
 
