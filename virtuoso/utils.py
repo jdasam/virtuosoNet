@@ -63,10 +63,10 @@ def batch_train_run(data, model, args, optimizer):
     batch_y = batch_y.view((args.batch_size, -1, model.config.output_size))
 
     align_matched = th.Tensor(data['align_matched'][batch_start:batch_end]).view(
-        (args.time_steps, -1, 1)).to(args.device)
+        (args.batch_size, -1, 1)).to(args.device)
     pedal_status = th.Tensor(data['pedal_status'][batch_start:batch_end]).view(
-        (args.time_steps, -1, 1)).to(args.device)
-    note_locations = data['note_locations'][batch_start:batch_end]
+        (args.batch_size, -1, 1)).to(args.device)
+    note_locations = data['note_locations']
 
     if data['graphs'] is not None:
         edges = data['graphs']
@@ -78,17 +78,11 @@ def batch_train_run(data, model, args, optimizer):
     else:
         edges = data['graphs']
 
-    prime_batch_x = batch_x
-    if model.is_hierarchy:
-        prime_batch_y = batch_y
-    else:
-        prime_batch_y = batch_y[:, :, 0:const.NUM_PRIME_PARAM]
-
     model_train = model.train()
     outputs, perform_mu, perform_var, total_out_list \
-        = model_train(prime_batch_x, prime_batch_y, edges, note_locations, batch_start)
+        = model_train(batch_x, batch_y, edges, note_locations, batch_start)
 
-    if model.config.hierarchy_level in ['measure', 'beat']:
+    if model.config.hierarchy_level in ['measure', 'beat'] and not model.config.is_dependent:
         if model.is_hierarchy == 'measure':
             hierarchy_numbers = [x.measure for x in note_locations]
         elif model.is_hierarchy == 'beat':
@@ -120,7 +114,7 @@ def batch_train_run(data, model, args, optimizer):
             total_loss = th.zeros(1).to(args.device)
             for out in total_out_list:
                 _, tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss = \
-                    cal_loss_by_output_type(out, prime_batch_y, align_matched, pedal_status, args,
+                    cal_loss_by_output_type(out, batch_y, align_matched, pedal_status, args,
                                             model.config, note_locations, batch_start)
 
                 total_loss += (tempo_loss + vel_loss + dev_loss +
@@ -128,7 +122,7 @@ def batch_train_run(data, model, args, optimizer):
             total_loss /= len(total_out_list)
         else:
             total_loss, tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss =\
-                cal_loss_by_output_type(outputs, prime_batch_y, align_matched, pedal_status, args,
+                cal_loss_by_output_type(outputs, batch_y, align_matched, pedal_status, args,
                                         model.config, note_locations, batch_start)
 
     if isinstance(perform_mu, bool):
@@ -204,9 +198,9 @@ def handle_data_in_tensor(x, y, model_config, device, hierarchy_test=False):
         y = y[:, :const.NUM_PRIME_PARAM]
         return x.to(device), (hierarchy_output.to(device), y.to(device))
 
-    if model_config.hierarchy_level in ['measure', 'beat']:
+    if model_config.hierarchy_level in ['measure', 'beat'] and not model_config.is_dependent:
         y = hierarchy_output
-    elif model_config.hierarchy_level == 'note':
+    elif model_config.is_dependent:
         x = th.cat((x, hierarchy_output), 1)
         y = y[:, :const.NUM_PRIME_PARAM]
     elif model_config.is_trill:
