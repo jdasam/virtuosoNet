@@ -7,6 +7,7 @@ import copy
 import numpy as np
 import torch as th
 import pickle
+from tqdm import tqdm
 
 from .parser import get_parser
 from .utils import categorize_value_to_vector
@@ -105,9 +106,12 @@ def train(args,
             remaining_samples = []
             for i in range(num_perf_data):
                 remaining_samples.append(TraningSample(i))
-            while len(remaining_samples) > 0:
-                new_index = random.randrange(0, len(remaining_samples))
-                selected_sample = remaining_samples[new_index]
+            
+            random.shuffle(remaining_samples)
+            # while len(remaining_samples) > 0:
+            for idx in tqdm(range(len(remaining_samples))):
+                # idx = random.randrange(0, len(remaining_samples))
+                selected_sample = remaining_samples[idx]
                 # train_x = train_xy[selected_sample.index][0]
                 # train_y = train_xy[selected_sample.index][1]
                 train_x = train_xy[selected_sample.index]['input_data']
@@ -170,10 +174,10 @@ def train(args,
                     kld_total.append(kld.item())
                     NUM_UPDATED += 1
 
-                del selected_sample.slice_indexes[selected_idx]
+                # del selected_sample.slice_indexes[selected_idx]
                 if len(selected_sample.slice_indexes) == 0:
                     # print('every slice in the sample is trained')
-                    del remaining_samples[new_index]
+                    # del remaining_samples[idx]
         '''
         else:
             for xy_tuple in train_xy:
