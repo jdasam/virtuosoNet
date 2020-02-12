@@ -14,7 +14,7 @@ from . import data_process as dp  # maybe confuse with dynamic programming?
 from . import graph
 from . import utils
 from . import model_constants as const
-from . import nnModel
+from . import model
 # from . import dataset
 from . import inference
 
@@ -37,9 +37,7 @@ def train(args,
           num_epochs, 
           bins, 
           time_steps,
-          criterion, 
-          NUM_INPUT, 
-          NUM_OUTPUT):
+          criterion):
     # isn't this redundant?
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
@@ -86,7 +84,7 @@ def train(args,
     train_xy = train_data
     test_xy = valid_data
     print('number of train performances: ', len(train_xy), 'number of valid perf: ', len(test_xy))
-    print('training sample example', train_xy[0][0][0])
+    print('training sample example', train_xy[0]['input_data'][0])
 
     train_model = model
 
@@ -112,22 +110,22 @@ def train(args,
                 selected_sample = remaining_samples[new_index]
                 # train_x = train_xy[selected_sample.index][0]
                 # train_y = train_xy[selected_sample.index][1]
-                train_x = train_xy['input_data'][selected_sample.index]
-                train_y = train_xy['output_data'][selected_sample.index]
+                train_x = train_xy[selected_sample.index]['input_data']
+                train_y = train_xy[selected_sample.index]['output_data']
                 # if args.loss == 'CE':
                 #     train_y = categorize_value_to_vector(train_y, bins)
-                note_locations = train_xy['note_location'][selected_sample.index]
-                align_matched = train_xy['align_matched'][selected_sample.index]
+                note_locations = train_xy[selected_sample.index]['note_location']
+                align_matched = train_xy[selected_sample.index]['align_matched']
                 # TODO: which variable would be corresponds to pedal status?
                 # pedal_status = train_xy[selected_sample.index][4]
-                pedal_status = train_xy['articulation_loss_weight'][selected_sample.index]
-                edges = train_xy['graph'][selected_sample.index]
+                pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
+                edges = train_xy[selected_sample.index]['graph']
 
                 data_size = len(train_x)
 
                 if selected_sample.slice_indexes is None:
                     measure_numbers = [x.measure for x in note_locations]
-                    if model.config.hierarchy == 'measure':
+                    if model.config.hierarchy_level == 'measure':
                         selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
                                                                                                measure_numbers,
                                                                                                measure_steps=time_steps)
@@ -139,7 +137,7 @@ def train(args,
                 selected_idx = random.randrange(0,num_slice)
                 slice_idx = selected_sample.slice_indexes[selected_idx]
 
-                if model.is_graph:
+                if model.config.is_graph:
                     graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
                 else:
                     graphs = None
@@ -253,9 +251,9 @@ def train(args,
             # if args.loss == 'CE':
             #     test_y = categorize_value_to_vector(test_y, bins)
 
-            batch_x, batch_y = utils.handle_data_in_tensor(test_x, test_y, args, device)
-            batch_x = batch_x.view(1, -1, NUM_INPUT)
-            batch_y = batch_y.view(1, -1, NUM_OUTPUT)
+            batch_x, batch_y = utils.handle_data_in_tensor(test_x, test_y, model.config, device)
+            batch_x = batch_x.view(1, -1, model.config.input_size)
+            batch_y = batch_y.view(1, -1, model.config.output_size)
             # input_y = th.Tensor(prev_feature).view((1, -1, TOTAL_OUTPUT)).to(device)
             align_matched = th.Tensor(align_matched).view(1, -1, 1).to(device)
             pedal_status = th.Tensor(pedal_status).view(1,-1,1).to(device)

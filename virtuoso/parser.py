@@ -82,12 +82,15 @@ def get_parser():
     parser.add_argument("--batch_size",
                         type=int,
                         default=1)
+    parser.add_argument("--num_epochs",
+                        type=int,
+                        default=100)
     
     # environment options
     parser.add_argument("-dev", "--device", type=int,
                         default=1, help="cuda device number")
     parser.add_argument("-code", "--modelCode", type=str,
-                        default='isgn', help="code name for saving the model")
+                        default='han_ar', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,
                         default='trill_default', help="code name for loading trill model")
     parser.add_argument("-comp", "--composer", type=str,

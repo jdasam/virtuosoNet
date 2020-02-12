@@ -57,10 +57,10 @@ def run_model_in_steps(input, input_y, args, edges, note_locations, model, devic
 def batch_train_run(data, model, args, optimizer):
     batch_start, batch_end = data['slice_idx']
     batch_x, batch_y = handle_data_in_tensor(
-        data['x'][batch_start:batch_end], data['y'][batch_start:batch_end], args, device=args.device)
+        data['x'][batch_start:batch_end], data['y'][batch_start:batch_end], model.config, device=args.device)
 
-    batch_x = batch_x.view((args.batch_size, -1, model.input_size))
-    batch_y = batch_y.view((args.batch_size, -1, model.output_size))
+    batch_x = batch_x.view((args.batch_size, -1, model.config.input_size))
+    batch_y = batch_y.view((args.batch_size, -1, model.config.output_size))
 
     align_matched = th.Tensor(data['align_matched'][batch_start:batch_end]).view(
         (args.time_steps, -1, 1)).to(args.device)
@@ -88,7 +88,7 @@ def batch_train_run(data, model, args, optimizer):
     outputs, perform_mu, perform_var, total_out_list \
         = model_train(prime_batch_x, prime_batch_y, edges, note_locations, batch_start)
 
-    if model.config.hierarchy in ['measure', 'beat']:
+    if model.config.hierarchy_level in ['measure', 'beat']:
         if model.is_hierarchy == 'measure':
             hierarchy_numbers = [x.measure for x in note_locations]
         elif model.is_hierarchy == 'beat':
@@ -142,7 +142,7 @@ def batch_train_run(data, model, args, optimizer):
     th.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
     optimizer.step()
 
-    if model.config.hierarchy in ['measure', 'beat']:
+    if model.config.hierarchy_level in ['measure', 'beat']:
         return tempo_loss, vel_loss, th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), perform_kld
     elif model.config.is_trill:
         return th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), total_loss, th.zeros(1)
@@ -195,18 +195,18 @@ def categorize_value_to_vector(y, bins):
 def handle_data_in_tensor(x, y, model_config, device, hierarchy_test=False):
     x = th.Tensor(x)
     y = th.Tensor(y)
-    if model_config.hierarchy == 'measure':
+    if model_config.hierarchy_level == 'measure':
         hierarchy_output = y[:, const.MEAS_TEMPO_IDX:const.MEAS_TEMPO_IDX+2]
-    elif model_config.hierarchy == 'beat':
+    elif model_config.hierarchy_level == 'beat':
         hierarchy_output = y[:, const.BEAT_TEMPO_IDX:const.BEAT_TEMPO_IDX+2]
 
     if hierarchy_test:
         y = y[:, :const.NUM_PRIME_PARAM]
         return x.to(device), (hierarchy_output.to(device), y.to(device))
 
-    if model_config.hierarchy in ['measure', 'beat']:
+    if model_config.hierarchy_level in ['measure', 'beat']:
         y = hierarchy_output
-    elif model_config.hierarchy == 'note':
+    elif model_config.hierarchy_level == 'note':
         x = th.cat((x, hierarchy_output), 1)
         y = y[:, :const.NUM_PRIME_PARAM]
     elif model_config.is_trill:

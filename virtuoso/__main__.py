@@ -100,22 +100,23 @@ def main():
     optimizer = th.optim.Adam(
         MODEL.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
-    checkpoint = args.checkpoints / f"{name}.th"
-    checkpoint_tmp = args.checkpoints / f"{name}.th.tmp"
-    if args.restart and checkpoint.exists():
-        checkpoint.unlink()
+    # checkpoint = args.checkpoints / f"{name}.th"
+    # checkpoint_tmp = args.checkpoints / f"{name}.th.tmp"
+    # if args.restart and checkpoint.exists():
+    #     checkpoint.unlink()
 
     # TODO: to single function
     # load dataset
 
-    with open(args.data, "rb") as f:
+    with open(args.dataName, "rb") as f:
         u = cPickle.Unpickler(f)
         data_set = u.load()
-    with open(args.test_data, "rb") as f:
+    with open(args.test_dataName, "rb") as f:
         u = cPickle.Unpickler(f)
         test_data_set = u.load()
     train_data = data_set['train']
-    valid_data = data_set['valid']   
+    valid_data = data_set['valid']
+    print(type(train_data))
     test_data = test_data_set
 
     '''
@@ -147,8 +148,6 @@ def main():
     '''
     criterion = utils.criterion
 
-    num_input = train_data['input_data'].shape[-1]
-    num_output = train_data['output_data'].shape[-1]
     train.train(args,
                 MODEL,
                 model_config,
@@ -159,9 +158,7 @@ def main():
                 args.num_epochs, 
                 None,  # TODO: bins: what should be? 
                 args.time_steps,
-                criterion, 
-                num_input, 
-                num_output)
+                criterion)
 
 
 if __name__ == "__main__":
