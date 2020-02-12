@@ -63,9 +63,9 @@ def batch_train_run(data, model, args, optimizer):
     batch_y = batch_y.view((args.batch_size, -1, model.config.output_size))
 
     align_matched = th.Tensor(data['align_matched'][batch_start:batch_end]).view(
-        (args.time_steps, -1, 1)).to(args.device)
+        (args.batch_size, -1, 1)).to(args.device)
     pedal_status = th.Tensor(data['pedal_status'][batch_start:batch_end]).view(
-        (args.time_steps, -1, 1)).to(args.device)
+        (args.batch_size, -1, 1)).to(args.device)
     note_locations = data['note_locations'][batch_start:batch_end]
 
     if data['graphs'] is not None:
@@ -79,7 +79,7 @@ def batch_train_run(data, model, args, optimizer):
         edges = data['graphs']
 
     prime_batch_x = batch_x
-    if model.is_hierarchy:
+    if model.config.hierarchy_level in ['measure', 'beat']:
         prime_batch_y = batch_y
     else:
         prime_batch_y = batch_y[:, :, 0:const.NUM_PRIME_PARAM]
