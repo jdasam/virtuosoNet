@@ -154,9 +154,7 @@ def main():
                 valid_data,
                 device,
                 optimizer, 
-                args.num_epochs, 
-                None,  # TODO: bins: what should be? 
-                args.time_steps,
+                None,  # TODO: bins: what should be?
                 criterion)
 
 

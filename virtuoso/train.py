@@ -34,9 +34,7 @@ def train(args,
           valid_data,
           device,
           optimizer, 
-          num_epochs, 
-          bins, 
-          time_steps,
+          bins,
           criterion):
     # isn't this redundant?
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -89,7 +87,7 @@ def train(args,
     train_model = model
 
     # total_step = len(train_loader)
-    for epoch in range(start_epoch, num_epochs):
+    for epoch in range(start_epoch, args.num_epochs):
         print('current training step is ', NUM_UPDATED)
         tempo_loss_total = []
         vel_loss_total = []
@@ -102,7 +100,19 @@ def train(args,
         num_perf_data = len(train_xy)
         remaining_samples = []
         for i in range(num_perf_data):
-            remaining_samples.append(TraningSample(i))
+            temp_training_sample = TraningSample(i)
+            measure_numbers = [x.measure for x in train_xy[i]['note_location']]
+            data_size = len(train_xy[i]['input_data'])
+            if model.config.hierarchy_level == 'measure':
+                temp_training_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
+                                                                                       measure_numbers,
+                                                                                       measure_steps=args.time_steps)
+
+            else:
+                temp_training_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers,
+                                                                                   steps=args.time_steps)
+            remaining_samples.append(temp_training_sample)
+        print(sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
         while len(remaining_samples) > 0:
             new_index = random.randrange(0, len(remaining_samples))
             selected_sample = remaining_samples[new_index]
@@ -119,24 +129,12 @@ def train(args,
             pedal_status = train_xy[selected_sample.index]['articulation_loss_weight']
             edges = train_xy[selected_sample.index]['graph']
 
-            data_size = len(train_x)
-
-            if selected_sample.slice_indexes is None:
-                measure_numbers = [x.measure for x in note_locations]
-                if model.config.hierarchy_level == 'measure':
-                    selected_sample.slice_indexes = dp.make_slice_with_same_measure_number(data_size,
-                                                                                           measure_numbers,
-                                                                                           measure_steps=time_steps)
-
-                else:
-                    selected_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
-
             num_slice = len(selected_sample.slice_indexes)
             selected_idx = random.randrange(0,num_slice)
             slice_idx = selected_sample.slice_indexes[selected_idx]
 
             if model.config.is_graph:
-                graphs = graph.edges_to_matrix_short(edges, slice_idx, model_config)
+                graphs = graph.edges_to_matrix_short(edges, slice_idx, model.config)
             else:
                 graphs = None
 
@@ -167,12 +165,13 @@ def train(args,
                 trill_loss_total.append(trill_loss.item())
                 kld_total.append(kld.item())
                 NUM_UPDATED += 1
-            # print(sum([len(x.slice_indexes) for x in remaining_samples if x]))
+            del selected_sample.slice_indexes[selected_idx]
             if len(selected_sample.slice_indexes) == 0:
-                print('every slice in the sample is trained')
+                # print('every slice in the sample is trained')
                 del remaining_samples[new_index]
+            print(sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
         print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
-              .format(epoch + 1, num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
+              .format(epoch + 1, args.num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
                       np.mean(dev_loss_total), np.mean(articul_loss_total), np.mean(pedal_loss_total), np.mean(trill_loss_total), np.mean(kld_total)))
 
 
