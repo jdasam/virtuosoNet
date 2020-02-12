@@ -51,7 +51,7 @@ def get_parser():
                         )
     parser.add_argument("--time_steps",
                         type=int,
-                        default=200
+                        default=500
                         )
     parser.add_argument("--valid_steps",
                         type=int,
@@ -88,7 +88,7 @@ def get_parser():
     
     # environment options
     parser.add_argument("-dev", "--device", type=int,
-                        default=1, help="cuda device number")
+                        default=0, help="cuda device number")
     parser.add_argument("-code", "--modelCode", type=str,
                         default='han_ar', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,

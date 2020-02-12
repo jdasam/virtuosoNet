@@ -168,7 +168,7 @@ def train(args,
             if len(selected_sample.slice_indexes) == 0:
                 # print('every slice in the sample is trained')
                 del remaining_samples[new_index]
-            print(sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
+            # print("Remaining samples: ", sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
         print('Epoch [{}/{}], Loss - Tempo: {:.4f}, Vel: {:.4f}, Deviation: {:.4f}, Articulation: {:.4f}, Pedal: {:.4f}, Trill: {:.4f}, KLD: {:.4f}'
               .format(epoch + 1, args.num_epochs, np.mean(tempo_loss_total), np.mean(vel_loss_total),
                       np.mean(dev_loss_total), np.mean(articul_loss_total), np.mean(pedal_loss_total), np.mean(trill_loss_total), np.mean(kld_total)))

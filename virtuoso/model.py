@@ -140,7 +140,6 @@ class ISGN(nn.Module):
         # self.time_regressive_layer = model_config.net_size.time_reg.layer
         # self.num_edge_types = model_config.num_edge_types
         # self.config.final.margin = model_config.net_size.final.margin
-        
 
         if self.config.is_baseline:
             self.final_graph_input_size = self.config.final.input + self.config.encoder.size + 8 + self.config.output_size + self.config.final.margin + self.config.time_reg.size * 2
@@ -223,7 +222,7 @@ class ISGN(nn.Module):
             nn.ReLU()
         )
 
-        self.final_graph = GatedGraph(self.config.final.input, self.config.num_edge_types, self.device,
+        self.final_graph = GatedGraph(self.final_graph_input_size, self.config.num_edge_types, self.device,
                                       self.config.output_size + self.config.final.margin)
         if self.config.is_baseline:
             self.tempo_rnn = nn.LSTM(self.config.final.margin + self.config.output_size, self.config.time_reg.size,
@@ -232,7 +231,7 @@ class ISGN(nn.Module):
             self.final_margin_attention = ContextAttention(self.config.final.margin, self.config.num_attention_head)
 
             self.fc = nn.Sequential(
-                nn.Linear(self.config.final.input, self.config.final.margin),
+                nn.Linear(self.final_graph_input_size, self.config.final.margin),
                 nn.Dropout(DROP_OUT),
                 nn.ReLU(),
                 nn.Linear(self.config.final.margin, self.config.output_size),
@@ -246,7 +245,7 @@ class ISGN(nn.Module):
             self.tempo_fc = nn.Linear(self.config.time_reg.size* 2, 1)
 
             self.fc = nn.Sequential(
-                nn.Linear(self.config.final.input, self.config.final.margin),
+                nn.Linear(self.final_graph_input_size, self.config.final.margin),
                 nn.Dropout(DROP_OUT),
                 nn.ReLU(),
                 nn.Linear(self.config.final.margin, self.config.output_size-1),
@@ -289,7 +288,7 @@ class ISGN(nn.Module):
             perform_mu = 0
             perform_var = 0
         else:
-            perform_concat = torch.cat((note_out, y), 2).view(-1, self.config.encoder_input_size)
+            perform_concat = torch.cat((note_out, y), 2).view(-1, self.config.encoder.input)
             perform_style_contracted = self.performance_contractor(perform_concat).view(1, num_notes, -1)
             perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
             performance_measure_nodes = self.make_higher_node(perform_style_graphed, self.performance_measure_attention, beat_numbers,
@@ -423,8 +422,7 @@ class ISGN(nn.Module):
                                                   start_index, lower_is_note=True)
             measure_hidden, _ = self.measure_rnn(measure_nodes)
             measure_hidden_spanned = self.span_beat_to_note_num(measure_hidden, measure_numbers, num_notes, start_index)
-            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.config.note.size:]),1)
-
+            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.config.note.size:]), -1)
         final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
         return final_out, measure_hidden
 
