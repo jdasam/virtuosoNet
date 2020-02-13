@@ -22,6 +22,7 @@ from . import xml_utils
 from . import feature_extraction
 
 align_dir = '/home/jdasam/AlignmentTool_v190813'
+
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
@@ -194,25 +195,6 @@ class DataSet:
                         self.performs_by_tag[tag].append(perform)
                         break
 
-    def update_dataset(self):
-        # TODO: how about realign all?
-        '''
-        old_music_xml_list = [piece.meta.xml_path for piece in self.pieces]
-        cur_musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
-                         f.endswith('xml')]
-        for xml in self.pieces:
-            if xml not in old_music_xml_list:
-                print('Updated piece:', xml)
-                try:
-                    piece = PieceData(xml, self.piece)
-                    self.pieces.append(piece)
-                except Exception as ex:
-                    print('Error type :', ex)
-        self.num_pieces = len(self.pieces)
-        '''
-        for piece in self.pieces:
-            piece.update_performances()
-
     def __str__(self):
         return str(self.__dict__)
 
@@ -222,7 +204,7 @@ class DataSet:
 class PieceData:
     def __init__(self, xml_path, perform_lists, score_midi_path=None, composer=None, save=False):
         if score_midi_path == None:
-            score_midi_path = os.path.dirname(xml_path) / Path(xml_path).stem + '_score.mid'
+            score_midi_path = os.path.dirname(xml_path) + '/' + Path(xml_path).stem + '_score.mid'
         self.meta = PieceMeta(xml_path, perform_lists=perform_lists, score_midi_path=score_midi_path, composer=composer)
         self.performances = []
         
@@ -304,16 +286,6 @@ class PieceData:
 
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
-
-    def update_performances(self):
-        old_performances = copy.copy(self.meta.perform_lists)
-        self.meta._check_perf_align()
-        new_performances = self.meta.perform_lists
-        for perf_path in new_performances:
-            if perf_path not in old_performances:
-                perform_data = PerformData(perf_path, self.meta)
-                self._align_perform_with_score(perform_data)
-                self.performances.append(perform_data)
 
     def __str__(self):
         text = 'Path name: {}, Composer Name: {}, Number of Performances: {}'.format(self.meta.xml_path, self.meta.composer, len(self.performances))
