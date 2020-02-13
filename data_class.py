@@ -71,7 +71,7 @@ class DataSet:
         '''return scores, score_midis, performances, composers'''
         raise NotImplementedError
 
-    def load_all_piece(self, scores, perform_midis, score_midis, composers):
+    def load_all_piece(self, scores, perform_midis, score_midis, composers, save):
         for n in tqdm(range(len(scores))):
             try:
                 piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=True)
@@ -476,8 +476,8 @@ class ScoreData:
 
 
 class YamahaDataset(DataSet):
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, path, save):
+        super().__init__(path, save=save)
 
     def load_data(self):
         path = Path(self.path)
@@ -499,8 +499,8 @@ class YamahaDataset(DataSet):
 
 
 class EmotionDataset(DataSet):
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, path, save=False):
+        super().__init__(path, save=save)
 
     def load_data(self):
         path = Path(self.path)
@@ -521,8 +521,8 @@ class EmotionDataset(DataSet):
 
 
 class StandardDataset(DataSet):
-    def __init__(self, path):
-        super().__init__(path)
+    def __init__(self, path, save=False):
+        super().__init__(path, save=save)
 
     def load_data(self):
         path = Path(self.path)
