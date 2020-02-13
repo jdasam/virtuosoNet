@@ -217,12 +217,9 @@ class PieceData:
         self.score_features = {}
 
         self._load_score_xml()
-        self._load_score_midi()
-        self._match_score_xml_to_midi()
-
         self.meta._load_list_of_performances()
-        self.meta._check_perf_align()
         self.meta._load_composer_name()
+
 
     def _load_score_xml(self):
         self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
@@ -260,6 +257,10 @@ class PieceData:
         self.score_pairs = matching.make_xml_midi_pair(self.xml_notes, self.score_midi_notes, self.score_match_list)
 
     def _load_performances(self):
+        self._load_score_midi()
+        self._match_score_xml_to_midi()
+        self.meta._check_perf_align()
+
         for perf_midi_name in self.meta.perf_file_list:
             perform_data = PerformData(perf_midi_name, self.meta)
             self._align_perform_with_score(perform_data)
