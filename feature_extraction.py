@@ -14,7 +14,6 @@ class ScoreExtractor:
         self.tem_emb_tab = dir_enc.define_tempo_embedding_table()
 
     def extract_score_features(self, piece_data):
-        piece_data.score_features = dict()
         for key in self.selected_feature_keys:
             piece_data.score_features[key] = getattr(
                 self, 'get_' + key)(piece_data)        
@@ -548,3 +547,28 @@ class PerformExtractor:
             if pair != [] and pair['xml'].staff == 1:
                 features[i] = perform.perform_features['non_abs_attack_deviation'][i]
         return features
+
+    def get_beat_dynamics(self, piece_data, perform_data):
+        if 'velocity' not in perform_data.perform_features:
+            perform_data.perform_features['velocity'] = self.get_velocity(piece_data, perform_data)
+        if 'align_matched' not in perform_data.perform_features:
+            perform_data.perform_features['align_matched'] = self.get_align_matched(piece_data, perform_data)
+        if 'note_location' not in piece_data.score_features:
+            score_extractor = ScoreExtractor(['note_location'])
+            piece_data.score_features = score_extractor.extract_score_features(piece_data)
+        return feature_utils.get_longer_level_dynamics(perform_data.perform_features, piece_data.score_features['note_location'], length='beat')
+
+    def get_measure_dynamics(self, piece_data, perform_data):
+        if 'velocity' not in perform_data.perform_features:
+            perform_data.perform_features['velocity'] = self.get_velocity(piece_data, perform_data)
+        if 'align_matched' not in perform_data.perform_features:
+            perform_data.perform_features['align_matched'] = self.get_align_matched(piece_data, perform_data)
+        if 'note_location' not in piece_data.score_features:
+            score_extractor = ScoreExtractor(['note_location'])
+            piece_data.score_features = score_extractor.extract_score_features(piece_data)
+
+        return feature_utils.get_longer_level_dynamics(perform_data.perform_features,
+                                                       piece_data.score_features['note_location'], length='measure')
+
+    def get_staff(self, piece_data, perform_data):
+        return [note.staff for note in piece_data.xml_notes]

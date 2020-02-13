@@ -150,38 +150,41 @@ def get_dynamics(directions):
     cresc_name = ['crescendo', 'diminuendo']
     cresciuto_list = []
     num_relative = len(relative_dynamics)
-    if len(absolute_dynamics) > 0:
-        for i in range(num_relative):
-            rel = relative_dynamics[i]
+
+    for i in range(num_relative):
+        rel = relative_dynamics[i]
+        if len(absolute_dynamics) > 0:
             index = binaryIndex(absolute_dynamics_position, rel.xml_position)
             rel.previous_dynamic = absolute_dynamics[index].type['content']
-            if rel.type['type'] == 'dynamic' and not rel.type['content'] in ['rf', 'rfz', 'rffz']: # sf, fz, sfz
-                rel.end_xml_position = rel.xml_position + 0.1
+            if index + 1 < len(absolute_dynamics):
+                rel.next_dynamic = absolute_dynamics[index + 1]  # .type['content']
 
-            if not hasattr(rel, 'end_xml_position'):
-                for j in range(1, num_relative-i):
-                    next_rel = relative_dynamics[i+j]
-                    rel.end_xml_position = next_rel.xml_position
-                    break
-
-            if index+1 < len(absolute_dynamics):
-                rel.next_dynamic = absolute_dynamics[index+1] #.type['content']
-                if not hasattr(rel, 'end_xml_position') or absolute_dynamics[index+1].xml_position < rel.end_xml_position:
-                    rel.end_xml_position = absolute_dynamics_position[index+1]
             else:
                 rel.next_dynamic = absolute_dynamics[index]
+        if rel.type['type'] == 'dynamic' and not rel.type['content'] in ['rf', 'rfz', 'rffz']: # sf, fz, sfz
+            rel.end_xml_position = rel.xml_position + 0.1
 
-            if not hasattr(rel, 'end_xml_position'):
-                rel.end_xml_position = float("inf")
+        if not hasattr(rel, 'end_xml_position'):
+        # if rel.end_xml_position is None:
+            for j in range(1, num_relative-i):
+                next_rel = relative_dynamics[i+j]
+                rel.end_xml_position = next_rel.xml_position
+                break
 
-            if (rel.type['type'] in cresc_name or crescendo_word_regularization(rel.type['content']) in cresc_name )\
-                    and rel.end_xml_position < rel.next_dynamic.xml_position:
-                if rel.type['type'] in cresc_name:
-                    cresc_type = rel.type['type']
-                else:
-                    cresc_type = crescendo_word_regularization(rel.type['content'])
-                cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, cresc_type)
-                cresciuto_list.append(cresciuto)
+        if len(absolute_dynamics) > 0 and hasattr(rel, 'end_xml_position') and index < len(absolute_dynamics) - 1 and absolute_dynamics[index + 1].xml_position < rel.end_xml_position:
+            rel.end_xml_position = absolute_dynamics_position[index + 1]
+
+        if not hasattr(rel, 'end_xml_position'):
+            rel.end_xml_position = float("inf")
+
+        if (rel.type['type'] in cresc_name or crescendo_word_regularization(rel.type['content']) in cresc_name )\
+                and (hasattr(rel, 'next_dynamic') and rel.end_xml_position < rel.next_dynamic.xml_position):
+            if rel.type['type'] in cresc_name:
+                cresc_type = rel.type['type']
+            else:
+                cresc_type = crescendo_word_regularization(rel.type['content'])
+            cresciuto = Cresciuto(rel.end_xml_position, rel.next_dynamic.xml_position, cresc_type)
+            cresciuto_list.append(cresciuto)
 
     return absolute_dynamics, relative_dynamics, cresciuto_list
 

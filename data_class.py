@@ -23,10 +23,11 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
-                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo']
+                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo', 'note_location']
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight']
+                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight',
+                            'beat_dynamics', 'measure_tempo', 'measure_dynamics']
 
 # total data class
 class DataSet:
@@ -54,6 +55,7 @@ class DataSet:
         # path = Path(self.path)
         # musicxml_list = sorted(path.glob('**.xml'))
         for xml in musicxml_list:
+            print('piece path:', xml)
             try:
                 piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
                 self.pieces.append(piece)
@@ -118,19 +120,9 @@ class DataSet:
 
     def features_to_list(self, list_of_feat):
         feature_data = [[] for i in range(len(list_of_feat))]
-
         for perf in self.default_performances:
-            # perf_features = [[] for i in range(len(list_of_feat))]
             for i, feature_type in enumerate(list_of_feat):
-
-                # perf_features = [x for x in perf.perform_features[feature_type] if x is not None]
                 feature_data[i].append(perf.perform_features[feature_type])
-            # for feature in perf.perform_features:
-            #     for i, feat_key in enumerate(list_of_feat):
-            #         value = getattr(feature, feat_key)
-            #         if value is not None:
-            #             perf_features[i].append(value)
-            # feature_data.append(perf_features)
         return feature_data
 
     def get_average_by_perform(self, feature_data):
@@ -192,6 +184,22 @@ class DataSet:
                         self.performs_by_tag[tag].append(perform)
                         break
 
+    def update_dataset(self):
+        old_music_xml_list = [piece.meta.xml_path for piece in self.pieces]
+        cur_musicxml_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(self.path) for f in filenames if
+                         f.endswith('xml')]
+        for xml in cur_musicxml_list:
+            if xml not in old_music_xml_list:
+                print('Updated piece:', xml)
+                try:
+                    piece = PieceData(xml, data_structure=self.data_structure, dataset_name=self.dataset_name)
+                    self.pieces.append(piece)
+                except Exception as ex:
+                    print('Error type :', ex)
+        self.num_pieces = len(self.pieces)
+        for piece in self.pieces:
+            piece.update_performances()
+
 # score data class
 class PieceData:
     def __init__(self, xml_path, data_structure='folder', dataset_name='chopin_cleaned', composer=None):
@@ -201,19 +209,17 @@ class PieceData:
         self.num_notes = 0
         self.performances = []
         self.score_performance_match = []
+        self.notes_graph = []
 
         self.score_match_list = []
         self.score_pairs = []
 
-        self.score_features = []
+        self.score_features = {}
 
         self._load_score_xml()
-        self._load_score_midi()
-        self._match_score_xml_to_midi()
-
         self.meta._load_list_of_performances()
-        self.meta._check_perf_align()
         self.meta._load_composer_name()
+
 
     def _load_score_xml(self):
         self.xml_obj = MusicXMLDocument(str(self.meta.xml_path))
@@ -251,6 +257,10 @@ class PieceData:
         self.score_pairs = matching.make_xml_midi_pair(self.xml_notes, self.score_midi_notes, self.score_match_list)
 
     def _load_performances(self):
+        self._load_score_midi()
+        self._match_score_xml_to_midi()
+        self.meta._check_perf_align()
+
         for perf_midi_name in self.meta.perf_file_list:
             perform_data = PerformData(perf_midi_name, self.meta)
             self._align_perform_with_score(perform_data)
@@ -263,6 +273,17 @@ class PieceData:
 
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
+
+    def update_performances(self):
+        old_performances = copy.copy(self.meta.perf_file_list)
+        self.meta._load_list_of_performances()
+        self.meta._check_perf_align()
+        new_performances = self.meta.perf_file_list
+        for perf_path in new_performances:
+            if perf_path not in old_performances:
+                perform_data = PerformData(perf_path, self.meta)
+                self._align_perform_with_score(perform_data)
+                self.performances.append(perform_data)
 
     def __str__(self):
         text = 'Path name: {}, Composer Name: {}, Number of Performances: {}'.format(self.meta.xml_path, self.meta.composer, len(self.performances))
@@ -330,9 +351,24 @@ class PieceMeta:
             subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
         except:
             print('Error to process {}'.format(midi_file_path))
+            print('Trying to fix MIDI file {}'.format(midi_file_path))
             os.chdir(current_dir)
-            pass
+            shutil.copy(midi_file_path, midi_file_path+'old')
+            midi_utils.to_midi_zero(midi_file_path, save_midi=True, save_name=midi_file_path)
+            shutil.copy(midi_file_path, os.path.join(ALIGN_DIR, 'infer.mid'))
+            try:
+                os.chdir(ALIGN_DIR)
+                subprocess.check_call(["sudo", "sh", "MIDIToMIDIAlign.sh", "score", "infer"])
+            except:
+                align_success = False
+                print('Fail to process {}'.format(midi_file_path))
+                os.chdir(current_dir)
+            else:
+                align_success = True
         else:
+            align_success = True
+
+        if align_success:
             shutil.move('infer_corresp.txt', midi_file_path.replace('.mid', '_infer_corresp.txt'))
             shutil.move('infer_match.txt', midi_file_path.replace('.mid', '_infer_match.txt'))
             shutil.move('infer_spr.txt', midi_file_path.replace('.mid', '_infer_spr.txt'))
@@ -340,15 +376,17 @@ class PieceMeta:
             os.chdir(current_dir)
     
     def _load_composer_name(self):
-        print(self.folder_path)
         if self.data_structure == 'folder':
             # self.folder_path = 'pyScoreParser/chopin_cleaned/{composer_name}/...'
             path_split = copy.copy(self.folder_path).split('/')
             if path_split[0] == self.dataset_name:
                 composer_name = path_split[1]
             else:
-                dataset_folder_name_index = path_split.index(self.dataset_name)
-                composer_name = path_split[dataset_folder_name_index+1]
+                if self.dataset_name in path_split:
+                    dataset_folder_name_index = path_split.index(self.dataset_name)
+                    composer_name = path_split[dataset_folder_name_index+1]
+                else:
+                    composer_name = None
         else:
             # self.folder_path = '.../emotionDataset/{data_name.mid}'
             # consider data_name = '{composer_name}.{piece_name}.{performance_num}.mid'
@@ -356,7 +394,6 @@ class PieceMeta:
             composer_name = data_name.split('.')[0]
 
         self.composer = composer_name
-
 
 
 

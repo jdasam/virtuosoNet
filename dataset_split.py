@@ -17,9 +17,9 @@ VALID_LIST =['Bach/Prelude/bwv_865/',
              'Beethoven/Piano_Sonatas/30-1/',
              'Schumann/Kreisleriana/5/',
              'Schubert/Impromptu_op.90_D.899/2/',
-             'Liszt/Annees_de_pelerinage_2/1_Gondoliera',
-             'Liszt/Transcendental_Etudes/4',
-             'Liszt/Concert_Etude_S145/2',
+             'Liszt/Annees_de_pelerinage_2/1_Gondoliera/',
+             'Liszt/Transcendental_Etudes/4/',
+             'Liszt/Concert_Etude_S145/2/',
              ]
 
 TEST_LIST = ['Bach/Prelude/bwv_858/',
@@ -43,6 +43,6 @@ TEST_LIST = ['Bach/Prelude/bwv_858/',
              'Schubert/Piano_Sonatas/664-1/',
              'Liszt/Transcendental_Etudes/5/',
              'Liszt/Transcendental_Etudes/9/',
-             'Liszt/Gran_Etudes_de_Paganini/6_Theme_and_Variations/'
+             'Liszt/Gran_Etudes_de_Paganini/6_Theme_and_Variations/',
              ]
 
