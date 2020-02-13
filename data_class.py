@@ -209,18 +209,21 @@ class PieceData:
         self.performances = []
         
         score_dat_path = os.path.dirname(xml_path) + '/score.dat'
-        if not save:
-            if not Path(score_dat_path).exists:
-                print(f'not exist {score_dat_path}.')
-            with open(score_dat_path, 'rb') as f:
-                u = cPickle.Unpickler(f)
-                self.score = u.load()
-        else:
-            self.score = ScoreData(xml_path, score_midi_path)
-        
+
         if save:
+            self.score = ScoreData(xml_path, score_midi_path)
             with open(score_dat_path , 'wb') as f:
                 pickle.dump(self.score, f, protocol=2)
+        else:
+            if Path(score_dat_path).exists:
+                with open(score_dat_path, 'rb') as f:
+                    u = cPickle.Unpickler(f)
+                    self.score = u.load()
+            else:
+                print(f'not exist {score_dat_path}. make one')
+                self.score = ScoreData(xml_path, score_midi_path)
+                with open(score_dat_path , 'wb') as f:
+                    pickle.dump(self.score, f, protocol=2)
 
         # ScoreData alias
         self.xml_obj = self.score.xml_obj
