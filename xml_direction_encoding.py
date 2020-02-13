@@ -171,7 +171,7 @@ def get_dynamics(directions):
                 rel.end_xml_position = next_rel.xml_position
                 break
 
-        if len(absolute_dynamics) > 0 and hasattr(rel, 'end_xml_position') and absolute_dynamics[index + 1].xml_position < rel.end_xml_position:
+        if len(absolute_dynamics) > 0 and hasattr(rel, 'end_xml_position') and index < len(absolute_dynamics) - 1 and absolute_dynamics[index + 1].xml_position < rel.end_xml_position:
             rel.end_xml_position = absolute_dynamics_position[index + 1]
 
         if not hasattr(rel, 'end_xml_position'):
