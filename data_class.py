@@ -213,6 +213,11 @@ class DataSet:
         for piece in self.pieces:
             piece.update_performances()
 
+    def __str__(self):
+        return str(self.__dict__)
+
+
+
 # score data class
 class PieceData:
     def __init__(self, xml_path, perform_lists, score_midi_path=None, composer=None, save=False):
@@ -274,7 +279,7 @@ class PieceData:
                 if perform_data is not None: 
                     with open(perform_dat_path, 'wb') as f:
                         pickle.dump(perform_data, f, protocol=2)
-        
+    
     def extract_perform_features(self, target_features):
         perform_extractor = feature_extraction.PerformExtractor(target_features)
         for perform in self.performances:
@@ -324,6 +329,9 @@ class PieceMeta:
         self.pedal_elongate = False
         self.perform_lists = perform_lists
         self.score_midi_path = score_midi_path
+
+    def __str__(self):
+        return str(self.__dict__)
 
     def _check_perf_align(self):
         # TODO: better to move PieceData?
@@ -397,6 +405,9 @@ class PerformData:
 
         self.meta = meta
 
+    def __str__(self):
+        return str(self.__dict__)
+
     def _count_matched_notes(self):
         self.num_matched_notes = 0
         self.num_unmatched_notes = 0
@@ -427,6 +438,9 @@ class ScoreData:
         self._load_score_xml(xml_path)
         self._load_or_make_score_midi(score_midi_path)
         self._match_score_xml_to_midi()
+
+    def __str__(self):
+        return str(self.__dict__)
 
     def _load_score_xml(self, xml_path):
         self.xml_obj = MusicXMLDocument(xml_path)
