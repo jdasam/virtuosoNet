@@ -254,8 +254,8 @@ class PieceData:
     
         # TODO: move to ScoreData
         self.score_features = {}
-
         self.meta._check_perf_align()
+
 
         for perform in perform_lists:
             perform_dat_path = Path(perform).parent / Path(perform).name.replace('.mid', '.dat')
