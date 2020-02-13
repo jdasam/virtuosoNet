@@ -63,7 +63,7 @@ class DataSet:
         self.score_midis = score_midis
         self.perform_midis = perform_midis
         self.composers = composers
-        self.load_all_piece(scores, perform_midis, score_midis, composers)
+        self.load_all_piece(scores, perform_midis, score_midis, composers, save=save)
 
     @classmethod
     @abstractmethod
@@ -74,7 +74,7 @@ class DataSet:
     def load_all_piece(self, scores, perform_midis, score_midis, composers, save):
         for n in tqdm(range(len(scores))):
             try:
-                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=True)
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=save)
                 self.pieces.append(piece)
                 for perf in piece.performances:
                     self.performances.append(perf)
