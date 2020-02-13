@@ -16,13 +16,13 @@ xml_name = 'musicxml_cleaned.musicxml'
 
 piece = PieceData(target + '/' + xml_name, [performance], target + '/' + 'midi.mid', composer='Beethoven')
 first_note = dict(duration= 60, midi_ticks= 27.5, seconds= 0.20833333333333334, pitch= 'Eb4', MIDI_pitch= 63, voice= 5, velocity= 64)
-assert (piece.xml_notes[0].note_duration.duration == 60 and
-        piece.xml_notes[0].note_duration.midi_ticks == 27.5 and
-        piece.xml_notes[0].pitch[0] == 'Eb4' and
-        piece.xml_notes[0].pitch[1] == 63 and
-        piece.xml_notes[0].voice == 5 and
-        piece.xml_notes[0].velocity == 64), \
-            f"first note not matched. \nans:{first_note}, \ngot:{piece.xml_notes[0]}"
+assert (piece.score.xml_notes[0].note_duration.duration == 60 and
+        piece.score.xml_notes[0].note_duration.midi_ticks == 27.5 and
+        piece.score.xml_notes[0].pitch[0] == 'Eb4' and
+        piece.score.xml_notes[0].pitch[1] == 63 and
+        piece.score.xml_notes[0].voice == 5 and
+        piece.score.xml_notes[0].velocity == 64), \
+            f"first note not matched. \nans:{first_note}, \ngot:{piece.score.xml_notes[0]}"
 
 piece._load_performances()
 perform_ext = PerformExtractor(DEFAULT_PERFORM_FEATURES)
