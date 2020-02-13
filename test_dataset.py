@@ -7,7 +7,7 @@ from .data_class import YamahaDataset, EmotionDataset
 parser = argparse.ArgumentParser()
 parser.add_argument('--yamaha_path', type=str)
 parser.add_argument('--emotion_path', type=str)
-parser.add_argument('--save', default=False, type=bool)
+parser.add_argument('--save', action='store_true')
 args = parser.parse_args()
 
 if args.yamaha_path:
