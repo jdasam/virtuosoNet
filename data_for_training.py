@@ -3,6 +3,8 @@ import random
 import numpy as np
 import pickle
 from . import dataset_split
+from pathlib import Path
+from tqdm import tqdm
 
 NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
@@ -35,6 +37,7 @@ class ScorePerformPairData:
 
 class PairDataset:
     def __init__(self, dataset):
+        self.dataset_path = dataset.path
         self.data_pairs = []
         self.feature_stats = None
         for piece in dataset.pieces:
@@ -77,35 +80,43 @@ class PairDataset:
     def shuffle_data(self):
         random.shuffle(self.data_pairs)
 
-    def save_features_for_virtuosoNet(self, save_name='training_data'):
+    def save_features_for_virtuosoNet(self, save_folder):
         '''
         Convert features into format of VirtuosoNet training data
         :return: None (save file)
         '''
+        def _flatten_path(file_path):
+            return '_'.join(file_path.parts)
+
+        save_folder = Path(save_folder)
+        split_types = ['train', 'valid', 'test']
+
+        save_folder.mkdir()
+        for split in split_types:
+            (save_folder / split).mkdir()
+
         training_data = []
         validation_data = []
         test_data = []
 
-        for pair_data in self.data_pairs:
+        for pair_data in tqdm(self.data_pairs):
             formatted_data = dict()
             formatted_data['input_data'], formatted_data['output_data'] = convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
             for key in VNET_COPY_DATA_KEYS:
                 formatted_data[key] = pair_data.features[key]
             formatted_data['graph'] = pair_data.graph_edges
+            formatted_data['score_path'] = pair_data.piece_path
+            formatted_data['perform_path'] = pair_data.perform_path
 
-            if pair_data.split_type == 'train':
-                training_data.append(formatted_data)
-            elif pair_data.split_type == 'valid':
-                validation_data.append(formatted_data)
-            elif pair_data.split_type == 'test':
-                test_data.append(formatted_data)
-
-        with open(save_name + ".dat", "wb") as f:
-            pickle.dump({'train': training_data, 'valid': validation_data}, f, protocol=2)
-        with open(save_name + "_test.dat", "wb") as f:
-            pickle.dump(test_data, f, protocol=2)
-        with open(save_name + "_stat.dat", "wb") as f:
+            save_name = _flatten_path(
+                Path(pair_data.perform_path).relative_to(Path(self.dataset_path))) + '.dat'
+           
+            with open(save_folder / pair_data.split_type / save_name, "wb") as f:
+                pickle.dump(formatted_data, f, protocol=2)
+  
+        with open(save_folder / "stat.dat", "wb") as f:
             pickle.dump(self.feature_stats, f, protocol=2)
+        
 
 def get_feature_from_entire_dataset(dataset, target_score_features, target_perform_features):
     # e.g. feature_type = ['score', 'duration'] or ['perform', 'beat_tempo']
