@@ -275,11 +275,9 @@ class PerformDataset():
             feature['graph'] = feature['graph'][idx_left: idx_right]
             return feature
         
-    @classmethod
-    @abstractmethod
     def feature_files(self):
         ''' return feature .dat file paths'''
-        raise NotImplementedError
+        return sorted(Path(self.path).glob(f'{self.split}/*.dat'))
 
     def __len__(self):
         return len(self.entry)
@@ -290,10 +288,3 @@ class PerformDataset():
             u = cPickle.Unpickler(f)
             features = u.load()
         return features
-
-class YamahaDataset(PerformDataset):
-    def __init__(self, path, split, graph=False, samples=None, stride=None):
-        super().__init__(path, split, graph, samples, stride)
-    
-    def feature_files(self):
-        return sorted(Path(self.path).glob(f'{self.split}/*.dat'))
