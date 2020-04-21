@@ -12,17 +12,17 @@ def save_checkpoint(state, is_best, filename='isgn', model_name='prime'):
         shutil.copyfile(save_name, best_name)
 
 
-def encode_performance_style_vector(input, input_y, edges, note_locations, device, model):
+def encode_performance_style_vector(input, input_y, edges, note_locations, model):
     with th.no_grad():
         model_eval = model.eval()
         if edges is not None:
-            edges = edges.to(device)
+            edges = edges.to(model.device)
         encoded_z = model_eval(input, input_y, edges,
                                note_locations=note_locations, start_index=0, return_z=True)
     return encoded_z
 
 
-def run_model_in_steps(input, input_y, args, edges, note_locations, model, device, initial_z=False):
+def run_model_in_steps(input, input_y, args, edges, note_locations, model, initial_z=False):
     num_notes = input.shape[1]
     with th.no_grad():  # no need to track history in validation
         model_eval = model.eval()
@@ -32,7 +32,7 @@ def run_model_in_steps(input, input_y, args, edges, note_locations, model, devic
         slice_indexes = dp.make_slicing_indexes_by_measure(
             num_notes, measure_numbers, steps=args.valid_steps, overlap=False)
         if edges is not None:
-            edges = edges.to(device)
+            edges = edges.to(model.device)
 
         for slice_idx in slice_indexes:
             batch_start, batch_end = slice_idx
@@ -52,6 +52,40 @@ def run_model_in_steps(input, input_y, args, edges, note_locations, model, devic
 
         outputs = th.cat(total_output, 1)
         return outputs, total_z
+
+
+
+
+def scale_model_prediction_to_original(prediction, MEANS, STDS):
+    for i in range(len(STDS)):
+        for j in range(len(STDS[i])):
+            if STDS[i][j] < 1e-4:
+                STDS[i][j] = 1
+    prediction = np.squeeze(np.asarray(prediction.cpu()))
+    num_notes = len(prediction)
+    if LOSS_TYPE == 'MSE':
+        for i in range(11):
+            prediction[:, i] *= STDS[1][i]
+            prediction[:, i] += MEANS[1][i]
+        for i in range(11, 15):
+            prediction[:, i] *= STDS[1][i+4]
+            prediction[:, i] += MEANS[1][i+4]
+    elif LOSS_TYPE == 'CE':
+        prediction_in_value = np.zeros((num_notes, 16))
+        for i in range(num_notes):
+            bin_range_start = 0
+            for j in range(15):
+                feature_bin_size = len(BINS[j]) - 1
+                feature_class = np.argmax(
+                    prediction[i, bin_range_start:bin_range_start + feature_bin_size])
+                feature_value = (BINS[j][feature_class] +
+                                 BINS[j][feature_class + 1]) / 2
+                prediction_in_value[i, j] = feature_value
+                bin_range_start += feature_bin_size
+            prediction_in_value[i, 15] = prediction[i, -1]
+        prediction = prediction_in_value
+
+    return prediction
 
 
 def batch_train_run(data, model, args, optimizer):

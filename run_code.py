@@ -30,8 +30,9 @@ import pyScoreParser.feature_extraction as feat_ext
 # data_set.save_dataset('EmotionData.dat')
 
 
-# test_piece = data_class.PieceData('EmotionData/Liszt.dante-sonata_s161_no7_.mm_35-54.musicxml', 'name')
+# test_piece = data_class.PieceData('pyScoreParser/chopin_cleaned/Schumann/Kreisleriana/2/musicxml_cleaned.musicxml', 'name')
 # print(test_piece)
+
 
 
 # with open('SarahData.dat', "rb") as f:
@@ -59,16 +60,17 @@ import pyScoreParser.feature_extraction as feat_ext
 
 
 
-# data_set = data_class.DataSet('pyScoreParser/chopin_cleaned/Haydn/', 'folder')
-# data_set.load_all_performances()
-# # score_extractor = feat_ext.ScoreExtractor(['composer_vec'])
+data_set = data_class.DataSet('pyScoreParser/chopin_cleaned/', 'folder')
+data_set.save_dataset('vnet_data.dat')
+data_set.load_all_performances()
+# score_extractor = feat_ext.ScoreExtractor(['composer_vec'])
 # for piece in data_set.pieces:
 #     piece.meta.composer = 'Haydn'
-# #     piece.score_features['composer_vec'] = score_extractor.get_composer_vec(piece)
-# data_set.extract_all_features()
-# data_set.save_dataset('HaydnTest.dat')
+#     piece.score_features['composer_vec'] = score_extractor.get_composer_vec(piece)
+data_set.extract_all_features()
+data_set.save_dataset('vnet_data.dat')
 
-with open('HaydnTest.dat', "rb") as f:
+with open('vnet_data.dat', "rb") as f:
     u = cPickle.Unpickler(f)
     data_set = u.load()
 
@@ -85,5 +87,5 @@ with open('HaydnTest.dat', "rb") as f:
 pair_data = dft.PairDataset(data_set)
 pair_data.update_dataset_split_type()
 pair_data.update_mean_stds_of_entire_dataset()
-pair_data.save_features_for_virtuosoNet('HaydnTestFeature')
+pair_data.save_features_for_virtuosoNet('vnet_data_feature')
 

@@ -111,7 +111,7 @@ def train(args,
                 temp_training_sample.slice_indexes = dp.make_slicing_indexes_by_measure(data_size, measure_numbers,
                                                                                    steps=args.time_steps)
             remaining_samples.append(temp_training_sample)
-        print(sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
+        # print('Total number of training slices: ', sum([len(x.slice_indexes) for x in remaining_samples if x.slice_indexes]))
         while len(remaining_samples) > 0:
             new_index = random.randrange(0, len(remaining_samples))
             selected_sample = remaining_samples[new_index]

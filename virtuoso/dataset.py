@@ -1,9 +1,9 @@
 import numpy as np
 import torch as th
 import pickle
+import math
 
-from pyScoreParser import xml_matching
-
+from pyScoreParser import data_class, feature_extraction, feature_utils, data_for_training
 
 def load_file_and_encode_style(path, perf_name, composer_name):
     test_x, test_y, edges, note_locations = xml_matching.read_score_perform_pair(
@@ -181,40 +181,41 @@ def load_stat(args):
     return MEANS, STDS, BINS
 
 
-def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_standard):
-    # TODO: update to adapt pyScoreParser
-    xml_object, xml_notes = xml_matching.read_xml_to_notes(path_name)
-    beats = xml_object.get_beat_positions()
-    measure_positions = xml_object.get_measure_positions()
-    features = xml_matching.extract_score_features(
-        xml_notes, measure_positions, beats, qpm_primo=start_tempo, vel_standard=vel_standard)
-    features = make_index_continuous(features, score=True)
-    composer_vec = composer_name_to_vec(composer_name)
-    edges = score_graph.make_edge(xml_notes)
+def read_xml_to_array(path_name, stats, start_tempo, composer_name, vel_standard):
+    piece_data = data_class.PieceData(path_name, [], False, composer_name, True)
+    piece_data.meta.composer = composer_name
+    # xml_object, xml_notes = xml_matching.read_xml_to_notes(path_name)
+    score_extractor = feature_extraction.ScoreExtractor(stats['score_features'])
+    features = score_extractor.extract_score_features(piece_data)
+    edges = piece_data.score.notes_graph
+    if start_tempo:
+        features['qpm_primo'] = math.log(start_tempo, 10)
 
-    for i in range(len(stds[0])):
-        if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
-            stds[0][i] = 1
+    test_x = data_for_training.convert_feature_to_numpy(features, stats)
 
-    test_x = []
-    note_locations = []
-    for feat in features:
-        temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
-                  (feat.beat_importance -
-                   means[0][2])/stds[0][2], (feat.measure_length-means[0][3])/stds[0][3],
-                  (feat.qpm_primo - means[0][4]) /
-                  stds[0][4], (feat.following_rest - means[0][5]) / stds[0][5],
-                  (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
-                  (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7],
-                  feat.beat_position, feat.xml_position, feat.grace_order,
-                  feat.preceded_by_grace_note, feat.followed_by_fermata_rest] \
-            + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + \
-            feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
-        # temp_x.append(feat.is_beat)
-        test_x.append(temp_x)
-        note_locations.append(feat.note_location)
+    # for i in range(len(stds[0])):
+    #     if stds[0][i] < 1e-4 or isinstance(stds[0][i], complex):
+    #         stds[0][i] = 1
+    #
+    # test_x = []
+    # note_locations = []
+    # for feat in features:
+    #     temp_x = [(feat.midi_pitch - means[0][0]) / stds[0][0], (feat.duration - means[0][1]) / stds[0][1],
+    #               (feat.beat_importance -
+    #                means[0][2])/stds[0][2], (feat.measure_length-means[0][3])/stds[0][3],
+    #               (feat.qpm_primo - means[0][4]) /
+    #               stds[0][4], (feat.following_rest - means[0][5]) / stds[0][5],
+    #               (feat.distance_from_abs_dynamic - means[0][6]) / stds[0][6],
+    #               (feat.distance_from_recent_tempo - means[0][7]) / stds[0][7],
+    #               feat.beat_position, feat.xml_position, feat.grace_order,
+    #               feat.preceded_by_grace_note, feat.followed_by_fermata_rest] \
+    #         + feat.pitch + feat.tempo + feat.dynamic + feat.time_sig_vec + \
+    #         feat.slur_beam_vec + composer_vec + feat.notation + feat.tempo_primo
+    #     # temp_x.append(feat.is_beat)
+    #     test_x.append(temp_x)
+    #     note_locations.append(feat.note_location)
 
-    return test_x, xml_notes, xml_object, edges, note_locations
+    return test_x, piece_data.score.xml_notes, piece_data.score.xml_object, edges, features['note_location']
 
 
 class PerformDataset():
