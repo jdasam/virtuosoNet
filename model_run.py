@@ -503,15 +503,16 @@ def run_model_in_steps(input, input_y, edges, note_locations, initial_z=False, m
         total_z = []
         measure_numbers = [x.measure for x in note_locations]
         slice_indexes = dp.make_slicing_indexes_by_measure(num_notes, measure_numbers, steps=VALID_STEPS, overlap=False)
-        if edges is not None:
-            edges = edges.to(DEVICE)
+        # if edges is not None:
+        #     edges = edges.to(DEVICE)
 
         for slice_idx in slice_indexes:
             batch_start, batch_end = slice_idx
             if edges is not None:
-                batch_graph = edges[:, batch_start:batch_end, batch_start:batch_end]
+                batch_graph = edges[:, batch_start:batch_end, batch_start:batch_end].to(DEVICE)
             else:
                 batch_graph = None
+            
             batch_input = input[:, batch_start:batch_end, :].view(1,-1,model.input_size)
             batch_input_y = input_y[:, batch_start:batch_end, :].view(1,-1,model.output_size)
             temp_outputs, perf_mu, perf_var, _ = model_eval(batch_input, batch_input_y, batch_graph,
