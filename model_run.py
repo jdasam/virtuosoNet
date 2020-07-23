@@ -76,7 +76,7 @@ if 'trill' in args.modelCode:
 ### parameters
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 1000
+VALID_STEPS = 5000
 DELTA_WEIGHT = 2
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
