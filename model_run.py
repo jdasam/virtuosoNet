@@ -20,7 +20,7 @@ import sys
 sys.modules['xml_matching'] = xml_matching
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str, default='train', help="train or test or testAll")
+parser.add_argument("-mode", "--sessMode", type=str, default='test', help="train or test or testAll")
 parser.add_argument("-path", "--testPath", type=str, default="./test_pieces/bps_5_1/", help="folder path of test mat")
 parser.add_argument("-data", "--dataName", type=str, default="training_data", help="dat file name")
 parser.add_argument("--resume", type=str, default="_best.pth.tar", help="best model path")
@@ -39,10 +39,11 @@ parser.add_argument("-loss", "--trainingLoss", type=str, default='MSE', help='ty
 parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (str(x).lower() == 'true'), help='resume training after loading model')
 parser.add_argument("-perf", "--perfName", default='Anger_sub1', type=str, help='resume training after loading model')
 parser.add_argument("-delta", "--deltaLoss", default=False, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
-parser.add_argument("-hCode", "--hierCode", type=str, default='han_measure', help="code name for loading hierarchy model")
+parser.add_argument("-hCode", "--hierCode", type=str, default='han_ar_measure', help="code name for loading hierarchy model")
 parser.add_argument("-intermd", "--intermediateLoss", default=True, type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
 parser.add_argument("-randtr", "--randomTrain", default=True, type=lambda x: (str(x).lower() == 'true'), help="use random train")
 parser.add_argument("-dskl", "--disklavier", default=True, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
+parser.add_argument("-multi", "--multi_instruments", default=False, type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
 
 random.seed(0)
@@ -75,15 +76,16 @@ if 'trill' in args.modelCode:
 ### parameters
 learning_rate = 0.0003
 TIME_STEPS = 500
-VALID_STEPS = 10000
+VALID_STEPS = 1000
 DELTA_WEIGHT = 2
 NUM_UPDATED = 0
 WEIGHT_DECAY = 1e-5
 GRAD_CLIP = 5
 KLD_MAX = 0.01
 KLD_SIG = 20e4
-print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
-      (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
+if args.sessMode == 'train':
+    print('Learning Rate: {}, Time_steps: {}, Delta weight: {}, Weight decay: {}, Grad clip: {}, KLD max: {}, KLD sig step: {}'.format
+    (learning_rate, TIME_STEPS, DELTA_WEIGHT, WEIGHT_DECAY, GRAD_CLIP, KLD_MAX, KLD_SIG))
 num_epochs = 100
 num_key_augmentation = 1
 
@@ -337,7 +339,8 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
     return prediction
 
 
-def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, start_tempo=args.startTempo, return_features=False):
+def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, 
+                                        start_tempo=args.startTempo, return_features=False, multi_instruments=args.multi_instruments):
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
     test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
                                                                                        start_tempo, composer,
@@ -395,7 +398,7 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
 
     output_xml = xml_matching.apply_tempo_perform_features(xml_doc, xml_notes, output_features, start_time=1,
                                                            predicted=True)
-    output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml)
+    output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml, multi_instruments)
     piece_name = path_name.split('/')
     save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
