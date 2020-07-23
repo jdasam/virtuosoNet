@@ -28,7 +28,7 @@ We recommend to use composer among the following list because they have more dat
 (example -comp=Mozart) (start with capital letter)
 
 2. select model
-model code is: isgn (proposed method), vnet(VirtuosoNet), gvnet(Graph VirtuosoNet), baseline(LSTM)
+model code is: isgn (proposed in ICML2019), han_ar_single(proposed in ISMIR 2019), han_ar_note(proposed in ISMIR 2019)
 (example: -code=isgn)
 
 * (Option) select initial tempo
