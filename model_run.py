@@ -342,7 +342,7 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
 def load_file_and_generate_performance(path_name, composer=args.composer, z=args.latent, 
                                         start_tempo=args.startTempo, return_features=False, multi_instruments=args.multi_instruments):
     vel_pair = (int(args.velocity.split(',')[0]), int(args.velocity.split(',')[1]))
-    test_x, xml_notes, xml_doc, edges, note_locations = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
+    test_x, xml_notes, xml_doc, edges, note_locations, part_names = xml_matching.read_xml_to_array(path_name, MEANS, STDS,
                                                                                        start_tempo, composer,
                                                                                        vel_pair)
     batch_x = torch.Tensor(test_x)
@@ -403,7 +403,7 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
     save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
     perf_worm.plot_performance_worm(output_features, save_name + '.png')
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
+    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid', part_names=part_names
                                                bool_pedal=args.boolPedal, disklavier=args.disklavier)
 
 
