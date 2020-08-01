@@ -403,7 +403,7 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
     save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
     perf_worm.plot_performance_worm(output_features, save_name + '.png')
-    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid', part_names=part_names
+    xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid', part_names=part_names,
                                                bool_pedal=args.boolPedal, disklavier=args.disklavier)
 
 
