@@ -46,7 +46,8 @@ def train(args,
     best_second_loss = float("inf")
     best_trill_loss = float("inf")
     start_epoch = 0
-
+    NUM_UPDATED = 0
+    
     if args.resumeTraining and not args.trainTrill:
         if os.path.isfile('prime_' + args.modelCode + args.resume):
             print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))

@@ -1,14 +1,8 @@
 import numpy as np
 import argparse
+import torch
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-mode", "--sessMode", type=str,
-                    default='train', help="train or test or testAll")
-parser.add_argument("-path", "--testPath", type=str,
-                    default="./test_pieces/bps_5_1/", help="folder path of test mat")
-parser.add_argument("-tempo", "--startTempo", type=int,
-                    default=0, help="start tempo. zero to use xml first tempo")
+from .constants import *
 
 def scale_model_prediction_to_original(prediction, MEANS, STDS):
     for i in range(len(STDS)):
@@ -42,7 +36,7 @@ def scale_model_prediction_to_original(prediction, MEANS, STDS):
     return prediction
 
 
-def load_file_and_generate_performance(path_name, args, return_features=False):
+def load_file_and_generate_performance(model, path_name, args, hier_model=None, return_features=False):
     composer=args.composer
     z=args.latent
     start_tempo=args.startTempo 
@@ -117,3 +111,15 @@ def load_file_and_generate_performance(path_name, args, return_features=False):
     perf_worm.plot_performance_worm(output_features, save_name + '.png')
     xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid',
                                                bool_pedal=args.boolPedal, disklavier=args.disklavier)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-mode", "--sessMode", type=str,
+                        default='train', help="train or test or testAll")
+    parser.add_argument("-path", "--test_path", type=str,
+                        default="./test_pieces/bps_5_1/", help="folder path of test mat")
+    parser.add_argument("-tempo", "--startTempo", type=int,
+                        default=0, help="start tempo. zero to use xml first tempo")
+
+    model = load_model
+    load_file_and_generate_performance(args.test_path, args)
