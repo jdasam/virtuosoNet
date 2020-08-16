@@ -23,8 +23,6 @@ def get_parser():
     parser.add_argument("--hier_meas", default=False)   
     
     # training parameters
-    parser.add_argument("-vel", "--velocity", type=str,
-                        default='50,65', help="mean velocity of piano and forte")
     parser.add_argument("--num_key_augmentation", type=int, default=1)
     
     # dist parallel options
@@ -33,13 +31,14 @@ def get_parser():
     parser.add_argument("--master")
 
     # save options
-    parser.add_argument("--checkopints", 
+    parser.add_argument("--checkpoints", 
                         type=Path,
                         default=Path('checkpoints'),
                         help='folder to store checkpoints')    
     parser.add_argument("--evals",
-                        type='Path',
-                        default=Path('evals'))
+                        type=Path,
+                        default=Path('evals')
+                        )
     parser.add_argument("--save",
                         action="store_true",)
     parser.add_argument("--logs",
