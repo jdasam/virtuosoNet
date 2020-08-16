@@ -1,8 +1,8 @@
 import pickle
-import model_constants as cons
+from . import model_constants as cons
 
 class NetParams:
-    class Param:
+    class Param:    
         def __init__(self):
             self.size = 0
             self.layer = 1

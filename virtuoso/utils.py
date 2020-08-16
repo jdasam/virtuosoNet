@@ -1,7 +1,17 @@
-import th as th
+import torch as th
 import shutil
-import model_constants as const
+from . import model_constants as const
 from . import data_process as dp
+from omegaconf import OmegaConf
+import yaml
+
+
+
+def read_model_setting(yml_path):
+    with open(yml_path, 'r') as f:
+        yaml_obj = yaml.load(f, Loader=yaml.FullLoader)
+    config = OmegaConf.create(yaml_obj)
+    return config
 
 
 def save_checkpoint(state, is_best, filename='isgn', model_name='prime'):

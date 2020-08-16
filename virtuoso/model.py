@@ -6,7 +6,8 @@ from torch.autograd import Variable
 import random
 import numpy
 import math
-import model_constants as cons
+
+from . import model_constants as cons
 
 
 DROP_OUT = 0.1
