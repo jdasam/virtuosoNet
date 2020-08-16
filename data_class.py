@@ -396,7 +396,7 @@ class PerformData:
 
 
 class ScoreData:
-    def __init__(self, xml_path, score_midi_path):
+    def __init__(self, xml_path, score_midi_path, read_xml_only=False):
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
@@ -411,8 +411,9 @@ class ScoreData:
         self.section_positions = []
 
         self._load_score_xml(xml_path)
-        self._load_or_make_score_midi(score_midi_path)
-        self._match_score_xml_to_midi()
+        if not read_xml_only:
+            self._load_or_make_score_midi(score_midi_path)
+            self._match_score_xml_to_midi()
 
     def __str__(self):
         return str(self.__dict__)
