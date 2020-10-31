@@ -3,6 +3,8 @@ from pathlib import Path
 
 def get_parser():
     parser = argparse.ArgumentParser("virtuosonet")
+    parser.add_argument("-yml", "--yml_path", type=str,
+                        default="isgn_param.yml", help="yml file path")
     parser.add_argument("-data", "--dataName", type=str,
                         default="training_data", help="dat file name")
     parser.add_argument("--resume", type=str,
@@ -24,6 +26,8 @@ def get_parser():
     
     # training parameters
     parser.add_argument("--num_key_augmentation", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=42)
+
     
     # dist parallel options
     parser.add_argument("--rank", default=0, type=int)
@@ -85,7 +89,7 @@ def get_parser():
     # environment options
     parser.add_argument("-dev", "--device", type=int,
                         default=1, help="cuda device number")
-    parser.add_argument("-code", "--modelCode", type=str,
+    parser.add_argument("-code", "--model_code", type=str,
                         default='isgn', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,
                         default='trill_default', help="code name for loading trill model")
@@ -94,7 +98,7 @@ def get_parser():
     parser.add_argument("--latent", type=float, default=0, help='initial_z value')
     parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (
         str(x).lower() == 'true'), help='make pedal value zero under threshold')
-    parser.add_argument("-reTrain", "--resumeTraining", default=False, type=lambda x: (
+    parser.add_argument("-reTrain", "--resume_training", default=False, type=lambda x: (
         str(x).lower() == 'true'), help='resume training after loading model')
     parser.add_argument("-perf", "--perfName", default='Anger_sub1',
                         type=str, help='resume training after loading model')

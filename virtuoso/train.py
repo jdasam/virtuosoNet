@@ -14,7 +14,7 @@ from . import data_process as dp  # maybe confuse with dynamic programming?
 from . import graph
 from . import utils
 from . import model_constants as const
-from . import nnModel
+from . import model
 from . import dataset
 from . import inference
 
@@ -26,6 +26,25 @@ class TraningSample():
     def __init__(self, index):
         self.index = index
         self.slice_indexes = None
+
+def load_model(model, optimizer, device, args):
+    # if args.resumeTraining and not args.trainTrill:
+    if os.path.isfile('prime_' + args.modelCode + args.resume):
+        print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
+        # model_codes = ['prime', 'trill']
+        filename = 'prime_' + args.modelCode + args.resume
+        checkpoint = th.load(filename,  map_location=device)
+        best_valid_loss = checkpoint['best_valid_loss']
+        model.load_state_dict(checkpoint['state_dict'])
+        model.device = device
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        NUM_UPDATED = checkpoint['training_step']
+        print("=> loaded checkpoint '{}' (epoch {})"
+                .format(filename, checkpoint['epoch']))
+        start_epoch = checkpoint['epoch'] - 1
+        best_prime_loss = checkpoint['best_valid_loss']
+        print('Best valid loss was ', best_prime_loss)
+
 
 def train(args,
           model,
@@ -402,7 +421,7 @@ def test(args,
 
         if args.in_hier:
             HIER_model_PARAM = param.load_parameters(args.hierCode + '_param')
-            HIER_model = nnModel.HAN_Integrated(HIER_model_PARAM, device, True).to(device)
+            HIER_model = model.HAN_Integrated(HIER_model_PARAM, device, True).to(device)
             filename = 'prime_' + args.hierCode + args.resume
             checkpoint = th.load(filename, map_location=device)
             HIER_model.load_state_dict(checkpoint['state_dict'])

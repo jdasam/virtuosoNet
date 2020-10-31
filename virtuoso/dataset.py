@@ -219,7 +219,7 @@ def read_xml_to_array(path_name, means, stds, start_tempo, composer_name, vel_st
 
 class PerformDataset():
     def __init__(self, data_path, split, graph=False, samples=None):
-
+        return
     def __len__(self):
         return NumberOfPieces
 
@@ -228,7 +228,7 @@ class PerformDataset():
 
 class YamahaDataset(PerformDataset):
     def __init__(self, data_path, split, graph=False, samples=None):
-
+        return
     def __getitem__(self, index):
         return input_features, output_features, score_graph
 
@@ -237,3 +237,4 @@ class YamahaDataset(PerformDataset):
     
     def files(self):
         # load yamaha set data utilize pyScoreParser.PieceData
+        return NotImplementedError
