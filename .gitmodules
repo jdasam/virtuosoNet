@@ -1,8 +1,0 @@
-[submodule "musicxml_parser"]
-	path = musicxml_parser
-	url = https://github.com/jdasam/musicxml_parser.git
-	branch = refactoring
-[submodule "midi_utils"]
-	path = midi_utils
-	url = https://github.com/mac-marg-pianist/midi_utils.git
-	branch = continuos_pedal
