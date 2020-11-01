@@ -3,13 +3,13 @@ from pathlib import Path
 
 from torch import distributed, nn
 from torch.nn.parallel.distributed import DistributedDataParallel
-import torch as th
+import torch
 
 from .parser import get_parser, get_name
 from . import model as modelzoo
 from . import model_parameters as param
 from . import utils
-from ..pyScoreParser import StandardDataset
+from . train import train
 
 def main():
     parser = get_parser()
@@ -28,13 +28,13 @@ def main():
 
     if args.device is None:
         device = "cpu"
-        if th.cuda.is_available():
+        if torch.cuda.is_available():
             device = "cuda"
     else:
         device = args.device
 
     config = utils.read_model_setting(args.yml_path)
-    th.manual_seed(args.seed)
+    torch.manual_seed(args.seed)
     # Prevents too many threads to be started when running `museval` as it can be quite
     # inefficient on NUMA architectures.
     # os.environ["OMP_NUM_THREADS"] = "1"
@@ -44,7 +44,7 @@ def main():
         if device != "cuda" and args.rank == 0:
             print("Error: distributed training is only available with cuda device", file=sys.stderr)
             sys.exit(1)
-        th.cuda.set_device(args.rank % th.cuda.device_count())
+        torch.cuda.set_device(args.rank % torch.cuda.device_count())
         distributed.init_process_group(backend="nccl",
                                        init_method="tcp://" + args.master,
                                        rank=args.rank,
@@ -90,20 +90,30 @@ def main():
         model = modelzoo.TrillRNN(net_param, device).to(device)
     else:
         print('Error: Unclassified model code')
-        # Model = modelzoo.HAN_VAE(NET_PARAM, device, False).to(device)
 
-    optimizer = th.optim.Adam(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
-    
-    checkpoint = args.checkpoints / f"{name}.th"
-    checkpoint_tmp = args.checkpoints / f"{name}.th.tmp"
+    checkpoint = args.checkpoints / f"{name}.pt"
+    checkpoint_tmp = args.checkpoints / f"{name}.pt.tmp"
     if args.resume_training and checkpoint.exists():
         checkpoint.unlink()
 
     criterion = utils.make_criterion_func(config.train_params.loss_type, device)
 
-    # load dataset
+    #TODO add bins information
+    bins = []
+
+
+    if args.session_mode == "train":
+        train(args,
+            model,
+            device,
+            optimizer, 
+            args.num_epochs, 
+            bins, 
+            args.time_steps,
+            criterion, 
+            NUM_INPUT, 
+            NUM_OUTPUT)
 
     
 

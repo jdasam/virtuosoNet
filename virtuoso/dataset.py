@@ -1,8 +1,48 @@
+from virtuoso.pyScoreParser.data_class import DataSet
 import numpy as np
-import torch as th
+import torch
 import pickle
 
-from pyScoreParser import xml_matching
+from .pyScoreParser import xml_matching
+from pathlib import Path
+from .utils import load_dat
+from .data_process import make_slicing_indexes_by_measure
+
+class ScorePerformDataset:
+    def __init__(self, path, type):
+        # type = one of ['train', 'valid', 'test']
+        path = Path(path)
+        self.path = path / type
+        self.stat = load_dat(path/"stat.dat")
+
+        self.data_paths = list(self.path.glob("*.dat"))
+        self.data = [load_dat(x) for x in self.data_paths]
+        # self.loaded = True
+        # else:
+        #     self.loaded = False
+        self.make_slice_for_pieces()
+
+    def make_slice_for_pieces(self):
+        for data in self.data:
+            data_size = len(data['input_data'])
+            measure_numbers = data['note_location'].measure
+            slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
+
+    
+    def __getitem__(self, index):
+        if self.loaded:
+            return self.data[index]
+        else:
+            return load_dat(self.data_paths[index])
+    def __len__(self):
+        return len(self.data_paths)
+
+class FeatureCollate:
+    def __init__(self):
+        return
+    
+    def __call__(self, batch):
+        return
 
 
 def load_file_and_encode_style(path, perf_name, composer_name):

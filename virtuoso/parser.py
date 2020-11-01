@@ -3,10 +3,12 @@ from pathlib import Path
 
 def get_parser():
     parser = argparse.ArgumentParser("virtuosonet")
+    parser.add_argument("-sess", "--session_mode", type=str,
+                        default="train", help="train or inference")
     parser.add_argument("-yml", "--yml_path", type=str,
                         default="isgn_param.yml", help="yml file path")
-    parser.add_argument("-data", "--dataName", type=str,
-                        default="training_data", help="dat file name")
+    parser.add_argument("-data", "--data_path", type=str,
+                        default="dataset_test", help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
 
@@ -51,6 +53,10 @@ def get_parser():
                         )
     
     # training option
+    parser.add_argument("--num_epochs",
+                    type=int,
+                    default=100
+                    )
     parser.add_argument("--lr",
                         type=float,
                         default=3e-4
@@ -88,7 +94,9 @@ def get_parser():
     
     # environment options
     parser.add_argument("-dev", "--device", type=int,
-                        default=1, help="cuda device number")
+                        default=0, help="cuda device number")
+    parser.add_argument("-dev", "--num_workers", type=int,
+                        default=2, help="num workers for dataloader")
     parser.add_argument("-code", "--model_code", type=str,
                         default='isgn', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,
