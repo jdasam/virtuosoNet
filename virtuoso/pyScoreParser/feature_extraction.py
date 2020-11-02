@@ -35,14 +35,18 @@ class ScoreExtractor:
 
     def get_note_location(self, piece_data):
         # TODO: need check up
-        locations = []
-        for _, note in enumerate(piece_data.xml_notes):
-            measure_index = note.measure_number - 1
-            locations.append(
-                feature_utils.NoteLocation(beat=utils.binary_index(piece_data.beat_positions, note.note_duration.xml_position),
-                             measure=measure_index,
-                             voice=note.voice,
-                             section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
+        beat_indices = [utils.binary_index(piece_data.beat_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
+        measure_indices = [x.measure_number - 1 for x in piece_data.xml_notes]
+        voice_indices =  [x.voice for x in piece_data.xml_notes]
+        section_indices = [utils.binary_index(piece_data.section_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
+        locations = {'beat': beat_indices, 'measure': measure_indices, 'voice':voice_indices, 'section':section_indices}
+        # for _, note in enumerate(piece_data.xml_notes):
+        #     measure_index = note.measure_number - 1
+        #     locations.append(
+        #         feature_utils.NoteLocation(beat=utils.binary_index(piece_data.beat_positions, note.note_duration.xml_position),
+        #                      measure=measure_index,
+        #                      voice=note.voice,
+        #                      section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
         locations = feature_utils.make_index_continuous(locations)
         return locations
 
