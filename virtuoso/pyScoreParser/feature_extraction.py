@@ -39,6 +39,8 @@ class ScoreExtractor:
         measure_indices = [x.measure_number - 1 for x in piece_data.xml_notes]
         voice_indices =  [x.voice for x in piece_data.xml_notes]
         section_indices = [utils.binary_index(piece_data.section_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
+        beat_indices = feature_utils.make_index_continuous(beat_indices)
+        measure_indices = feature_utils.make_index_continuous(measure_indices)
         locations = {'beat': beat_indices, 'measure': measure_indices, 'voice':voice_indices, 'section':section_indices}
         # for _, note in enumerate(piece_data.xml_notes):
         #     measure_index = note.measure_number - 1
@@ -47,7 +49,7 @@ class ScoreExtractor:
         #                      measure=measure_index,
         #                      voice=note.voice,
         #                      section=utils.binary_index(piece_data.section_positions, note.note_duration.xml_position)))
-        locations = feature_utils.make_index_continuous(locations)
+        # locations = feature_utils.make_index_continuous(locations)
         return locations
 
     def get_qpm_primo(self, piece_data):

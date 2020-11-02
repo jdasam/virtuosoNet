@@ -196,23 +196,28 @@ def make_index_continuous(note_locations):
         >>> features['note_location'] = feature_utils.make_index_continuous(features['note_location'])
     """
     prev_beat = 0
-    prev_measure = 0
-
     beat_compensate = 0
-    measure_compensate = 0
 
-    for loc_data in note_locations:
-        if loc_data.beat - prev_beat > 1:
-            beat_compensate -= (loc_data.beat - prev_beat) - 1
-        if loc_data.measure - prev_measure > 1:
-            measure_compensate -= (loc_data.measure -
-                                   prev_measure) - 1
+    for beat_idx in note_locations:
+        if beat_idx - prev_beat > 1:
+            beat_compensate -= (beat_idx - prev_beat) - 1
+        prev_beat = beat_idx
+        beat_idx += beat_compensate
 
-        prev_beat = loc_data.beat
-        prev_measure = loc_data.measure
+    # prev_measure = 0
+    # measure_compensate = 0
+    # for loc_data in note_locations:
+    #     if loc_data.beat - prev_beat > 1:
+    #         beat_compensate -= (loc_data.beat - prev_beat) - 1
+    #     if loc_data.measure - prev_measure > 1:
+    #         measure_compensate -= (loc_data.measure -
+    #                                prev_measure) - 1
 
-        loc_data.beat += beat_compensate
-        loc_data.measure += measure_compensate
+    #     prev_beat = loc_data.beat
+    #     prev_measure = loc_data.measure
+
+    #     loc_data.beat += beat_compensate
+    #     loc_data.measure += measure_compensate
     return note_locations
 
 
