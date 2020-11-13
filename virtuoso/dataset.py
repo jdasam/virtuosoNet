@@ -3,46 +3,97 @@ import numpy as np
 import torch
 import pickle
 
-from .pyScoreParser import xml_matching
+# from .pyScoreParser import xml_matching
 from pathlib import Path
 from .utils import load_dat
-from .data_process import make_slicing_indexes_by_measure
+from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number
+from . import graph
 
 class ScorePerformDataset:
-    def __init__(self, path, type):
+    def __init__(self, path, type, len_slice, graph_keys, hier_type=[], device='cuda'):
         # type = one of ['train', 'valid', 'test']
         path = Path(path)
         self.path = path / type
         self.stat = load_dat(path/"stat.dat")
+        self.device = device
 
         self.data_paths = list(self.path.glob("*.dat"))
         self.data = [load_dat(x) for x in self.data_paths]
-        # self.loaded = True
-        # else:
-        #     self.loaded = False
-        self.make_slice_for_pieces()
+        self.len_slice = len_slice
+        if len(graph_keys)>0:
+            self.is_graph = True
+            self.graph_keys = graph_keys
+        else:
+            self.is_graph = False
+        hier_keys = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas']
+        for key in hier_keys:
+            if key in hier_type:
+                setattr(self, key, True)
+            else:
+                setattr(self, key, False)
 
-    def make_slice_for_pieces(self):
-        for data in self.data:
+        self.update_slice_info()
+
+
+    def update_slice_info(self):
+        self.slice_info = []
+        for i, data in enumerate(self.data):
             data_size = len(data['input_data'])
-            measure_numbers = data['note_location'].measure
-            slice_indexes = make_slicing_indexes_by_measure(data_size, measure_numbers, steps=time_steps)
-
+            measure_numbers = data['note_location']['measure']
+            if self.is_hier and self.hier_meas:
+                slice_indices = make_slice_with_same_measure_number(data_size, measure_numbers, measure_steps=self.len_slice)
+            else:
+                slice_indices = make_slicing_indexes_by_measure(data_size, measure_numbers, steps=self.len_slice)
+            for idx in slice_indices:
+                self.slice_info.append((i, idx))
     
     def __getitem__(self, index):
-        if self.loaded:
-            return self.data[index]
+        idx, sl_idx = self.slice_info[index]
+        data = self.data[idx]
+        batch_start, batch_end = sl_idx
+
+        batch_x = torch.Tensor(data['input_data'][batch_start:batch_end])
+        if self.in_hier:
+            if self.hier_meas:
+                batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
+        if self.is_hier:
+            if self.hier_meas:
+                batch_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
         else:
-            return load_dat(self.data_paths[index])
+            batch_y = torch.Tensor(data['output_data'][batch_start:batch_end])
+        note_locations = {
+            'beat': torch.Tensor(data['note_location']['beat'][batch_start:batch_end]).type(torch.int32),
+            'measure': torch.Tensor(data['note_location']['measure'][batch_start:batch_end]).type(torch.int32),
+            'section': torch.Tensor(data['note_location']['section'][batch_start:batch_end]).type(torch.int32),
+            'voice': torch.Tensor(data['note_location']['voice'][batch_start:batch_end]).type(torch.int32),
+        }
+        align_matched = torch.Tensor(data['align_matched'][batch_start:batch_end])
+        articulation_loss_weight = torch.Tensor(data['articulation_loss_weight'][batch_start:batch_end])
+        if self.is_graph:
+            graphs = graph.edges_to_matrix_short(data['graph'], sl_idx, self.graph_keys)
+        else:
+            graphs = None
+        return batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs
+
     def __len__(self):
-        return len(self.data_paths)
+        return len(self.slice_info)
+
 
 class FeatureCollate:
-    def __init__(self):
-        return
-    
+    # def __init__(self, device='cuda'):
+    #     self.device= device
     def __call__(self, batch):
-        return
+        if len(batch) == 1:
+            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch[0]
+            return (batch_x.unsqueeze(0), 
+                    batch_y.unsqueeze(0), 
+                    note_locations, 
+                    align_matched.unsqueeze(0).unsqueeze(-1), 
+                    pedal_status.unsqueeze(0).unsqueeze(-1), 
+                    edges
+            )
+        else:
+            return batch
 
 
 def load_file_and_encode_style(path, perf_name, composer_name):

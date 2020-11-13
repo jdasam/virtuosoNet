@@ -1,18 +1,18 @@
 import numpy as np
 import torch as th
 
+GRAPH_KEYS=[]
+N_EDGE_TYPE=0
 
 
-def edges_to_matrix(edges, num_notes):
-    if not MODEL.is_graph:
-        return None
-    num_keywords = len(GRAPH_KEYS)
-    matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
+def edges_to_matrix(edges, num_notes, graph_keys):
+    num_keywords = len(graph_keys)
+    matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
 
     for edg in edges:
-        if edg[2] not in GRAPH_KEYS:
+        if edg[2] not in graph_keys:
             continue
-        edge_type = GRAPH_KEYS.index(edg[2])
+        edge_type = graph_keys.index(edg[2])
         matrix[edge_type, edg[0], edg[1]] = 1
         if edge_type != 0:
             matrix[edge_type+num_keywords, edg[1], edg[0]] = 1
@@ -24,23 +24,19 @@ def edges_to_matrix(edges, num_notes):
     return matrix
 
 
-def edges_to_matrix_short(edges, slice_index):
-    if not MODEL.is_graph:
-        return None
-    num_keywords = len(GRAPH_KEYS)
+def edges_to_matrix_short(edges, slice_index, graph_keys):
+    num_keywords = len(graph_keys)
     num_notes = slice_index[1] - slice_index[0]
-    matrix = np.zeros((N_EDGE_TYPE, num_notes, num_notes))
-    start_edge_index = xml_matching.binary_index_for_edge(
-        edges, slice_index[0])
-    end_edge_index = xml_matching.binary_index_for_edge(
-        edges, slice_index[1] + 1)
+    matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
+    start_edge_index = binary_index_for_edge(edges, slice_index[0])
+    end_edge_index = binary_index_for_edge(edges, slice_index[1] + 1)
     for i in range(start_edge_index, end_edge_index):
         edg = edges[i]
-        if edg[2] not in GRAPH_KEYS:
+        if edg[2] not in graph_keys:
             continue
         if edg[1] >= slice_index[1]:
             continue
-        edge_type = GRAPH_KEYS.index(edg[2])
+        edge_type = graph_keys.index(edg[2])
         matrix[edge_type, edg[0]-slice_index[0], edg[1]-slice_index[0]] = 1
         if edge_type != 0:
             matrix[edge_type+num_keywords, edg[1] -
@@ -74,3 +70,34 @@ def edges_to_sparse_tensor(edges):
     matrix = th.sparse.FloatTensor(edge_list.t(), edge_type_list)
 
     return matrix
+
+def binary_index_for_edge(alist, item):
+    first = 0
+    last = len(alist) - 1
+    midpoint = 0
+
+    if (item < alist[first][0]):
+        return 0
+
+    while first < last:
+        midpoint = (first + last) // 2
+        currentElement = alist[midpoint][0]
+
+        if currentElement < item:
+            if alist[midpoint + 1][0] > item:
+                return midpoint
+            else:
+                first = midpoint + 1
+            if first == last and alist[last][0] > item:
+                return midpoint
+        elif currentElement > item:
+            last = midpoint - 1
+        else:
+            if midpoint + 1 == len(alist):
+                return midpoint
+            while midpoint >= 1 and alist[midpoint - 1][0] == item:
+                midpoint -= 1
+                if midpoint == 0:
+                    return midpoint
+            return midpoint
+    return last

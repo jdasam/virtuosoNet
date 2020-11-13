@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from torch import distributed, nn
@@ -9,21 +10,20 @@ from .parser import get_parser, get_name
 from . import model as modelzoo
 from . import model_parameters as param
 from . import utils
-from . train import train
+from .train import train
+from .inference import inference
 
 def main():
     parser = get_parser()
+    torch.manual_seed(626)
     # random.seed(0)
     args = parser.parse_args()
-    name = get_name(parser, args)    
+    name = get_name(parser, args)  + "_" + datetime.now().strftime('%y%m%d-%H%M%S')
     print(f"Experiment {name}")
-
-    eval_folder = args.evals / name
-    eval_folder.mkdir(exist_ok=True, parents=True)
-    args.logs.mkdir(exist_ok=True)
-    metrics_path = args.logs / f"{name}.txt"
-    eval_folder.mkdir(exist_ok=True, parents=True)
-    args.checkpoints.mkdir(exist_ok=True, parents=True)
+    # eval_folder = args.evals / name
+    # eval_folder.mkdir(exist_ok=True, parents=True)
+    # metrics_path = args.logs / f"{name}.txt"
+    # eval_folder.mkdir(exist_ok=True, parents=True)
     # args.models.mkdir(exist_ok=True, parents=True)
 
     if args.device is None:
@@ -50,12 +50,11 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
-    # Perhaps it can be handle in graph.py? 
-    # GRAPH_KEYS = ['onset', 'forward', 'melisma', 'rest']
-    # if args.slurEdge:
-    #     GRAPH_KEYS.append('slur')
-    # if args.voiceEdge:
-    #     GRAPH_KEYS.append('voice')
+    args.graph_keys = ['onset', 'forward', 'melisma', 'rest']
+    if args.slurEdge:
+        args.graph_keys.append('slur')
+    if args.voiceEdge:
+        args.graph_keys.append('voice')
     
     net_param = config.nn_params
 
@@ -91,30 +90,27 @@ def main():
     else:
         print('Error: Unclassified model code')
 
-    
-    checkpoint = args.checkpoints / f"{name}.pt"
-    checkpoint_tmp = args.checkpoints / f"{name}.pt.tmp"
-    if args.resume_training and checkpoint.exists():
-        checkpoint.unlink()
+    # if not (args.session_mode =="train" and args.resume_training):
+    #     checkpoint = torch.load(args.checkpoint)
+    # checkpoint = args.checkpoints / f"{name}.pt"
+    # checkpoint_tmp = args.checkpoints / f"{name}.pt.tmp"
+    # if args.resume_training and checkpoint.exists():
+    #     checkpoint.unlink()
 
     criterion = utils.make_criterion_func(config.train_params.loss_type, device)
-
-    #TODO add bins information
-    bins = []
 
 
     if args.session_mode == "train":
         train(args,
             model,
             device,
-            optimizer, 
             args.num_epochs, 
-            bins, 
-            args.time_steps,
-            criterion, 
-            NUM_INPUT, 
-            NUM_OUTPUT)
-
+            criterion,
+            name,
+            )
+    elif args.session_mode == "inference":
+        stats= utils.load_dat(args.data_path / 'stat.dat')
+        inference(args, model, stats, config.input_feature_keys, device)
     
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ from . import model_constants as const
 from . import data_process as dp
 from omegaconf import OmegaConf
 import yaml
+import _pickle as pickle
 
 
 def read_model_setting(yml_path):
@@ -11,6 +12,146 @@ def read_model_setting(yml_path):
         yaml_obj = yaml.load(f, Loader=yaml.FullLoader)
     config = OmegaConf.create(yaml_obj)
     return config
+
+def load_dat(path):
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+def load_weight(model, checkpoint_path):
+    checkpoint = th.load(checkpoint_path,  map_location='cpu')
+    model.load_state_dict(checkpoint['state_dict'])
+    print("=> loaded checkpoint '{}' (epoch {})"
+            .format(checkpoint_path, checkpoint['epoch']))
+    return model
+
+class LossCalculator:
+    def __init__(self, criterion, args, logger):
+        self.criterion = criterion
+        self.logger = logger
+
+        self.delta = args.delta_loss
+        self.delta_weight = args.delta_weight
+        self.is_hier = args.is_hier
+        self.hier_meas = args.hier_meas
+        self.hier_beat = args.hier_beat
+        self.is_trill = args.is_trill
+        self.intermediate_loss = args.intermediate_loss
+        self.tempo_loss_in_note = args.tempo_loss_in_note
+
+        self.tempo_idx = 0
+        self.vel_idx = 1
+        self.dev_idx = 2
+        self.pedal_idx = 3
+
+    def cal_loss_by_term(self, out, target, note_locations, align_matched, pedal_status):
+        # if self.tempo_loss_in_note:
+        #     tempo_loss = self.criterion(out[:, :, 0:1],
+        #                         target[:, :, 0:1], align_matched)
+        # else:
+        tempo_loss = self.cal_tempo_loss_in_beat(out, target, note_locations['beat'])
+        vel_loss = self.criterion(out[:, :, self.vel_idx:self.dev_idx],
+                            target[:, :, self.vel_idx:self.dev_idx], align_matched)
+        dev_loss = self.criterion(out[:, :, self.dev_idx:self.pedal_idx],
+                            target[:, :, self.dev_idx:self.pedal_idx], align_matched)
+        articul_loss = self.criterion(out[:, :, self.pedal_idx:self.pedal_idx+1],
+                                target[:, :, self.pedal_idx:self.pedal_idx+1], pedal_status)
+        pedal_loss = self.criterion(out[:, :, self.pedal_idx+1:], target[:, :, self.pedal_idx+1:],
+                            align_matched)
+        total_loss = (tempo_loss + vel_loss + dev_loss + articul_loss + pedal_loss * 7) / 11
+        loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': dev_loss.item(), 'articul': articul_loss.item(), 'pedal': pedal_loss.item()}
+        return total_loss, loss_dict
+         
+
+    def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
+        previous_beat = -1
+
+        num_notes = pred_x.shape[1]
+        start_beat = beat_indices[0]
+        num_beats = beat_indices[num_notes-1] - start_beat + 1
+
+        pred_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
+        true_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
+        for i in range(num_notes):
+            current_beat = beat_indices[i]
+            if current_beat > previous_beat:
+                previous_beat = current_beat
+                if self.tempo_loss_in_note:
+                    for j in range(i, num_notes):
+                        if beat_indices[j] > current_beat:
+                            break
+                    if not i == j:
+                        pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, self.tempo_idx])
+                        true_beat_tempo[current_beat - start_beat] = th.mean(target[0, i:j, self.tempo_idx])
+                else:
+                    pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
+                    true_beat_tempo[current_beat-start_beat] = target[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
+
+        tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo)
+        if self.delta and pred_beat_tempo.shape[0] > 1:
+            prediction_delta = pred_beat_tempo[1:] - pred_beat_tempo[:-1]
+            true_delta = true_beat_tempo[1:] - true_beat_tempo[:-1]
+            delta_loss = self.criterion(prediction_delta, true_delta)
+
+            tempo_loss = (tempo_loss + delta_loss * self.delta_weight) / (1 + self.delta_weight)
+
+        return tempo_loss
+
+    def __call__(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
+        if self.is_hier:
+            if self.hier_meas:
+                hierarchy_numbers = note_locations['measure']
+            elif self.hier_beat:
+                hierarchy_numbers = note_locations['beat']
+            tempo_in_hierarchy = note_tempo_infos_to_beat(target, hierarchy_numbers, 0)
+            dynamics_in_hierarchy = note_tempo_infos_to_beat(target, hierarchy_numbers, 1)
+            tempo_loss = self.criterion(output[:, :, 0:1], tempo_in_hierarchy)
+            vel_loss = self.criterion(output[:, :, 1:2], dynamics_in_hierarchy)
+            if self.delta and output.shape[1] > 1:
+                vel_out_delta = output[:, 1:, 1:2] - output[:, :-1, 1:2]
+                vel_true_delta = dynamics_in_hierarchy[:,1:, :] - dynamics_in_hierarchy[:, :-1, :]
+
+                vel_loss += self.criterion(vel_out_delta, vel_true_delta) * self.delta_weight
+                vel_loss /= 1 + self.delta_weight
+            total_loss = tempo_loss + vel_loss
+            loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': th.zeros(1).item(), 'articul': th.zeros(1).item(), 'pedal': th.zeros(1).item()}
+        # elif self.is_trill:
+        #     trill_bool = batch_x[:, :,
+        #                         is_trill_index_concated:is_trill_index_concated + 1]
+        #     if th.sum(trill_bool) > 0:
+        #         total_loss = criterion(outputs, batch_y, trill_bool)
+        #     else:
+        #         return th.zeros(1), th.zeros(1), th.zeros(1),  th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1)
+        else:
+            if self.intermediate_loss:
+                total_loss = th.zeros(1).to(output.device)
+                # for out in total_out_list:
+                for out in total_out_list:
+                    total_l, loss_dict = self.cal_loss_by_term(out, target, note_locations, align_matched, pedal_status)
+                    total_loss += total_l
+                total_loss /= len(total_out_list)
+            else:
+                total_loss, loss_dict = self.cal_loss_by_term(output, target, note_locations, align_matched, pedal_status)
+        return total_loss, loss_dict
+
+
+def get_mean_of_loss_dict(loss_dict_list):
+    output = {}
+    for key in loss_dict_list[0].keys():
+        output[key] = sum([x[key] for x in loss_dict_list]) / len(loss_dict_list)
+    return output
+
+def note_tempo_infos_to_beat(y, beat_numbers, index=0):
+    beat_tempos = []
+    num_notes = y.size(1)
+    prev_beat = -1
+    for i in range(num_notes):
+        cur_beat = beat_numbers[i]
+        if cur_beat > prev_beat:
+            beat_tempos.append(y[0,i,index])
+            prev_beat = cur_beat
+    num_beats = len(beat_tempos)
+    beat_tempos = th.stack(beat_tempos).view(1,num_beats,-1)
+    return beat_tempos
 
 def make_criterion_func(loss_type, device):
     if loss_type == 'MSE':
@@ -41,11 +182,11 @@ def make_criterion_func(loss_type, device):
     return criterion
 
 
-def save_checkpoint(state, is_best, filename='isgn', model_name='prime'):
-    save_name = model_name + '_' + filename + '_checkpoint.pth.tar'
+def save_checkpoint(state, is_best):
+    save_name = 'checkpoint_last.pt'
     th.save(state, save_name)
     if is_best:
-        best_name = model_name + '_' + filename + '_best.pth.tar'
+        best_name = 'checkpoint_best.pt'
         shutil.copyfile(save_name, best_name)
 
 
@@ -91,107 +232,20 @@ def run_model_in_steps(input, input_y, args, edges, note_locations, model, devic
         return outputs, total_z
 
 
-def batch_time_step_run(data, model, batch_size):
-    batch_start, batch_end = training_data['slice_idx']
-    batch_x, batch_y = handle_data_in_tensor(
-        data['x'][batch_start:batch_end], data['y'][batch_start:batch_end])
+def batch_time_step_run(data, model, loss_calculator, optimizer, kld_weight):
+    batch_x, batch_y, note_locations, align_matched, pedal_status, edges = data
 
-    batch_x = batch_x.view((batch_size, -1, NUM_INPUT))
-    batch_y = batch_y.view((batch_size, -1, NUM_OUTPUT))
-
-    align_matched = th.Tensor(data['align_matched'][batch_start:batch_end]).view(
-        (batch_size, -1, 1)).to(DEVICE)
-    pedal_status = th.Tensor(data['pedal_status'][batch_start:batch_end]).view(
-        (batch_size, -1, 1)).to(DEVICE)
-
-    if training_data['graphs'] is not None:
-        edges = training_data['graphs']
-        if edges.shape[1] == batch_end - batch_start:
-            edges = edges.to(DEVICE)
-        else:
-            edges = edges[:, batch_start:batch_end,
-                          batch_start:batch_end].to(DEVICE)
-    else:
-        edges = training_data['graphs']
-
-    prime_batch_x = batch_x
-    if HIERARCHY:
-        prime_batch_y = batch_y
-    else:
-        prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
+    # prime_batch_x = batch_x
+    # if HIERARCHY:
+    #     prime_batch_y = batch_y
+    # else:
+    #     prime_batch_y = batch_y[:, :, 0:NUM_PRIME_PARAM]
 
     model_train = model.train()
     outputs, perform_mu, perform_var, total_out_list \
-        = model_train(prime_batch_x, prime_batch_y, edges, note_locations, batch_start)
+        = model_train(batch_x, batch_y, edges, note_locations)
 
-    if HIERARCHY:
-        if HIER_MEAS:
-            hierarchy_numbers = [x.measure for x in note_locations]
-        elif HIER_BEAT:
-            hierarchy_numbers = [x.beat for x in note_locations]
-        tempo_in_hierarchy = MODEL.note_tempo_infos_to_beat(
-            batch_y, hierarchy_numbers, batch_start, 0)
-        dynamics_in_hierarchy = MODEL.note_tempo_infos_to_beat(
-            batch_y, hierarchy_numbers, batch_start, 1)
-        tempo_loss = criterion(outputs[:, :, 0:1], tempo_in_hierarchy)
-        vel_loss = criterion(outputs[:, :, 1:2], dynamics_in_hierarchy)
-        if args.deltaLoss and outputs.shape[1] > 1:
-            vel_out_delta = outputs[:, 1:, 1:2] - outputs[:, :-1, 1:2]
-            vel_true_delta = dynamics_in_hierarchy[:,
-                                                   1:, :] - dynamics_in_hierarchy[:, :-1, :]
-
-            vel_loss += criterion(vel_out_delta, vel_true_delta) * DELTA_WEIGHT
-            vel_loss /= 1 + DELTA_WEIGHT
-
-        total_loss = tempo_loss + vel_loss
-    elif TRILL:
-        trill_bool = batch_x[:, :,
-                             is_trill_index_concated:is_trill_index_concated + 1]
-        if th.sum(trill_bool) > 0:
-            total_loss = criterion(outputs, batch_y, trill_bool)
-        else:
-            return th.zeros(1), th.zeros(1), th.zeros(1),  th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1)
-
-    else:
-        if 'isgn' in args.modelCode and args.intermediateLoss:
-            total_loss = th.zeros(1).to(DEVICE)
-            for out in total_out_list:
-                if model.is_baseline:
-                    tempo_loss = criterion(out[:, :, 0:1],
-                                           prime_batch_y[:, :, 0:1], align_matched)
-                else:
-                    tempo_loss = cal_tempo_loss_in_beat(
-                        out, prime_batch_y, note_locations, batch_start)
-                vel_loss = criterion(out[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
-                                     prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
-                dev_loss = criterion(out[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
-                                     prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
-                articul_loss = criterion(out[:, :, PEDAL_PARAM_IDX:PEDAL_PARAM_IDX+1],
-                                         prime_batch_y[:, :, PEDAL_PARAM_IDX:PEDAL_PARAM_IDX+1], pedal_status)
-                pedal_loss = criterion(out[:, :, PEDAL_PARAM_IDX+1:], prime_batch_y[:, :, PEDAL_PARAM_IDX+1:],
-                                       align_matched)
-
-                total_loss += (tempo_loss + vel_loss + dev_loss +
-                               articul_loss + pedal_loss * 7) / 11
-            total_loss /= len(total_out_list)
-        else:
-            if model.is_baseline:
-                tempo_loss = criterion(outputs[:, :, 0:1],
-                                       prime_batch_y[:, :, 0:1], align_matched)
-            else:
-                tempo_loss = cal_tempo_loss_in_beat(
-                    outputs, prime_batch_y, note_locations, batch_start)
-            vel_loss = criterion(outputs[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX],
-                                 prime_batch_y[:, :, VEL_PARAM_IDX:DEV_PARAM_IDX], align_matched)
-            dev_loss = criterion(outputs[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX],
-                                 prime_batch_y[:, :, DEV_PARAM_IDX:PEDAL_PARAM_IDX], align_matched)
-            articul_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX:PEDAL_PARAM_IDX + 1],
-                                     prime_batch_y[:, :, PEDAL_PARAM_IDX:PEDAL_PARAM_IDX + 1], pedal_status)
-            pedal_loss = criterion(outputs[:, :, PEDAL_PARAM_IDX + 1:], prime_batch_y[:, :, PEDAL_PARAM_IDX + 1:],
-                                   align_matched)
-            total_loss = (tempo_loss + vel_loss + dev_loss +
-                          articul_loss + pedal_loss * 7) / 11
-
+    total_loss = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
     if isinstance(perform_mu, bool):
         perform_kld = th.zeros(1)
     else:
@@ -202,13 +256,14 @@ def batch_time_step_run(data, model, batch_size):
     total_loss.backward()
     th.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
     optimizer.step()
+    return total_loss
 
-    if HIERARCHY:
-        return tempo_loss, vel_loss, th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), perform_kld
-    elif TRILL:
-        return th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), total_loss, th.zeros(1)
-    else:
-        return tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, th.zeros(1), perform_kld
+    # if HIERARCHY:
+    #     return tempo_loss, vel_loss, th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), perform_kld
+    # elif TRILL:
+    #     return th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1), total_loss, th.zeros(1)
+    # else:
+    #     return tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, th.zeros(1), perform_kld
 
     # loss = criterion(outputs, batch_y)
     # tempo_loss = criterion(prime_outputs[:, :, 0], prime_batch_y[:, :, 0])
@@ -257,37 +312,3 @@ def handle_data_in_tensor(x, y, args, DEVICE, hierarchy_test=False):
 
     return x.to(DEVICE), y.to(DEVICE)
 
-
-def cal_tempo_loss_in_beat(pred_x, true_x, note_locations, start_index, qpm_idx, criterion, args, device):
-    previous_beat = -1
-
-    num_notes = pred_x.shape[1]
-    start_beat = note_locations[start_index].beat
-    num_beats = note_locations[num_notes+start_index-1].beat - start_beat + 1
-
-    pred_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(device)
-    true_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(device)
-    for i in range(num_notes):
-        current_beat = note_locations[i+start_index].beat
-        if current_beat > previous_beat:
-            previous_beat = current_beat
-            if 'baseline' in args.modelCode:
-                for j in range(i, num_notes):
-                    if note_locations[j+start_index].beat > current_beat:
-                        break
-                if not i == j:
-                    pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, qpm_idx])
-                    true_beat_tempo[current_beat - start_beat] = th.mean(true_x[0, i:j, qpm_idx])
-            else:
-                pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,qpm_idx:qpm_idx + const.NUM_TEMPO_PARAM]
-                true_beat_tempo[current_beat-start_beat] = true_x[0,i,qpm_idx:qpm_idx + const.NUM_TEMPO_PARAM]
-
-    tempo_loss = criterion(pred_beat_tempo, true_beat_tempo)
-    if args.deltaLoss and pred_beat_tempo.shape[0] > 1:
-        prediction_delta = pred_beat_tempo[1:] - pred_beat_tempo[:-1]
-        true_delta = true_beat_tempo[1:] - true_beat_tempo[:-1]
-        delta_loss = criterion(prediction_delta, true_delta)
-
-        tempo_loss = (tempo_loss + delta_loss * args.delta_weight) / (1 + args.delta_weight)
-
-    return tempo_loss
