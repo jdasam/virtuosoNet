@@ -183,7 +183,7 @@ class ScoreExtractor:
                 / note.state_fixed.divisions for note in piece_data.xml_notes]
 
     def get_composer_vec(self, piece_data):
-        return feature_utils.composer_name_to_vec(piece_data.meta.composer)
+        return feature_utils.composer_name_to_vec(piece_data.composer)
 
     def get_tempo_primo(self, piece_data):
         tempo_primo_word = dir_enc.direction_words_flatten(

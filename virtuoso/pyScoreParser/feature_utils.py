@@ -197,12 +197,14 @@ def make_index_continuous(note_locations):
     """
     prev_beat = 0
     beat_compensate = 0
+    output = []
 
     for beat_idx in note_locations:
         if beat_idx - prev_beat > 1:
             beat_compensate -= (beat_idx - prev_beat) - 1
         prev_beat = beat_idx
         beat_idx += beat_compensate
+        output.append(beat_idx)
 
     # prev_measure = 0
     # measure_compensate = 0
@@ -218,7 +220,7 @@ def make_index_continuous(note_locations):
 
     #     loc_data.beat += beat_compensate
     #     loc_data.measure += measure_compensate
-    return note_locations
+    return output
 
 
 class NoteLocation:
@@ -330,7 +332,7 @@ def composer_name_to_vec(composer_name):
 
 
 def get_longer_level_dynamics(features, note_locations, length='beat'):
-    num_notes = len(note_locations)
+    num_notes = len(note_locations[length])
 
     prev_beat = 0
     prev_beat_index = 0
@@ -341,7 +343,8 @@ def get_longer_level_dynamics(features, note_locations, length='beat'):
     for i in range(num_notes):
         if not features['align_matched'][i]:
             continue
-        current_beat = getattr(note_locations[i], length)
+        # current_beat = getattr(note_locations[i], length)
+        current_beat = note_locations[length][i]
 
         if current_beat > prev_beat and temp_beat_dynamic != []:
             prev_beat_dynamic = (sum(temp_beat_dynamic) / len(temp_beat_dynamic) + max(temp_beat_dynamic)) / 2

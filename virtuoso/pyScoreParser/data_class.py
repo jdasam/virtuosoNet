@@ -101,7 +101,7 @@ class DataSet:
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
         for piece in self.pieces:
-            piece.score_features = score_extractor.extract_score_features(piece)
+            piece.score_features = score_extractor.extract_score_features(piece.score)
             if save:
                 piece.save_score_features()
             for perform in piece.performances:
@@ -237,7 +237,7 @@ class PieceData:
             score_dat_path = os.path.dirname(xml_path) + '/score.dat'
 
             if save:
-                self.score = ScoreData(xml_path, score_midi_path)
+                self.score = ScoreData(xml_path, score_midi_path, composer=composer)
                 with open(score_dat_path , 'wb') as f:
                     pickle.dump(self.score, f, protocol=2)
             else:
@@ -247,7 +247,7 @@ class PieceData:
                         self.score = u.load()
                 else:
                     print(f'not exist {score_dat_path}. make one')
-                    self.score = ScoreData(xml_path, score_midi_path)
+                    self.score = ScoreData(xml_path, score_midi_path, composer=composer)
                     with open(score_dat_path , 'wb') as f:
                         pickle.dump(self.score, f, protocol=2)
 
@@ -299,7 +299,7 @@ class PieceData:
 
     def extract_score_features(self, target_features):
         score_extractor = feature_extraction.ScoreExtractor(target_features)
-        self.score_features = score_extractor.extract_score_features(self)
+        self.score_features = score_extractor.extract_score_features(self.score)
 
     def save_score_features(self):
         score_feature_path = self.meta.folder_path + '/score_feature.dat'
@@ -439,10 +439,11 @@ class PerformData:
 
 
 class ScoreData:
-    def __init__(self, xml_path, score_midi_path, read_xml_only=False):
+    def __init__(self, xml_path, score_midi_path, composer, read_xml_only=False):
         self.xml_obj = None
         self.xml_notes = None
         self.num_notes = 0
+        self.composer = composer
 
         # self.score_performance_match = []
         self.notes_graph = []
@@ -452,7 +453,7 @@ class ScoreData:
         self.measure_positions = []
         self.beat_positions = []
         self.section_positions = []
-
+        self.score_features = {}
         self._load_score_xml(xml_path)
         if not read_xml_only:
             self._load_or_make_score_midi(score_midi_path)
@@ -518,7 +519,7 @@ class AsapDataset(DataSet):
 
 
 class YamahaDataset(DataSet):
-    def __init__(self, path, save, features_only):
+    def __init__(self, path, save, features_only=False):
         super().__init__(path, save=save, features_only=features_only)
 
     def load_data_list(self):

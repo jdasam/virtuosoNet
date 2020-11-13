@@ -2,6 +2,8 @@ import os
 import random
 import numpy as np
 import pickle
+
+from numpy.lib.npyio import save
 from . import dataset_split
 from pathlib import Path
 from tqdm import tqdm
@@ -10,7 +12,8 @@ NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                            'pedal_refresh', 'pedal_cut', 'qpm_primo')
+                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 
+                            'beat_tempo', 'beat_dynamics', 'measure_tempo', 'measure_dynamics')
 
 VNET_COPY_DATA_KEYS = ('note_location', 'align_matched', 'articulation_loss_weight')
 VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
@@ -21,8 +24,10 @@ VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length'
 
 VNET_OUTPUT_KEYS = ('beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 'beat_tempo', 'beat_dynamics',
-                            'measure_tempo', 'measure_dynamics')
+                            'pedal_refresh', 'pedal_cut')
+VNET_BEAT_KEYS = ('beat_tempo', 'beat_dynamics')
+VNET_MEAS_KEYS = ('measure_tempo', 'measure_dynamics')
+                            # , 'beat_tempo', 'beat_dynamics', 'measure_tempo', 'measure_dynamics')
 
 
 class ScorePerformPairData:
@@ -61,7 +66,6 @@ class PairDataset:
         self.feature_stats = cal_mean_stds(squeezed_values, target_feat_keys)
 
     def update_dataset_split_type(self, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
-        # TODO: the split
         for pair in self.data_pairs:
             path = pair.piece_path
             for valid_name in valid_set_list:
@@ -91,17 +95,17 @@ class PairDataset:
         save_folder = Path(save_folder)
         split_types = ['train', 'valid', 'test']
 
-        save_folder.mkdir()
-        for split in split_types:
-            (save_folder / split).mkdir()
-
-        training_data = []
-        validation_data = []
-        test_data = []
-
+        if not save_folder.is_dir():
+            save_folder.mkdir()
+            for split in split_types:
+                if not (save_folder / split).is_dir():
+                    (save_folder / split).mkdir()
+        self.update_mean_stds_of_entire_dataset()
+        self.update_dataset_split_type()
+        
         for pair_data in tqdm(self.data_pairs):
             formatted_data = dict()
-            formatted_data['input_data'], formatted_data['output_data'] = convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
+            formatted_data['input_data'], formatted_data['output_data'], formatted_data['meas_level_data'] = convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
             for key in VNET_COPY_DATA_KEYS:
                 formatted_data[key] = pair_data.features[key]
             formatted_data['graph'] = pair_data.graph_edges
@@ -110,7 +114,7 @@ class PairDataset:
 
             save_name = _flatten_path(
                 Path(pair_data.perform_path).relative_to(Path(self.dataset_path))) + '.dat'
-           
+
             with open(save_folder / pair_data.split_type / save_name, "wb") as f:
                 pickle.dump(formatted_data, f, protocol=2)
   
@@ -141,8 +145,11 @@ def normalize_feature(data_values, target_feat_keys):
         # data_values[feat] = [(x-mean) / (var ** 0.5) for x in data_values[feat]]
         for i, perf in enumerate(data_values[feat]):
             data_values[feat][i] = [(x-mean) / (var ** 0.5) for x in perf]
-
     return data_values
+
+
+def normalize_pedal_value(pedal_value):
+    return (pedal_value - 64)/128
 
 # def combine_dict_to_array():
 
@@ -183,9 +190,12 @@ def cal_mean_stds(feat_datas, target_features):
     return stats
 
 
-def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_INPUT_KEYS, output_keys=VNET_OUTPUT_KEYS):
+def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_INPUT_KEYS, output_keys=VNET_OUTPUT_KEYS, meas_keys=VNET_MEAS_KEYS):
     input_data = []
     output_data = []
+    meas_data = []
+    if 'num_notes' not in feature_data.keys():
+        feature_data['num_notes'] = len(feature_data[input_keys[0]])
 
     def check_if_global_and_normalize(key):
         value = feature_data[key]
@@ -219,12 +229,17 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
     for key in output_keys:
         value = check_if_global_and_normalize(key)
         output_data.append(value)
+    for key in meas_keys:
+        value = check_if_global_and_normalize(key)
+        meas_data.append(value)
 
     input_dimension = cal_dimension(input_data)
     output_dimension = cal_dimension(output_data)
+    meas_dimension = cal_dimension(meas_data)
 
     input_array = np.zeros((feature_data['num_notes'], input_dimension))
     output_array = np.zeros((feature_data['num_notes'], output_dimension))
+    meas_array = np.zeros((feature_data['num_notes'], meas_dimension))
 
     current_idx = 0
 
@@ -245,5 +260,14 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
             length = 1
             output_array[:,current_idx] = value
         current_idx += length
+    current_idx = 0
+    for value in meas_data:
+        if isinstance(value[0], list):
+            length = len(value[0])
+            meas_array[:, current_idx:current_idx + length] = value
+        else:
+            length = 1
+            meas_array[:,current_idx] = value
+        current_idx += length
 
-    return input_array, output_array
+    return input_array, output_array, meas_array
