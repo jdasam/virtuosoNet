@@ -20,6 +20,7 @@ from . import model_constants as const
 from . import model
 from .dataset import ScorePerformDataset, FeatureCollate
 from .logger import Logger
+from .loss import LossCalculator
 # from . import inference
 
 def sigmoid(x, gain=1):
@@ -88,7 +89,7 @@ def train(args,
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     logger = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name)
     shutil.copy(args.yml_path, args.checkpoints_dir/exp_name)
-    loss_calculator = utils.LossCalculator(criterion, args, logger)
+    loss_calculator = LossCalculator(criterion, args, logger)
     
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])

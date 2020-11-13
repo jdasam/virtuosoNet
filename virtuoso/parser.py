@@ -7,20 +7,22 @@ def get_parser():
                         default="train", help="train or inference")
     parser.add_argument("-yml", "--yml_path", type=str,
                         default="isgn_param.yml", help="yml file path")
-    parser.add_argument("-data", "--data_path", type=str,
-                        default="dataset_test", help="data dir name")
+    parser.add_argument("-data", "--data_path", type=Path,
+                        default=Path("dataset_test"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
+    parser.add_argument("--xml_path", type=str,
+                        default='/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml')
 
     # model model options
-    parser.add_argument("-trill", "--trainTrill", default=False,
+    parser.add_argument("-trill", "--is_trill", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="train trill")
     parser.add_argument("-slur", "--slurEdge", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
     parser.add_argument("-voice", "--voiceEdge", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
     # TODO: no redundancy?
-    parser.add_argument("--hierarcy", default=False)
+    parser.add_argument("--is_hier", default=False)
     parser.add_argument("--in_hier", default=False)
     parser.add_argument("--hier_beat", default=False)   
     parser.add_argument("--hier_model", default=False)   
@@ -37,10 +39,14 @@ def get_parser():
     parser.add_argument("--master")
 
     # save options
-    parser.add_argument("--checkpoints", 
+    parser.add_argument("--checkpoints_dir", 
                         type=Path,
                         default=Path('checkpoints'),
-                        help='folder to store checkpoints')    
+                        help='folder to store checkpoints')
+    parser.add_argument("--checkpoint", 
+                    type=Path,
+                    default=Path('/home/svcapp/userdata/dev/virtuosoNet/isgn_best.pt'),
+                    help='path to load checkpoint')    
     parser.add_argument("--evals",
                         type=Path,
                         default=Path('evals')
@@ -57,15 +63,19 @@ def get_parser():
                     type=int,
                     default=100
                     )
+    parser.add_argument("--iters_per_checkpoint",
+                    type=int,
+                    default=100
+                    )
     parser.add_argument("--lr",
                         type=float,
                         default=3e-4
                         )
-    parser.add_argument("--time_steps",
+    parser.add_argument("--len_slice",
                         type=int,
-                        default=200
+                        default=800
                         )
-    parser.add_argument("--valid_steps",
+    parser.add_argument("--len_valid_slice",
                         type=int,
                         default=10000
                         )
@@ -95,8 +105,8 @@ def get_parser():
     # environment options
     parser.add_argument("-dev", "--device", type=int,
                         default=0, help="cuda device number")
-    parser.add_argument("-dev", "--num_workers", type=int,
-                        default=2, help="num workers for dataloader")
+    parser.add_argument("--num_workers", type=int,
+                        default=0, help="num workers for dataloader")
     parser.add_argument("-code", "--model_code", type=str,
                         default='isgn', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,
@@ -110,12 +120,14 @@ def get_parser():
         str(x).lower() == 'true'), help='resume training after loading model')
     parser.add_argument("-perf", "--perfName", default='Anger_sub1',
                         type=str, help='resume training after loading model')
-    parser.add_argument("-delta", "--deltaLoss", default=False,
+    parser.add_argument("-delta", "--delta_loss", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
     parser.add_argument("-hCode", "--hierCode", type=str,
                         default='han_measure', help="code name for loading hierarchy model")
-    parser.add_argument("-intermd", "--intermediateLoss", default=True,
+    parser.add_argument("-intermd", "--intermediate_loss", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
+    parser.add_argument("--tempo_loss_in_note", default=False,
+                        type=lambda x: (str(x).lower() == 'true'), help="calculate tempo loss in note-level instead of beat-level")
     parser.add_argument("-randtr", "--randomTrain", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="use random train")
     parser.add_argument("-dskl", "--disklavier", default=True,
@@ -130,7 +142,7 @@ def get_name(parser, args):
     for instance --workers, as they do not impact the final result.
     """
     ignore_args = set([
-        "checkpoints",
+        "checkpoints_dir",
         "deterministic",
         "eval",
         "evals",

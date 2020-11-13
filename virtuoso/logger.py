@@ -1,5 +1,5 @@
 from torch.utils.tensorboard import SummaryWriter
-from .utils import get_mean_of_loss_dict
+from .loss import get_mean_of_loss_dict
 
 class Logger(SummaryWriter):
     def __init__(self, logdir):
