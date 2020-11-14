@@ -235,8 +235,8 @@ class PerformExtractor:
         features = []
         if 'beat_tempo' not in perform_data.perform_features:
             perform_data.perform_features['beat_tempo'] = self.get_beat_tempo(piece_data, perform_data)
-        if 'trill_parameters' not in perform_data.perform_features:
-            perform_data.perform_features['trill_parameters'] = self.get_trill_parameters(piece_data, perform_data)
+        # if 'trill_parameters' not in perform_data.perform_features:
+        #     perform_data.perform_features['trill_parameters'] = self.get_trill_parameters(piece_data, perform_data)
         for i, pair in enumerate(perform_data.pairs):
             if pair == []:
                 articulation = 0
@@ -252,8 +252,10 @@ class PerformExtractor:
                 else:
                     duration_as_quarter = xml_duration / note.state_fixed.divisions
                     second_in_tempo = duration_as_quarter / tempo.qpm * 60
+                    # TODO: fix trill notes
                     if note.note_notations.is_trill:
-                        _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+                        # _, actual_second = xml_utils.find_corresp_trill_notes_from_midi(piece_data, perform_data, i)
+                        actual_second = second_in_tempo
                     else:
                         actual_second = midi.end - midi.start
                     articulation = actual_second / second_in_tempo
