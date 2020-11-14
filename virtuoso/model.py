@@ -11,8 +11,6 @@ from . import model_constants as cons
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 
 
-DROP_OUT = 0.1
-
 QPM_INDEX = 0
 # VOICE_IDX = 11
 PITCH_IDX = 12
@@ -156,6 +154,7 @@ class ISGN(nn.Module):
         self.time_regressive_layer = network_parameters.time_reg.layer
         self.num_edge_types = network_parameters.num_edge_types
         self.final_graph_margin_size = network_parameters.final.margin
+        self.drop_out = network_parameters.drop_out
 
         if self.is_baseline:
             self.final_graph_input_size = self.final_input + self.encoder_size + 8 + self.output_size + self.final_graph_margin_size + self.time_regressive_size * 2
@@ -170,22 +169,22 @@ class ISGN(nn.Module):
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
             # nn.BatchNorm1d(self.note_hidden_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU(),
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
             # nn.BatchNorm1d(self.note_hidden_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU(),
             nn.Linear(self.note_hidden_size, self.note_hidden_size),
             # nn.BatchNorm1d(self.note_hidden_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU(),
         )
 
         self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device, secondary_size=self.note_hidden_size)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
@@ -196,11 +195,11 @@ class ISGN(nn.Module):
 
         self.performance_contractor = nn.Sequential(
             nn.Linear(self.encoder_input_size, self.encoder_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU(),
             nn.Linear(self.encoder_size, self.encoder_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
         )
@@ -215,19 +214,19 @@ class ISGN(nn.Module):
 
         self.beat_tempo_contractor = nn.Sequential(
             nn.Linear(self.final_graph_input_size - self.time_regressive_size * 2, self.time_regressive_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU()
         )
         self.style_vector_expandor = nn.Sequential(
             nn.Linear(self.encoded_vector_size, self.encoder_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU()
         )
         self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
 
         self.initial_result_fc = nn.Sequential(
             nn.Linear(self.final_input, self.encoder_size),
-            nn.Dropout(DROP_OUT),
+            nn.Dropout(self.drop_out),
             nn.ReLU(),
 
             nn.Linear(self.encoder_size, self.output_size),
@@ -244,7 +243,7 @@ class ISGN(nn.Module):
 
             self.fc = nn.Sequential(
                 nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
-                nn.Dropout(DROP_OUT),
+                nn.Dropout(self.drop_out),
                 nn.ReLU(),
                 nn.Linear(self.final_graph_margin_size, self.output_size),
             )
@@ -258,7 +257,7 @@ class ISGN(nn.Module):
 
             self.fc = nn.Sequential(
                 nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
-                nn.Dropout(DROP_OUT),
+                nn.Dropout(self.drop_out),
                 nn.ReLU(),
                 nn.Linear(self.final_graph_margin_size, self.output_size-1),
             )
@@ -528,7 +527,7 @@ class HAN_Integrated(nn.Module):
             )
             self.graph_2nd = GatedGraph(self.hidden_size, self.num_edge_types)
         else:
-            self.lstm = nn.LSTM(self.hidden_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+            self.lstm = nn.LSTM(self.hidden_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=self.drop_out)
 
         if not self.is_baseline:
             if self.is_graph:
