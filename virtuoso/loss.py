@@ -1,3 +1,7 @@
+import torch
+from .utils import note_tempo_infos_to_beat
+from . import model_constants as const
+
 class LossCalculator:
     def __init__(self, criterion, args, logger):
         self.criterion = criterion
@@ -43,8 +47,8 @@ class LossCalculator:
         start_beat = beat_indices[0]
         num_beats = beat_indices[num_notes-1] - start_beat + 1
 
-        pred_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
-        true_beat_tempo = th.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
+        pred_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
+        true_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
         for i in range(num_notes):
             current_beat = beat_indices[i]
             if current_beat > previous_beat:
@@ -54,8 +58,8 @@ class LossCalculator:
                         if beat_indices[j] > current_beat:
                             break
                     if not i == j:
-                        pred_beat_tempo[current_beat - start_beat] = th.mean(pred_x[0, i:j, self.tempo_idx])
-                        true_beat_tempo[current_beat - start_beat] = th.mean(target[0, i:j, self.tempo_idx])
+                        pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, self.tempo_idx])
+                        true_beat_tempo[current_beat - start_beat] = torch.mean(target[0, i:j, self.tempo_idx])
                 else:
                     pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
                     true_beat_tempo[current_beat-start_beat] = target[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
@@ -87,17 +91,17 @@ class LossCalculator:
                 vel_loss += self.criterion(vel_out_delta, vel_true_delta) * self.delta_weight
                 vel_loss /= 1 + self.delta_weight
             total_loss = tempo_loss + vel_loss
-            loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': th.zeros(1).item(), 'articul': th.zeros(1).item(), 'pedal': th.zeros(1).item()}
+            loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
         # elif self.is_trill:
         #     trill_bool = batch_x[:, :,
         #                         is_trill_index_concated:is_trill_index_concated + 1]
-        #     if th.sum(trill_bool) > 0:
+        #     if torch.sum(trill_bool) > 0:
         #         total_loss = criterion(outputs, batch_y, trill_bool)
         #     else:
-        #         return th.zeros(1), th.zeros(1), th.zeros(1),  th.zeros(1), th.zeros(1), th.zeros(1), th.zeros(1)
+        #         return torch.zeros(1), torch.zeros(1), torch.zeros(1),  torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
         else:
             if self.intermediate_loss:
-                total_loss = th.zeros(1).to(output.device)
+                total_loss = torch.zeros(1).to(output.device)
                 # for out in total_out_list:
                 for out in total_out_list:
                     total_l, loss_dict = self.cal_loss_by_term(out, target, note_locations, align_matched, pedal_status)

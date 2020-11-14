@@ -24,7 +24,6 @@ def load_weight(model, checkpoint_path):
             .format(checkpoint_path, checkpoint['epoch']))
     return model
 
-
 def note_tempo_infos_to_beat(y, beat_numbers, index=0):
     beat_tempos = []
     num_notes = y.size(1)

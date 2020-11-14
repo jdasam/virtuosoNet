@@ -119,7 +119,10 @@ class PairDataset:
                 pickle.dump(formatted_data, f, protocol=2)
   
         with open(save_folder / "stat.dat", "wb") as f:
-            pickle.dump(self.feature_stats, f, protocol=2)
+            pickle.dump({'stats': self.feature_stats, 
+                         'input_keys': VNET_INPUT_KEYS, 
+                         'output_keys': VNET_OUTPUT_KEYS, 
+                         'measure_keys': VNET_MEAS_KEYS}, f, protocol=2)
         
 
 def get_feature_from_entire_dataset(dataset, target_score_features, target_perform_features):
@@ -191,9 +194,6 @@ def cal_mean_stds(feat_datas, target_features):
 
 
 def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_INPUT_KEYS, output_keys=VNET_OUTPUT_KEYS, meas_keys=VNET_MEAS_KEYS):
-    input_data = []
-    output_data = []
-    meas_data = []
     if 'num_notes' not in feature_data.keys():
         feature_data['num_notes'] = len(feature_data[input_keys[0]])
 
@@ -222,52 +222,74 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
             total_length += length
         return total_length
 
+    def make_feat_to_array(keys):
+        datas = [] 
+        for key in keys:
+            value = check_if_global_and_normalize(key)
+            datas.append(value)
+        dimension = cal_dimension(datas)
+        array = np.zeros((feature_data['num_notes'], dimension))
+        current_idx = 0
+        for value in datas:
+            if isinstance(value[0], list):
+                length = len(value[0])
+                array[:, current_idx:current_idx + length] = value
+            else:
+                length = 1
+                array[:,current_idx] = value
+            current_idx += length
+        return array
 
-    for key in input_keys:
-        value = check_if_global_and_normalize(key)
-        input_data.append(value)
-    for key in output_keys:
-        value = check_if_global_and_normalize(key)
-        output_data.append(value)
-    for key in meas_keys:
-        value = check_if_global_and_normalize(key)
-        meas_data.append(value)
+    input_array = make_feat_to_array(input_keys)
+    output_array = make_feat_to_array(output_keys)
+    meas_array = make_feat_to_array(meas_keys)
+    # for key in input_keys:
+    #     value = check_if_global_and_normalize(key)
+    #     input_data.append(value)
+    # for key in output_keys:
+    #     value = check_if_global_and_normalize(key)
+    #     output_data.append(value)
+    # for key in meas_keys:
+    #     value = check_if_global_and_normalize(key)
+    #     meas_data.append(value)
 
-    input_dimension = cal_dimension(input_data)
-    output_dimension = cal_dimension(output_data)
-    meas_dimension = cal_dimension(meas_data)
+    # input_dimension = cal_dimension(input_data)
+    # output_dimension = cal_dimension(output_data)
+    # meas_dimension = cal_dimension(meas_data)
 
-    input_array = np.zeros((feature_data['num_notes'], input_dimension))
-    output_array = np.zeros((feature_data['num_notes'], output_dimension))
-    meas_array = np.zeros((feature_data['num_notes'], meas_dimension))
+    # input_array = np.zeros((feature_data['num_notes'], input_dimension))
+    # output_array = np.zeros((feature_data['num_notes'], output_dimension))
+    # meas_array = np.zeros((feature_data['num_notes'], meas_dimension))
 
-    current_idx = 0
+    # current_idx = 0
 
-    for value in input_data:
-        if isinstance(value[0], list):
-            length = len(value[0])
-            input_array[:, current_idx:current_idx + length] = value
-        else:
-            length = 1
-            input_array[:,current_idx] = value
-        current_idx += length
-    current_idx = 0
-    for value in output_data:
-        if isinstance(value[0], list):
-            length = len(value[0])
-            output_array[:, current_idx:current_idx + length] = value
-        else:
-            length = 1
-            output_array[:,current_idx] = value
-        current_idx += length
-    current_idx = 0
-    for value in meas_data:
-        if isinstance(value[0], list):
-            length = len(value[0])
-            meas_array[:, current_idx:current_idx + length] = value
-        else:
-            length = 1
-            meas_array[:,current_idx] = value
-        current_idx += length
+    # for value in input_data:
+    #     if isinstance(value[0], list):
+    #         length = len(value[0])
+    #         input_array[:, current_idx:current_idx + length] = value
+    #     else:
+    #         length = 1
+    #         input_array[:,current_idx] = value
+    #     current_idx += length
+    # current_idx = 0
+    # for value in output_data:
+    #     if isinstance(value[0], list):
+    #         length = len(value[0])
+    #         output_array[:, current_idx:current_idx + length] = value
+    #     else:
+    #         length = 1
+    #         output_array[:,current_idx] = value
+    #     current_idx += length
+    # current_idx = 0
+    # for value in meas_data:
+    #     if isinstance(value[0], list):
+    #         length = len(value[0])
+    #         meas_array[:, current_idx:current_idx + length] = value
+    #     else:
+    #         length = 1
+    #         meas_array[:,current_idx] = value
+    #     current_idx += length
 
     return input_array, output_array, meas_array
+
+
