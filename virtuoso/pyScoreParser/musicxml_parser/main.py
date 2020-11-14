@@ -142,6 +142,8 @@ class MusicXMLDocument(object):
       MusicXMLParseException: if the file cannot be parsed.
     """
     score = None
+    if not isinstance(filename, str):
+      filename = str(filename)
     if filename.endswith('.mxl'):
       # Compressed MXL file. Uncompress in memory.
       try:
