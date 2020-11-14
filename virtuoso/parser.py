@@ -11,9 +11,10 @@ def get_parser():
                         default=Path("dataset_test"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
-    parser.add_argument("--xml_path", type=str,
-                        default='/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml')
-
+    parser.add_argument("--xml_path", type=Path,
+                        default=Path('/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml'))
+    parser.add_argument("--output_path", type=Path,
+                        default=Path('test_result/'))
     # model model options
     parser.add_argument("-trill", "--is_trill", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="train trill")
