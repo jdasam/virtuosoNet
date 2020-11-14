@@ -76,13 +76,13 @@ def match_xml_to_midi(xml_notes, midi_notes):
 
 
 def make_xml_midi_pair(xml_notes, midi_notes, match_list):
-    pairs = []
-    for i in range(len(match_list)):
-        if not match_list[i] ==[]:
-            temp_pair = {'xml': xml_notes[i], 'midi': midi_notes[match_list[i]]}
-            pairs.append(temp_pair)
-        else:
-            pairs.append([])
+    pairs = [{'xml': xml_notes[i], 'midi': midi_notes[match_list[i]]} if match_list[i] != [] else [] for i in range(len(match_list))  ]
+    # for i in range(len(match_list)):
+    #     if not match_list[i] ==[]:
+    #         temp_pair = {'xml': xml_notes[i], 'midi': midi_notes[match_list[i]]}
+    #         pairs.append(temp_pair)
+    #     else:
+    #         pairs.append([])
     return pairs
 
 
@@ -144,19 +144,8 @@ def find_by_attr(alist, value1, value2):
 
 def make_available_xml_midi_positions(pairs):
     # global NUM_EXCLUDED_NOTES
-    class PositionPair:
-        def __init__(self, xml_pos, time, pitch, index, divisions):
-            self.xml_position = xml_pos
-            self.time_position = time
-            self.pitch = pitch
-            self.index = index
-            self.divisions = divisions
-            self.is_arpeggiate = False
-
     available_pairs = []
-    num_pairs = len(pairs)
-    for i in range(num_pairs):
-        pair = pairs[i]
+    for i, pair in enumerate(pairs):
         if not pair == []:
             xml_note = pair['xml']
             midi_note = pair['midi']
@@ -176,10 +165,10 @@ def make_available_xml_midi_positions(pairs):
     available_pairs, mismatched_indexes = make_average_onset_cleaned_pair(available_pairs)
     print('Number of mismatched notes: ', len(mismatched_indexes))
     # NUM_EXCLUDED_NOTES += len(mismatched_indexes)
-    for index in mismatched_indexes:
-        pairs[index] = []
+    # for index in mismatched_indexes:
+    #     pairs[index] = []
 
-    return pairs, available_pairs
+    return available_pairs, mismatched_indexes
 
 
 def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=600):
@@ -232,15 +221,15 @@ def make_average_onset_cleaned_pair(position_pairs, maximum_qpm=600):
 
 
 def make_available_note_feature_list(notes, features, predicted):
-    class PosTempoPair:
-        def __init__(self, xml_pos, pitch, qpm, index, divisions, time_pos):
-            self.xml_position = xml_pos
-            self.qpm = qpm
-            self.index = index
-            self.divisions = divisions
-            self.pitch = pitch
-            self.time_position = time_pos
-            self.is_arpeggiate = False
+    # class PosTempoPair:
+    #     def __init__(self, xml_pos, pitch, qpm, index, divisions, time_pos):
+    #         self.xml_position = xml_pos
+    #         self.qpm = qpm
+    #         self.index = index
+    #         self.divisions = divisions
+    #         self.pitch = pitch
+    #         self.time_position = time_pos
+    #         self.is_arpeggiate = False
 
     if not predicted:
         available_notes = []
@@ -253,22 +242,35 @@ def make_available_note_feature_list(notes, features, predicted):
                 time_pos = feature.midi_start
                 divisions = xml_note.state_fixed.divisions
                 qpm = feature.qpm
-                pos_pair = PosTempoPair(xml_pos, xml_note.pitch[1], qpm, i, divisions, time_pos)
+                pos_pair = {'xml_position': xml_pos, 
+                            'pitch':xml_note.pitch[1], 
+                            'beat_tempo':qpm, 
+                            'index':i, 
+                            'divisions':divisions, 
+                            'time_position': time_pos,
+                            'is_arpeggiate': False}
                 if xml_note.note_notations.is_arpeggiate:
-                    pos_pair.is_arpeggiate = True
+                    pos_pair["is_arpeggiate"] = True
                 available_notes.append(pos_pair)
 
     else:
         available_notes = []
         num_features = len(features)
         for i in range(num_features):
-            feature = features[i]
             xml_note = notes[i]
             xml_pos = xml_note.note_duration.xml_position
             time_pos = xml_note.note_duration.time_position
             divisions = xml_note.state_fixed.divisions
-            qpm = feature.qpm
-            pos_pair = PosTempoPair(xml_pos, xml_note.pitch[1], qpm, i, divisions, time_pos)
+            qpm = features['beat_tempo'][i]
+            pos_pair = {'xml_position': xml_pos, 
+                        'pitch':xml_note.pitch[1], 
+                        'beat_tempo':qpm, 
+                        'index':i, 
+                        'divisions':divisions, 
+                        'time_position': time_pos,
+                        'is_arpeggiate': False
+                        }
+            # pos_pair = PosTempoPair(xml_pos, xml_note.pitch[1], qpm, i, divisions, time_pos)
             available_notes.append(pos_pair)
 
     # minimum_time_interval = 0.05

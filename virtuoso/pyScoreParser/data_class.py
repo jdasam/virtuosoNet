@@ -96,7 +96,6 @@ class DataSet:
             #     print(f'Error while processing {scores[n]}. Error type :{ex}')
         self.num_performances = len(self.performances)
 
-    # TGK : same as extract_selected_features(DEFAULT_SCORE_FEATURES) ...
     def extract_all_features(self, save=False):
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
@@ -265,7 +264,7 @@ class PieceData:
         
             # TODO: move to ScoreData
             self.score_features = {}
-            self.meta._check_perf_align()
+            self.meta._check_perf_align(align=False)
 
             for perform in perform_lists:
                 perform_dat_path = Path(perform).parent / Path(perform).name.replace('.mid', '.dat')
@@ -275,6 +274,7 @@ class PieceData:
                     with open(perform_dat_path, 'rb') as f:
                         u = cPickle.Unpickler(f)
                         perform_data = u.load()
+                        perform_data.pairs = matching.make_xml_midi_pair(self.score.xml_notes, perform_data.midi_nots, perform_data.match_between_xml_perf)
                         self.performances.append(perform_data)
                 else:
                     try:
@@ -286,9 +286,13 @@ class PieceData:
                         print(f'Cannot align {perform}')
                         self.performances.append(None)
                 if save:
-                    if perform_data is not None: 
+                    if perform_data is not None:
+                        # delete pairs to reduce size 
+                        copied_pairs = copy.copy(perform_data.pairs)
+                        perform_data.pairs = []
                         with open(perform_dat_path, 'wb') as f:
                             pickle.dump(perform_data, f, protocol=2)
+                        perform_data.pairs = copied_pairs
     
     def extract_perform_features(self, target_features):
         perform_extractor = feature_extraction.PerformExtractor(target_features)
@@ -315,8 +319,10 @@ class PieceData:
     def _align_perform_with_score(self, perform):
         perform.match_between_xml_perf = matching.match_score_pair2perform(self.score.score_pairs, perform.midi_notes, perform.corresp)
         perform.pairs = matching.make_xml_midi_pair(self.score.xml_notes, perform.midi_notes, perform.match_between_xml_perf)
-        perform.pairs, perform.valid_position_pairs = matching.make_available_xml_midi_positions(perform.pairs)
-
+        perform.valid_position_pairs, perform.mismatched_indices = matching.make_available_xml_midi_positions(perform.pairs)
+        for i in perform.mismatched_indices:
+            perform.match_between_xml_perf[i] = []
+            perform.pairs[i] = []
         print('Performance path is ', perform.midi_path)
         perform._count_matched_notes()
 
@@ -338,7 +344,7 @@ class PieceMeta:
     def __str__(self):
         return str(self.__dict__)
 
-    def _check_perf_align(self):
+    def _check_perf_align(self, align=True):
         # TODO: better to move PieceData?
         aligned_perf = []
         for perf in self.perform_lists:
@@ -346,9 +352,10 @@ class PieceMeta:
             if os.path.isfile(align_file_name):
                 aligned_perf.append(perf)
                 continue
-            self.align_score_and_perf_with_nakamura(os.path.abspath(perf), self.score_midi_path)
-            if os.path.isfile(align_file_name): # check once again whether the alignment was successful
-                aligned_perf.append(perf)
+            if align:
+                self.align_score_and_perf_with_nakamura(os.path.abspath(perf), self.score_midi_path)
+                if os.path.isfile(align_file_name): # check once again whether the alignment was successful
+                    aligned_perf.append(perf)
 
         self.perf_file_list = aligned_perf
 
@@ -406,6 +413,7 @@ class PerformData:
             self.corresp_path = os.path.splitext(self.midi_path)[0] + '_infer_corresp.txt'
             self.corresp = matching.read_corresp(self.corresp_path)
             self.match_between_xml_perf = None
+            self.mismatched_indices = []
             
             self.pairs = []
             self.valid_position_pairs = []
@@ -416,9 +424,9 @@ class PerformData:
             self.perform_features = {}
 
 
-
     def save_perform_features(self):
         perform_feature_path = self.midi_path.split('.mid')[0] + '_feature.dat'
+        # delete self.pairs before dump
         with open(perform_feature_path, 'wb') as f:
             pickle.dump(self.perform_features, f,  protocol=2)
         
