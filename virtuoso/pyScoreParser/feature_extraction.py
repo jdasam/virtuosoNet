@@ -10,7 +10,7 @@ class ScoreExtractor:
     def __init__(self, feature_keys):
         self.selected_feature_keys = feature_keys
 
-        self.dyn_emb_tab = dir_enc.define_dyanmic_embedding_table()
+        self.dyn_emb_tab = dir_enc.define_dynamic_embedding_table()
         self.tem_emb_tab = dir_enc.define_tempo_embedding_table()
 
     def extract_score_features(self, piece_data):
@@ -53,7 +53,7 @@ class ScoreExtractor:
         return locations
 
     def get_qpm_primo(self, piece_data):
-        piece_data.qpm_primo = piece_data.xml_notes[0].state_fixed.qpm
+        piece_data.qpm_primo = math.log(piece_data.xml_notes[0].state_fixed.qpm, 10)
         return piece_data.qpm_primo
 
     def get_midi_pitch(self, piece_data):
@@ -380,7 +380,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = 0
             else:
-                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_refresh_time)
+                pedal = pair['midi'].pedal_refresh_time
             features.append(pedal)
         return features
 
@@ -402,7 +402,7 @@ class PerformExtractor:
             if pair == []:
                 pedal = 0
             else:
-                pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_cut_time)
+                pedal = pair['midi'].pedal_cut_time
             features.append(pedal)
         return features
 

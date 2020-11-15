@@ -74,6 +74,8 @@ def add_pedal_inf_to_notes(midi_obj):
     # notes_offset_sorted = notes
     # notes_offset_sorted.sort(key = lambda note: note.end)
 
+    # TODO: This can be become much faster if we change pedal as 1D-array
+
     for note in notes:
         pedal_index_at_note_start = binaryIndex(sustain_pedals_positions, note.start)
         pedal_index_at_note_end = binaryIndex(sustain_pedals_positions, note.end)
@@ -107,7 +109,6 @@ def add_pedal_inf_to_notes(midi_obj):
 def cal_pedal_refresh_in_note(note, pedals, pd_ind1, pd_ind2):
     if pd_ind1 == pd_ind2:
         return note.pedal_at_start, 0
-    lowest_pedal_value = note.pedal_at_start
     lowest_pedal = None
     # counts only when pedal is pressed at start
     # if note.pedal_at_start == False:

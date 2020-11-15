@@ -396,7 +396,7 @@ def dynamic_embedding(dynamic_word, embed_table, len_vec=4):
 
     return dynamic_vector
 
-def define_dyanmic_embedding_table():
+def define_dynamic_embedding_table():
     embed_table = EmbeddingTable()
 
     embed_table.append(EmbeddingKey('pppp', 0, -1.1))

@@ -47,7 +47,8 @@ class PairDataset:
         self.feature_stats = None
         for piece in dataset.pieces:
             for performance in piece.performances:
-                self.data_pairs.append(ScorePerformPairData(piece, performance))
+                if performance is not None:
+                    self.data_pairs.append(ScorePerformPairData(piece, performance))
 
     def get_squeezed_features(self, target_feat_keys):
         squeezed_values = dict()

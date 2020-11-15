@@ -16,41 +16,6 @@ import copy
 from . import xml_direction_encoding as dir_enc
 from . import pedal_cleaning, utils
 
-def xml_notes_to_midi(xml_notes):
-    """ Returns midi-transformed xml notes in pretty_midi.Note() format
-
-    Args:
-        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
-    
-    Returns:
-        midi_notes (1-D list): list of pretty_midi.Note() of shape (num_notes, )
-        midi_pedals (1-D list): list of pretty_midi pedal value of shape (num_pedals, )
-    
-    Example:
-        (in data_class.py -> make_score_midi())
-        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
-
-    """
-    midi_notes = []
-    for note in xml_notes:
-        if note.is_overlapped:  # ignore overlapped notes.
-            continue
-
-        pitch = note.pitch[1]
-        start = note.note_duration.time_position
-        end = start + note.note_duration.seconds
-        if note.note_duration.seconds < 0.005:
-            end = start + 0.005
-        elif note.note_duration.seconds > 10:
-            end = start + 10
-        velocity = int(min(max(note.velocity,0),127))
-        midi_note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end)
-
-        midi_notes.append(midi_note)
-    midi_pedals = pedal_cleaning.predicted_pedals_to_midi_pedals(xml_notes)
-
-    return midi_notes, midi_pedals
-
 
 def find_tempo_change(xml_notes):
     """ Returns position of note where the tempo changes
@@ -82,91 +47,7 @@ def find_tempo_change(xml_notes):
     return tempo_change_positions
 
 
-'''
-want to move to midi_utils
-'''
-def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_pedal=False, disklavier=False):
-    """ Generate midi file by using received midi notes and midi pedals
 
-    Args:
-        midi_notes (1-D list) : list of pretty_midi.Note() of shape (num_notes, )
-        midi_pedals (1-D list): list of pretty_midi pedal value of shape (num_pedals, ) 
-        output_name (string) : output midi file name
-        bool_pedal (boolean) : check whether the method needs to handle meaningless pedal values
-        disklavier (boolean) : unused 
-
-    Returns:
-        -
-
-    Example:
-        (in data_class.py -> make_score_midi()
-        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
-        >>> xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
-
-    """
-    piano_midi = pretty_midi.PrettyMIDI()
-    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
-    piano = pretty_midi.Instrument(program=piano_program)
-    # pedal_threhsold = 60
-    # pedal_time_margin = 0.2
-
-    for note in midi_notes:
-        piano.notes.append(note)
-
-    piano_midi.instruments.append(piano)
-
-    # piano_midi = midi_utils.save_note_pedal_to_CC(piano_midi)
-
-    if bool_pedal:
-        for pedal in midi_pedals:
-            if pedal.value < pedal_cleaning.THRESHOLD:
-                pedal.value = 0
-
-    last_note_end = midi_notes[-1].end
-    # end pedal 3 seconds after the last note
-    last_pedal = pretty_midi.ControlChange(number=64, value=0, time=last_note_end + 3)
-    midi_pedals.append(last_pedal)
-
-    piano_midi.instruments[0].control_changes = midi_pedals
-
-    #
-    # if disklavier:
-    #     pedals = piano_midi.instruments[0].control_changes
-    #     pedals.sort(key=lambda x:x.time)
-    #     previous_off_time = 0
-    #
-    #     prev_high_time = 0
-    #     prev_low_time = 0
-    #
-    #     pedal_remove_candidate = []
-    #     for pedal in pedals:
-    #         if pedal.number == 67:
-    #             continue
-    #         if pedal.time < 0.2:
-    #             continue
-    #         if pedal.value < pedal_threhsold:
-    #             previous_off_time = pedal.time
-    #         else:
-    #             time_passed = pedal.time - previous_off_time
-    #             if time_passed < pedal_time_margin:  #hyperparameter
-    #                 # pedal.time = previous_off_time + pedal_time_margin
-    #                 pedal.value = 30
-    #
-    #         if pedal.value > 75:
-    #             if pedal.time - prev_high_time < 0.25:
-    #                 pedal_remove_candidate.append(pedal)
-    #             else:
-    #                 prev_high_time = pedal.time
-    #         if pedal.value < 55:
-    #             if pedal.time - prev_low_time < 0.25:
-    #                 pedal_remove_candidate.append(pedal)
-    #             else:
-    #                 prev_low_time = pedal.time
-    #
-    #     for pedal in pedal_remove_candidate:
-    #         pedals.remove(pedal)
-
-    piano_midi.write(output_name)
 
 
 def apply_directions_to_notes(xml_notes, directions, time_signatures):
