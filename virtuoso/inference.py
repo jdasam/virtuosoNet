@@ -29,12 +29,10 @@ def inference(args, model, stats, input_keys, output_keys, device):
 
     xml_notes = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True)
 
-    save_path = args.output_path / f"{args.xml_path.stem}_by_{args.model_code}.mid"
+    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
     if not args.output_path.exists():
         args.output_path.mkdir()
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes)
-    # save_name = 'test_result/' + \
-    #     piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
@@ -62,7 +60,7 @@ def scale_model_prediction_to_original(prediction, output_keys, stats):
     idx = 0
     for key in output_keys:
         prediction[:,idx]  *= stats[key]['stds']
-        prediction[:,idx]  *= stats[key]['mean']
+        prediction[:,idx]  += stats[key]['mean']
         idx += 1 
     return prediction
 

@@ -8,7 +8,7 @@ def get_parser():
     parser.add_argument("-yml", "--yml_path", type=str,
                         default="isgn_param.yml", help="yml file path")
     parser.add_argument("-data", "--data_path", type=Path,
-                        default=Path("dataset_test"), help="data dir name")
+                        default=Path("dataset/"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
@@ -83,6 +83,14 @@ def get_parser():
     parser.add_argument("--weight_decay",
                         type=float,
                         default=1e-5
+                        )
+    parser.add_argument("--lr_decay_step",
+                        type=float,
+                        default=5000
+                        )
+    parser.add_argument("--lr_decay_rate",
+                        type=float,
+                        default=0.98
                         )
     parser.add_argument("--delta_weight",
                         type=float,

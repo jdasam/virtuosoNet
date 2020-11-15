@@ -2,11 +2,12 @@ from virtuoso.pyScoreParser.data_class import DataSet
 import numpy as np
 import torch
 import pickle
+import random
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
 from .utils import load_dat
-from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number
+from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number, key_augmentation
 from . import graph
 
 class ScorePerformDataset:
@@ -14,7 +15,8 @@ class ScorePerformDataset:
         # type = one of ['train', 'valid', 'test']
         path = Path(path)
         self.path = path / type
-        self.stat = load_dat(path/"stat.dat")
+        stat_data = load_dat(path/"stat.dat")
+        self.stat = stat_data['stats']
         self.device = device
 
         self.data_paths = list(self.path.glob("*.dat"))
@@ -52,7 +54,8 @@ class ScorePerformDataset:
         data = self.data[idx]
         batch_start, batch_end = sl_idx
 
-        batch_x = torch.Tensor(data['input_data'][batch_start:batch_end])
+        aug_key = random.randrange(-5, 7)
+        batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stat["midi_pitch"]["stds"]))
         if self.in_hier:
             if self.hier_meas:
                 batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
@@ -88,8 +91,8 @@ class FeatureCollate:
             return (batch_x.unsqueeze(0), 
                     batch_y.unsqueeze(0), 
                     note_locations, 
-                    align_matched.unsqueeze(0).unsqueeze(-1), 
-                    pedal_status.unsqueeze(0).unsqueeze(-1), 
+                    align_matched.view(1,-1,1), 
+                    pedal_status.view(1,-1,1), 
                     edges
             )
         else:

@@ -34,21 +34,21 @@ class TraningSample():
 
 def load_model(model, optimizer, device, args):
     # if args.resumeTraining and not args.trainTrill:
-    if os.path.isfile('prime_' + args.modelCode + args.resume):
-        print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
-        # model_codes = ['prime', 'trill']
-        filename = 'prime_' + args.modelCode + args.resume
-        checkpoint = th.load(filename,  map_location=device)
-        best_valid_loss = checkpoint['best_valid_loss']
-        model.load_state_dict(checkpoint['state_dict'])
-        model.device = device
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        NUM_UPDATED = checkpoint['training_step']
-        print("=> loaded checkpoint '{}' (epoch {})"
-                .format(filename, checkpoint['epoch']))
-        start_epoch = checkpoint['epoch'] - 1
-        best_prime_loss = checkpoint['best_valid_loss']
-        print('Best valid loss was ', best_prime_loss)
+    print("=> loading checkpoint '{}'".format(args.checkpoint))
+    # model_codes = ['prime', 'trill']
+    # filename = 'prime_' + args.modelCode + args.resume
+    checkpoint = th.load(args.checkpoint,  map_location='cpu')
+    best_valid_loss = checkpoint['best_valid_loss']
+    model.load_state_dict(checkpoint['state_dict'])
+    model.device = device
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    iteration = checkpoint['training_step']
+    print("=> loaded checkpoint '{}' (epoch {})"
+            .format(args.checkpoint, checkpoint['epoch']))
+    start_epoch = checkpoint['epoch'] - 1
+    best_prime_loss = checkpoint['best_valid_loss']
+    print(f'Best valid loss was {best_prime_loss}')
+    return model, optimizer, start_epoch, iteration, best_valid_loss
 
 def prepare_dataloader(args):
     hier_type = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas']
@@ -99,23 +99,10 @@ def train(args,
     # best_trill_loss = float("inf")
     start_epoch = 0
     iteration = 0
-    
-    if args.resume_training and not args.trainTrill:
-        if os.path.isfile('prime_' + args.modelCode + args.resume):
-            print("=> loading checkpoint '{}'".format(args.modelCode + args.resume))
-            # model_codes = ['prime', 'trill']
-            filename = 'prime_' + args.modelCode + args.resume
-            checkpoint = th.load(filename,  map_location=device)
-            best_valid_loss = checkpoint['best_valid_loss']
-            model.load_state_dict(checkpoint['state_dict'])
-            model.device = device
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            num_updated = checkpoint['training_step']
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(filename, checkpoint['epoch']))
-            start_epoch = checkpoint['epoch'] - 1
-            print('Best valid loss was ', best_valid_loss)
 
+    if args.resume_training:
+        model, optimizer, start_epoch, iteration, best_valid_loss = load_model(model, optimizer, device, args)
+    scheduler = th.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_decay_step, gamma=args.lr_decay_rate)
 
     # load data
     print('Loading the training data...')
@@ -131,17 +118,19 @@ def train(args,
             total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
             kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
-            if isinstance(perform_mu, bool):
-                perform_kld = th.zeros(1)
-            else:
-                perform_kld = -0.5 * \
-                    th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-                total_loss += perform_kld * kld_weight
+            # if isinstance(perform_mu, bool):
+            #     perform_kld = th.zeros(1)
+            # else:
+            perform_kld = -0.5 * \
+                th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+            total_loss += perform_kld * kld_weight
             optimizer.zero_grad()
             total_loss.backward()
             grad_norm = th.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
+            scheduler.step()
             duration = time.perf_counter() - start
+            loss_dict["kld"] = perform_kld
             logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1
 
@@ -155,6 +144,8 @@ def train(args,
 
                         outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
                         total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
+                        perform_kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                        loss_dict['kld'] = perform_kld
                         valid_loss.append(total_loss.item())
                         valid_loss_dict.append(loss_dict)
                     valid_loss = sum(valid_loss) / len(valid_loss)
