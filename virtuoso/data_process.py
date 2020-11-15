@@ -1,4 +1,5 @@
-import copy
+# import copy
+import numpy as np
 import random
 import math
 
@@ -6,31 +7,45 @@ PITCH_VEC_IDX = 13
 PITCH_SCL_IDX = 0
 
 
-def key_augmentation(data_x, key_change):
+def key_augmentation(data_x, key_change, pitch_std):
     # key_change = 0
     if key_change == 0:
         return data_x
-    data_x_aug = copy.deepcopy(data_x)
     pitch_start_index = PITCH_VEC_IDX
-    # while key_change == 0:
-    #     key_change = random.randrange(-5, 7)
-    for data in data_x_aug:
-        octave = data[pitch_start_index]
-        pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
-        pitch_class = pitch_class_vec.index(1)
-        new_pitch = pitch_class + key_change
-        if new_pitch < 0:
-            octave -= 0.25
-        elif new_pitch > 12:
-            octave += 0.25
-        new_pitch = new_pitch % 12
+    shifted_pitch = np.zeros_like(data_x[:,:13])
+    original_pitch = data_x[:,pitch_start_index:pitch_start_index+13]
+    shifted_pitch[:, 0] = original_pitch[:, 0]
+    if key_change > 0:
+        shifted_pitch[:, 1+key_change:] = original_pitch[:, 1:-key_change]
+        shifted_pitch[:, 1:1+key_change] = original_pitch[:, -key_change:]
+        shifted_pitch[np.sum(original_pitch[:,-key_change:], axis=1)==1, 0] += 0.25
+    else:
+        shifted_pitch[:, 1:key_change] = original_pitch[:,1-key_change:]
+        shifted_pitch[:, key_change:] = original_pitch[:,1:1-key_change ]
+        shifted_pitch[np.sum(original_pitch[:,1:1-key_change ], axis=1)==1, 0] += 0.25
+    # calculate octave shift
 
-        new_pitch_vec = [0] * 13
-        new_pitch_vec[0] = octave
-        new_pitch_vec[new_pitch+1] = 1
 
-        data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
-        data[PITCH_SCL_IDX] = data[PITCH_SCL_IDX] + key_change
+    data_x_aug = np.copy(data_x)
+    data_x_aug[:,pitch_start_index:pitch_start_index+13] = shifted_pitch
+    data_x_aug[:, PITCH_SCL_IDX] += key_change / pitch_std
+    # for data in data_x_aug:
+    #     octave = data[pitch_start_index]
+    #     pitch_class_vec = data[pitch_start_index+1:pitch_start_index+13]
+    #     pitch_class = pitch_class_vec.index(1)
+    #     new_pitch = pitch_class + key_change
+    #     if new_pitch < 0:
+    #         octave -= 0.25
+    #     elif new_pitch > 12:
+    #         octave += 0.25
+    #     new_pitch = new_pitch % 12
+
+    #     new_pitch_vec = [0] * 13
+    #     new_pitch_vec[0] = octave
+    #     new_pitch_vec[new_pitch+1] = 1
+
+    #     data[pitch_start_index: pitch_start_index+13] = new_pitch_vec
+    #     data[PITCH_SCL_IDX] = data[PITCH_SCL_IDX] + key_change
 
     return data_x_aug
 
