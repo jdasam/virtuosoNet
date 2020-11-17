@@ -84,6 +84,21 @@ class GatedGraph(nn.Module):
 
         return input
 
+class SimpleAttention(nn.Module):
+    def __init__(self, size):
+        super(SimpleAttention, self).__init__()
+        self.attention_net = nn.Linear(size, size)
+
+    def get_attention(self, x):
+        attention = self.attention_net(x)
+        return attention
+
+    def forward(self, x):
+        attention = self.attention_net(x)
+        softmax_weight = torch.softmax(attention, dim=1)
+        attention = softmax_weight * x
+        sum_attention = torch.sum(attention, dim=1)
+        return sum_attention
 
 class ContextAttention(nn.Module):
     def __init__(self, size, num_head):
@@ -190,7 +205,10 @@ class ISGN(nn.Module):
         )
         self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device)
 
-        self.measure_attention = ContextAttention(self.note_hidden_size * 2, self.num_attention_head)
+        if network_parameters.use_simple_attention:
+            self.measure_attention = SimpleAttention(self.note_hidden_size * 2)
+        else:
+            self.measure_attention = ContextAttention(self.note_hidden_size * 2, self.num_attention_head)
         self.measure_rnn = nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
 
         self.performance_contractor = nn.Sequential(
@@ -204,11 +222,17 @@ class ISGN(nn.Module):
             nn.ReLU()
         )
         self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types, self.device)
-        self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
+        if network_parameters.use_simple_attention:
+            self.performance_measure_attention = SimpleAttention(self.encoder_size)
+        else:
+            self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size, num_layers=self.encoder_layer_num,
                                            batch_first=True, bidirectional=True)
-        self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+        if network_parameters.use_simple_attention:
+            self.performance_final_attention = SimpleAttention(self.encoder_size * 2)
+        else:
+            self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
         self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
@@ -238,8 +262,12 @@ class ISGN(nn.Module):
         if self.is_baseline:
             self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size, self.time_regressive_size,
                                      num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
-            self.final_measure_attention = ContextAttention(self.output_size, 1)
-            self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
+            if network_parameters.use_simple_attention:
+                self.final_measure_attention = SimpleAttention(self.output_size)
+                self.final_margin_attention = SimpleAttention(self.final_graph_margin_size)
+            else:
+                self.final_measure_attention = ContextAttention(self.output_size, 1)
+                self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
 
             self.fc = nn.Sequential(
                 nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
@@ -251,8 +279,12 @@ class ISGN(nn.Module):
         else:
             self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size + 8, self.time_regressive_size,
                                      num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
-            self.final_beat_attention = ContextAttention(self.output_size, 1)
-            self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
+            if network_parameters.use_simple_attention:
+                self.final_beat_attention = SimpleAttention(self.output_size)
+                self.final_margin_attention = SimpleAttention(self.final_graph_margin_size)
+            else:
+                self.final_beat_attention = ContextAttention(self.output_size, 1)
+                self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
             self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
 
             self.fc = nn.Sequential(
@@ -533,13 +565,13 @@ class HAN_Integrated(nn.Module):
             if self.is_graph:
                 self.beat_attention = ContextAttention(self.hidden_size * 2, self.num_attention_head)
                 self.beat_rnn = nn.LSTM(self.hidden_size * 2, self.beat_hidden_size,
-                                        self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+                                        self.num_beat_layers, batch_first=True, bidirectional=True, dropout=self.drop_out)
             else:
                 self.voice_net = nn.LSTM(self.hidden_size, self.voice_hidden_size, self.num_voice_layers,
-                                         batch_first=True, bidirectional=True, dropout=DROP_OUT)
+                                         batch_first=True, bidirectional=True, dropout=self.drop_out)
                 self.beat_attention = ContextAttention((self.hidden_size + self.voice_hidden_size) * 2,
                                                        self.num_attention_head)
-                self.beat_rnn = nn.LSTM((self.hidden_size + self.voice_hidden_size) * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=DROP_OUT)
+                self.beat_rnn = nn.LSTM((self.hidden_size + self.voice_hidden_size) * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=self.drop_out)
             self.measure_attention = ContextAttention(self.beat_hidden_size*2, self.num_attention_head)
             self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
             self.perform_style_to_measure = nn.LSTM(self.measure_hidden_size * 2 + self.encoder_size, self.encoder_size, num_layers=1, bidirectional=False)
@@ -689,6 +721,8 @@ class HAN_Integrated(nn.Module):
             # num_measures = measure_numbers[start_index + num_notes - 1] - measure_numbers[start_index] + 1
             num_measures = measure_numbers[-1] - measure_numbers[0] + 1
             perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1, num_measures, -1)
+            if perform_z_measure_spanned.shape[1] != measure_hidden_out.shape[1]:
+                print(measure_numbers)
             perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_hidden_out), 2)
             measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat)
             measure_perform_style_spanned = span_beat_to_note_num(measure_perform_style, measure_numbers,
@@ -729,7 +763,7 @@ class HAN_Integrated(nn.Module):
                 tempo_primo = x[0, 0, TEMPO_PRIMO_IDX:]
 
                 if self.is_teacher_force:
-                    true_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+                    true_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, 0, QPM_INDEX)
 
                 # prev_out = y[0, 0, :]
                 # prev_tempo = y[:, 0, QPM_INDEX]

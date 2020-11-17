@@ -410,7 +410,8 @@ class MusicXMLDocument(object):
       notes_part, rests_part = get_playable_notes(part)
       notes.extend(notes_part)
       rests.extend(rests_part)
-
+    notes.sort(key=lambda x: (x.note_duration.xml_position,
+              x.note_duration.grace_order, -x.pitch[1]))
     return notes, rests
 
 

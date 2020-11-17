@@ -18,6 +18,8 @@ def main():
     torch.manual_seed(626)
     # random.seed(0)
     args = parser.parse_args()
+    if "isgn" not in args.model_code:
+        args.intermediate_loss = False
     name = get_name(parser, args)  + "_" + datetime.now().strftime('%y%m%d-%H%M%S')
     print(f"Experiment {name}")
     # eval_folder = args.evals / name
@@ -110,7 +112,7 @@ def main():
             )
     elif args.session_mode == "inference":
         stats= utils.load_dat(args.data_path / 'stat.dat')
-        inference(args, model, stats, config.input_feature_keys, device)
+        inference(args, model, stats['stats'], config.input_feature_keys, config.output_feature_keys, device)
     
 
 if __name__ == '__main__':

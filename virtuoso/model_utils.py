@@ -25,10 +25,15 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
         higher_boundaries = [0] + (torch.where(higher_indices[1:] - higher_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices)]
         boundaries = [int(lower_indices[x]-lower_indices[0]) for x in higher_boundaries[:-1]] + [lower_out.shape[-2]]
     softmax_similarity = torch.cat([torch.softmax(similarity[:,boundaries[i-1]:boundaries[i],:].permute(0,1,2), dim=1) for i in range(1, len(boundaries))], dim=1)
-    x_split = torch.cat(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=0)
-    higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
-                        softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
-                        for i in range(1, len(boundaries))]).unsqueeze(0)
+    if hasattr(attention_weights, 'head_size'):
+        x_split = torch.cat(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=0)
+        higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
+                            softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
+                            for i in range(1, len(boundaries))]).unsqueeze(0)
+    else:
+        weighted_sum = softmax_similarity * lower_out
+        higher_nodes = torch.cat([torch.sum(weighted_sum[:,boundaries[i-1]:boundaries[i],:], dim=1) 
+                                for i in range(1, len(boundaries))]).unsqueeze(0)
     # TODO code for lower is not note
 
     # for low_index in range(num_lower_nodes):

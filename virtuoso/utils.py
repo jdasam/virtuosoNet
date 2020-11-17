@@ -1,3 +1,4 @@
+from numpy.lib.arraysetops import isin
 import torch as th
 import shutil
 from . import model_constants as const
@@ -5,6 +6,7 @@ from . import data_process as dp
 from omegaconf import OmegaConf
 import yaml
 import _pickle as pickle
+from pathlib import Path
 
 
 def read_model_setting(yml_path):
@@ -66,11 +68,13 @@ def make_criterion_func(loss_type, device):
     return criterion
 
 
-def save_checkpoint(state, is_best):
-    save_name = 'checkpoint_last.pt'
+def save_checkpoint(dir, state, is_best):
+    if isinstance(dir, str):
+        dir = Path(dir)
+    save_name = dir / 'checkpoint_last.pt'
     th.save(state, save_name)
     if is_best:
-        best_name = 'checkpoint_best.pt'
+        best_name = dir / 'checkpoint_best.pt'
         shutil.copyfile(save_name, best_name)
 
 

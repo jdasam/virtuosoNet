@@ -66,11 +66,11 @@ def get_parser():
                     )
     parser.add_argument("--iters_per_checkpoint",
                     type=int,
-                    default=100
+                    default=1000
                     )
     parser.add_argument("--lr",
                         type=float,
-                        default=3e-4
+                        default=1e-4
                         )
     parser.add_argument("--len_slice",
                         type=int,
@@ -98,7 +98,7 @@ def get_parser():
                         )
     parser.add_argument("--grad_clip",
                         type=float,
-                        default=5
+                        default=2
                         ) 
     parser.add_argument("--kld_max",
                         type=float,
@@ -137,8 +137,6 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
     parser.add_argument("--tempo_loss_in_note", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="calculate tempo loss in note-level instead of beat-level")
-    parser.add_argument("-randtr", "--randomTrain", default=True,
-                        type=lambda x: (str(x).lower() == 'true'), help="use random train")
     parser.add_argument("-dskl", "--disklavier", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
 
@@ -167,6 +165,7 @@ def get_name(parser, args):
         "valid",
         "workers",
         "world_size",
+        "device",
     ])
     parts = []
     name_args = dict(args.__dict__)

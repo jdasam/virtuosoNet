@@ -24,21 +24,25 @@ def inference(args, model, stats, input_keys, output_keys, device):
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
-    outputs = scale_model_prediction_to_original(outputs, output_keys, stats)
+    save_output_as_midi(outputs, args.output_path, args.xml_path, args.model_code, score, output_keys, stats, note_locations, args.boolPedal, args.disklavier)
+
+
+
+def save_output_as_midi(model_outputs, output_path, xml_path, model_code, score, output_keys, stats, note_locations, bool_pedal=False, disklavier=False):
+    outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
     xml_notes = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True)
 
-    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    if not args.output_path.exists():
-        args.output_path.mkdir()
+    save_path = output_path / f"{xml_path.parent.stem}_{xml_path.stem}_by_{model_code}.mid"
+    if not output_path.exists():
+        output_path.mkdir()
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
-                                               bool_pedal=args.boolPedal, disklavier=args.disklavier)
+                                               bool_pedal=bool_pedal, disklavier=disklavier)
 
-    return 
 
 def get_input_from_xml(xml_path, composer, input_keys, graph_keys, stats, device='cuda'):
     score = ScoreData(xml_path, None, composer, read_xml_only=True)

@@ -13,24 +13,20 @@ import pickle
 from torch.utils.data import DataLoader
 from .parser import get_parser
 from .utils import categorize_value_to_vector
-from . import data_process as dp  # maybe confuse with dynamic programming?
-from . import graph
-from . import utils
 from . import model_constants as const
-from . import model
 from .dataset import ScorePerformDataset, FeatureCollate
 from .logger import Logger
 from .loss import LossCalculator
+from .model_utils import make_higher_node
+from .model import SimpleAttention
+from . import utils
+from .inference import save_output_as_midi
 # from . import inference
 
 def sigmoid(x, gain=1):
   # why not np.sigmoid or something?
   return 1 / (1 + math.exp(-gain*x))
 
-class TraningSample():
-    def __init__(self, index):
-        self.index = index
-        self.slice_indexes = None
 
 def load_model(model, optimizer, device, args):
     # if args.resumeTraining and not args.trainTrill:
@@ -76,6 +72,9 @@ def batch_to_device(batch, device):
     edges = edges.to(device)
     return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
 
+def generate_midi_for_validation(model, valid_data, args):
+    input = th.Tensor(valid_data['input_data'])
+    
 
 def train(args,
           model,
@@ -111,9 +110,10 @@ def train(args,
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
         for _, batch in enumerate(train_loader):
+            '''
             start =time.perf_counter()
             batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
-
+    
             outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
             total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
@@ -150,40 +150,19 @@ def train(args,
                         valid_loss_dict.append(loss_dict)
                     valid_loss = sum(valid_loss) / len(valid_loss)
                     print('Valid loss: {}'.format(valid_loss))
+
                 model.train()
                 logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
                 is_best = valid_loss < best_valid_loss
                 best_valid_loss = min(best_valid_loss, valid_loss)
-                utils.save_checkpoint({
-                    'epoch': epoch + 1,
+                utils.save_checkpoint(args.checkpoints_dir / exp_name, 
+                    {'epoch': epoch + 1,
                     'state_dict': model.state_dict(),
                     'best_valid_loss': best_valid_loss,
                     'optimizer': optimizer.state_dict(),
                     'training_step': iteration
                 }, is_best)
-
-            # key_lists = [0]
-            # key = 0
-            # for i in range():
-            #     while key in key_lists:
-            #         key = random.randrange(-5, 7)
-            #     key_lists.append(key)
-            # tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-            #         utils.batch_time_step_run(batch, model=train_model)
-            # for i in range(args.num_key_augmentation+1):
-            #     key = key_lists[i]
-            #     temp_train_x = dp.key_augmentation(batch['input'], key)
-            #     kld_weight = sigmoid((NUM_UPDATED - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
-            #     training_data = {**batch, 'kld_weight':kld_weight}
-            #     training_data['input_data'] = temp_train_x
-            #     # training_data = {'x': temp_train_x, 'y': train_y, 'graphs': graphs,
-            #     #                     'note_locations': note_locations,
-            #     #                     'align_matched': align_matched, 'pedal_status': pedal_status,
-            #     #                     'slice_idx': slice_idx, 'kld_weight': kld_weight}
-
-            #     tempo_loss, vel_loss, dev_loss, articul_loss, pedal_loss, trill_loss, kld = \
-            #         utils.batch_time_step_run(training_data, model=train_model)
-
+            '''
                 
 
 

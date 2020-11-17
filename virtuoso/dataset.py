@@ -1,3 +1,4 @@
+from virtuoso.model_utils import make_higher_node
 from virtuoso.pyScoreParser.data_class import DataSet
 import numpy as np
 import torch
@@ -36,7 +37,6 @@ class ScorePerformDataset:
 
         self.update_slice_info()
 
-
     def update_slice_info(self):
         self.slice_info = []
         for i, data in enumerate(self.data):
@@ -70,6 +70,13 @@ class ScorePerformDataset:
             'section': torch.Tensor(data['note_location']['section'][batch_start:batch_end]).type(torch.int32),
             'voice': torch.Tensor(data['note_location']['voice'][batch_start:batch_end]).type(torch.int32),
         }
+        if torch.max(note_locations['measure'][1:] - note_locations['measure'][:-1]) > 1:
+            print(data['score_path'])
+        if torch.min(note_locations['measure'][1:] - note_locations['measure'][:-1]) < 0:
+            print(data['score_path'])
+        if torch.min(note_locations['beat'][1:] - note_locations['beat'][:-1]) < 0:
+            print(data['score_path'])
+
         align_matched = torch.Tensor(data['align_matched'][batch_start:batch_end])
         articulation_loss_weight = torch.Tensor(data['articulation_loss_weight'][batch_start:batch_end])
         if self.is_graph:

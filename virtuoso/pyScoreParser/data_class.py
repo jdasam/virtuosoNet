@@ -87,8 +87,10 @@ class DataSet:
 
     def load_all_features(self, scores, perform_midis, score_midis, composers,):
         for n in tqdm(range(len(scores))):
-            piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
-            self.pieces.append(piece)
+            score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
+            if score_feature_path.exists():
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
+                self.pieces.append(piece)
             # try:
             #     piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
             #     self.pieces.append(piece)
@@ -104,6 +106,8 @@ class DataSet:
             if save:
                 piece.save_score_features()
             for perform in piece.performances:
+                if perform is None:
+                    continue
                 perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
                 if save:
                     perform.save_perform_features()
@@ -222,7 +226,7 @@ class PieceData:
 
         if features_only:
             score_feat_path = Path(xml_path).parent / 'score_feature.dat'
-            score_dat_path = os.path.dirname(xml_path) + '/score.dat'
+            score_dat_path =  Path(xml_path).parent / 'score.dat'
             with open(score_feat_path, "rb") as f:
                 self.score_features = cPickle.load(f)
             with open(score_dat_path, 'rb') as f:
@@ -231,7 +235,13 @@ class PieceData:
                 self.notes_graph = score.notes_graph
                 self.num_notes = score.num_notes
             for perform in perform_lists:
-                self.performances.append(PerformData(perform, self.meta, features_only=True))
+                feature_path =  Path(perform).parent / Path(perform).name.replace('.mid', '_feature.dat')
+                if feature_path.exists():
+                    perform_data = PerformData(perform, self.meta, features_only=True)
+                    # if len(perform_data.perform_features['align_matched']) - sum(perform_data.perform_features['align_matched']) > 800:
+                    #     continue
+                    # else:
+                    self.performances.append(perform_data)
         else:
             score_dat_path = os.path.dirname(xml_path) + '/score.dat'
 
@@ -271,21 +281,27 @@ class PieceData:
                 if not save:
                     if not perform_dat_path.exists:
                         print(f'not exist {perform_dat_path}.')
+                        continue
                     with open(perform_dat_path, 'rb') as f:
                         u = cPickle.Unpickler(f)
                         perform_data = u.load()
-                        perform_data.pairs = matching.make_xml_midi_pair(self.score.xml_notes, perform_data.midi_nots, perform_data.match_between_xml_perf)
+                        # if perform_data.num_unmatched_notes > 800:
+                        #     self.performances.append(None)
+                        # else:
+                        perform_data.pairs = matching.make_xml_midi_pair(self.score.xml_notes, perform_data.midi_notes, perform_data.match_between_xml_perf)
                         self.performances.append(perform_data)
                 else:
                     try:
                         perform_data = PerformData(perform, self.meta)
                         self._align_perform_with_score(perform_data)
+                        # if perform_data.num_unmatched_notes > 800:
+                        #     self.performances.append(None)
+                        # else:
                         self.performances.append(perform_data)
                     except:
                         perform_data = None
                         print(f'Cannot align {perform}')
                         self.performances.append(None)
-                if save:
                     if perform_data is not None:
                         # delete pairs to reduce size 
                         copied_pairs = copy.copy(perform_data.pairs)
@@ -535,6 +551,7 @@ class YamahaDataset(DataSet):
         xml_list = sorted(path.glob('**/*.musicxml'))
         score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
         composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
+        composers = ['Chopin' for xml in xml_list]
 
         perform_lists = []
         for xml in xml_list:
