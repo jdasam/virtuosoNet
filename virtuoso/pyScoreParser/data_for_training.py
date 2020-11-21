@@ -86,7 +86,7 @@ class PairDataset:
     def shuffle_data(self):
         random.shuffle(self.data_pairs)
 
-    def save_features_for_virtuosoNet(self, save_folder):
+    def save_features_for_virtuosoNet(self, save_folder, update_stats=True, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
         '''
         Convert features into format of VirtuosoNet training data
         :return: None (save file)
@@ -102,8 +102,10 @@ class PairDataset:
             for split in split_types:
                 if not (save_folder / split).is_dir():
                     (save_folder / split).mkdir()
-        self.update_mean_stds_of_entire_dataset()
-        self.update_dataset_split_type()
+    
+        if update_stats:
+            self.update_mean_stds_of_entire_dataset()
+        self.update_dataset_split_type(valid_set_list=valid_set_list, test_set_list=test_set_list)
         
         for pair_data in tqdm(self.data_pairs):
             formatted_data = dict()

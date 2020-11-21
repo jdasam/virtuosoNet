@@ -87,3 +87,30 @@ def sum_with_attention(hidden, attention_net):
     upper_node_sum = torch.sum(upper_node, dim=0)
 
     return upper_node_sum
+
+def combine_splitted_graph_output(temp_output, orig_input, margin=100):
+    '''
+    Input:
+        temp_output: Temporary output of GGNN  [ number of edge batch X notes per edge X vector dimension]
+        edges: Batch of splitted graph [ (Number of Edge type X number of edge batch) X notes per edge X vector dimension]
+        orig_input: original input before GGNN update [ 1 x num notes x vector dimension]
+    Output:
+        updated_input
+    '''
+    updated_input = torch.zeros_like(orig_input)
+    updated_input[0, 0:temp_output.shape[1] - margin,:] = temp_output[0, :-margin, :]
+    cur_idx = temp_output.shape[1] - margin
+    end_idx = cur_idx + temp_output.shape[1] - margin * 2
+    for i in range(1, temp_output.shape[0]-1):
+        updated_input[0, cur_idx:end_idx, :] = temp_output[i, margin:-margin, :]
+        cur_idx = end_idx
+        end_idx = cur_idx + temp_output.shape[1] - margin * 2
+    updated_input[0, cur_idx:, :] = temp_output[-1, -(orig_input.shape[1]-cur_idx):, :]
+    return updated_input
+
+def split_note_input_to_graph_batch(orig_input, num_batch, num_notes_per_batch, overlap=200):
+    input_split = torch.zeros((num_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
+    for i in range(num_batch-1):
+        input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
+    input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
+    return input_split

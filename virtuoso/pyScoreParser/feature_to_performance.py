@@ -171,42 +171,6 @@ def apply_duration_for_grace_note(xml_notes):
                     break
     return xml_notes
 
-
-def xml_notes_to_midi(xml_notes):
-    """ Returns midi-transformed xml notes in pretty_midi.Note() format
-
-    Args:
-        xml_notes (1-D list): list of Note() object in xml of shape (num_notes, )
-    
-    Returns:
-        midi_notes (1-D list): list of pretty_midi.Note() of shape (num_notes, )
-        midi_pedals (1-D list): list of pretty_midi pedal value of shape (num_pedals, )
-    
-    Example:
-        (in data_class.py -> make_score_midi())
-        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
-
-    """
-    midi_notes = []
-    for note in xml_notes:
-        if note.is_overlapped:  # ignore overlapped notes.
-            continue
-
-        pitch = note.pitch[1]
-        start = note.note_duration.time_position
-        end = start + note.note_duration.seconds
-        if note.note_duration.seconds < 0.005:
-            end = start + 0.005
-        elif note.note_duration.seconds > 10:
-            end = start + 10
-        velocity = int(min(max(note.velocity,0),127))
-        midi_note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end)
-
-        midi_notes.append(midi_note)
-    midi_pedals = pedal_cleaning.predicted_pedals_to_midi_pedals(xml_notes)
-
-    return midi_notes, midi_pedals
-
 def make_trill_notes(note, feat, end_position, key_signatures, trill_accidentals, xml_notes,i):
     ornaments = []
     if note.note_notations.is_trill:

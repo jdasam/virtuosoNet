@@ -102,15 +102,23 @@ class DataSet:
         score_extractor = feature_extraction.ScoreExtractor(DEFAULT_SCORE_FEATURES)
         perform_extractor = feature_extraction.PerformExtractor(DEFAULT_PERFORM_FEATURES)
         for piece in self.pieces:
-            piece.score_features = score_extractor.extract_score_features(piece.score)
-            if save:
-                piece.save_score_features()
+            try:
+                piece.score_features = score_extractor.extract_score_features(piece.score)
+                if save:
+                    piece.save_score_features()
+            except Exception as ex:
+                print(f'Error while processing {piece.meta.xml_path}. Error type :{ex}')
+
             for perform in piece.performances:
                 if perform is None:
                     continue
-                perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
-                if save:
-                    perform.save_perform_features()
+                try:
+                    perform.perform_features = perform_extractor.extract_perform_features(piece, perform)
+                    if save:
+                        perform.save_perform_features()
+                except Exception as ex:
+                    print(f'Error while processing {perform.midi_path}. Error type :{ex}')
+
 
 
     def _sort_performances(self):
@@ -243,8 +251,10 @@ class PieceData:
                     # else:
                     self.performances.append(perform_data)
         else:
-            score_dat_path = os.path.dirname(xml_path) + '/score.dat'
-
+            if 'musicxml_cleaned.musicxml' in xml_path:
+                score_dat_path = os.path.dirname(xml_path) + '/score.dat'
+            else:
+                score_dat_path = Path(xml_path).with_suffix('.dat')
             if save:
                 self.score = ScoreData(xml_path, score_midi_path, composer=composer)
                 with open(score_dat_path , 'wb') as f:
@@ -274,7 +284,7 @@ class PieceData:
         
             # TODO: move to ScoreData
             self.score_features = {}
-            self.meta._check_perf_align(align=False)
+            self.meta._check_perf_align(align=True)
 
             for perform in perform_lists:
                 perform_dat_path = Path(perform).parent / Path(perform).name.replace('.mid', '.dat')
@@ -512,7 +522,7 @@ class ScoreData:
 
     def make_score_midi(self, midi_file_name):
         midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
-        xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
+        midi_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
         
     def _match_score_xml_to_midi(self):
         self.score_match_list = matching.match_xml_to_midi(self.xml_notes, self.score_midi_notes)
@@ -551,7 +561,7 @@ class YamahaDataset(DataSet):
         xml_list = sorted(path.glob('**/*.musicxml'))
         score_midis = [xml.parent / 'midi_cleaned.mid' for xml in xml_list]
         composers = [xml.relative_to(self.path).parts[0] for xml in xml_list]
-        composers = ['Chopin' for xml in xml_list]
+        # composers = ['Chopin' for xml in xml_list]
 
         perform_lists = []
         for xml in xml_list:
@@ -567,13 +577,13 @@ class YamahaDataset(DataSet):
 
 
 class EmotionDataset(DataSet):
-    def __init__(self, path, save=False):
-        super().__init__(path, save=save)
+    def __init__(self, path, save=False, features_only=False):
+        super().__init__(path, save=save, features_only=features_only)
 
     def load_data_list(self):
         path = Path(self.path)
         xml_list = sorted(path.glob('**/*.musicxml'))
-        score_midis = [xml.stem + '_midi_cleaned.mid' for xml in xml_list]
+        score_midis = [xml.parent / (xml.stem + '_score.mid') for xml in xml_list]
         composers = [xml.stem.split('.')[0] for xml in xml_list]
 
         perform_lists = []

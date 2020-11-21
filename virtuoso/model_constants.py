@@ -35,6 +35,13 @@ BEAT_TEMPO_IDX = 11
 #                 ('bohemian_rhapsody', 'Liszt')
 #                 ]
 
+valid_piece_list = [
+                  ('Beethoven/Piano_Sonatas/3-1/', 'Beethoven'),
+                  ('Beethoven/Piano_Sonatas/30-1/', 'Beethoven'),
+                  ('Chopin/Scherzos/31/', 'Chopin'),
+                  ('Schubert/Impromptu_op.90_D.899/2/', 'Schubert'),
+]
+
 
 test_piece_list = [
                 ('bps_5_1', 'Beethoven'),

@@ -8,8 +8,8 @@ import numpy
 import math
 
 from . import model_constants as cons
-from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
-
+from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num, combine_splitted_graph_output
+from . import model_utils as utils
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
@@ -26,61 +26,70 @@ class GatedGraph(nn.Module):
         super(GatedGraph, self).__init__()
         if secondary_size == 0:
             secondary_size = size
-        # for i in range(num_edge_style):
-        #     subgraph = self.subGraph(size)
-        #     self.sub.append(subgraph)
         self.size = size
         self.secondary_size = secondary_size
 
         self.ba = torch.nn.Parameter(torch.Tensor(size))
         self.wz_wr_wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size * 3))
-        # self.wz = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
-        # self.wr = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
-        # self.wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size))
         self.uz_ur = torch.nn.Parameter(torch.Tensor(size, secondary_size * 2))
-        # self.uz = torch.nn.Parameter(torch.Tensor(size, secondary_size))
-        # self.bz = torch.nn.Parameter(torch.Tensor(secondary_size))
-        # self.ur = torch.nn.Parameter(torch.Tensor(size, secondary_size))
-        # self.br = torch.nn.Parameter(torch.Tensor(secondary_size))
         self.uh = torch.nn.Parameter(torch.Tensor(secondary_size, secondary_size))
-        # self.bh = torch.nn.Parameter(torch.Tensor(secondary_size))
 
         nn.init.xavier_normal_(self.wz_wr_wh)
-        # nn.init.xavier_normal_(self.wz)
-        # nn.init.xavier_normal_(self.wr)
-        # nn.init.xavier_normal_(self.wh)
         nn.init.xavier_normal_(self.uz_ur)
-        # nn.init.xavier_normal_(self.uz)
-        # nn.init.xavier_normal_(self.ur)
         nn.init.xavier_normal_(self.uh)
         nn.init.zeros_(self.ba)
-        # nn.init.zeros_(self.bz)
-        # nn.init.zeros_(self.br)
-        # nn.init.zeros_(self.bh)
-
-        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, input, edge_matrix, iteration=10):
         for i in range(iteration):
-            activation = torch.matmul(edge_matrix.transpose(1,2), input) + self.ba
-            activation_wzrh = torch.bmm(activation, self.wz_wr_wh)
-            activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.secondary_size, dim=-1)
-            input_uzr = torch.matmul(input, self.uz_ur)
-            input_uz, input_ur = torch.split(input_uzr, self.secondary_size, dim=-1)
-            temp_z = torch.sigmoid(activation_wz.sum(0)+input_uz)
-            temp_r = torch.sigmoid(activation_wr.sum(0)+input_ur)
-            # temp_z = self.sigmoid( torch.bmm(activation, self.wz).sum(0) + torch.matmul(input, self.uz))
-            # temp_r = self.sigmoid( torch.bmm(activation, self.wr).sum(0) + torch.matmul(input, self.ur))
+            if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
+                # splitted edge matrix
+                num_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
+                num_type = self.wz_wr_wh.shape[0]
+                input_split = utils.split_note_input_to_graph_batch(input, num_batch, edge_matrix.shape[1])
+                # num_notes = edge_matrix.shape[1]
+                # split_num = num_notes * 2 //3
+                # edge_matrix_split = torch.cat([edge_matrix[:,:split_num,:split_num],
+                #                             edge_matrix[:,-split_num:, -split_num: ]], dim=0)
+                # input_split = torch.cat([input[:,:split_num,:],
+                #                             input[:,-split_num:,: ]], dim=0)
+                activation_split = torch.bmm(edge_matrix.transpose(1,2), input_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],input.shape[2])) + self.ba
+                activation_wzrh_split = torch.bmm(activation_split, self.wz_wr_wh.repeat(input_split.shape[0],1,1))
+                activation_wz_split, activation_wr_split, activation_wh_split = torch.split(activation_wzrh_split, self.secondary_size, dim=-1)
+                input_uzr_sp = torch.matmul(input_split, self.uz_ur)
+                input_uz_sp, input_ur_sp = torch.split(input_uzr_sp, self.secondary_size, dim=-1)
+                temp_z_sp = torch.sigmoid(activation_wz_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_uz_sp)
+                temp_r_sp = torch.sigmoid(activation_wr_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_ur_sp)
 
-            if self.secondary_size == self.size:
-                temp_hidden = torch.tanh(
-                    activation_wh.sum(0) + torch.matmul(temp_r * input, self.uh))
-                input = (1 - temp_z) * input + temp_r * temp_hidden
+                if self.secondary_size == self.size:
+                    temp_hidden_sp = torch.tanh(
+                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split, self.uh))
+                    input_split = (1 - temp_z_sp) * input_split + temp_r_sp * temp_hidden_sp
+                    input = combine_splitted_graph_output(input_split, input)
+                else:
+                    temp_hidden_sp = torch.tanh(
+                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split[:,:,-self.secondary_size:], self.uh) )
+                    temp_result_sp = (1 - temp_z_sp) * input_split[:,:,-self.secondary_size:] + temp_r_sp * temp_hidden_sp
+                    temp_result_cb = combine_splitted_graph_output(temp_result_sp, input[:,:,-self.secondary_size:])
+                    input = torch.cat((input[:,:,:-self.secondary_size], temp_result_cb), 2)
+                    # input_split = torch.cat((input_split[:,:,:-self.secondary_size], temp_result_sp), 2)
             else:
-                temp_hidden = torch.tanh(
-                    activation_wh.sum(0) + torch.matmul(temp_r * input[:,:,-self.secondary_size:], self.uh) )
-                temp_result = (1 - temp_z) * input[:,:,-self.secondary_size:] + temp_r * temp_hidden
-                input = torch.cat((input[:,:,:-self.secondary_size], temp_result), 2)
+                activation = torch.matmul(edge_matrix.transpose(1,2), input) + self.ba
+                activation_wzrh = torch.bmm(activation, self.wz_wr_wh)
+                activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.secondary_size, dim=-1)
+                input_uzr = torch.matmul(input, self.uz_ur)
+                input_uz, input_ur = torch.split(input_uzr, self.secondary_size, dim=-1)
+                temp_z = torch.sigmoid(activation_wz.sum(0)+input_uz)
+                temp_r = torch.sigmoid(activation_wr.sum(0)+input_ur)
+
+                if self.secondary_size == self.size:
+                    temp_hidden = torch.tanh(
+                        activation_wh.sum(0) + torch.matmul(temp_r * input, self.uh))
+                    input = (1 - temp_z) * input + temp_r * temp_hidden
+                else:
+                    temp_hidden = torch.tanh(
+                        activation_wh.sum(0) + torch.matmul(temp_r * input[:,:,-self.secondary_size:], self.uh) )
+                    temp_result = (1 - temp_z) * input[:,:,-self.secondary_size:] + temp_r * temp_hidden
+                    input = torch.cat((input[:,:,:-self.secondary_size], temp_result), 2)
 
         return input
 
@@ -147,11 +156,8 @@ class ISGN(nn.Module):
         self.num_graph_iteration = network_parameters.graph_iteration
         self.num_sequence_iteration = network_parameters.sequence_iteration
         self.is_graph = True
+        self.network_params = network_parameters
         self.is_baseline = network_parameters.is_baseline
-        if hasattr(network_parameters, 'is_test_version') and network_parameters.is_test_version:
-            self.is_test_version = True
-        else:
-            self.is_test_version = False
 
         self.input_size = network_parameters.input_size
         self.output_size = network_parameters.output_size
@@ -353,12 +359,10 @@ class ISGN(nn.Module):
                 temp_z = reparameterize(perform_mu, perform_var)
                 total_perform_z.append(temp_z)
             total_perform_z = torch.stack(total_perform_z)
-            mean_perform_z = torch.mean(total_perform_z, 0, True)
+            # mean_perform_z = torch.mean(total_perform_z, 0, True)
 
             # mean_perform_z = torch.Tensor(numpy.random.normal(loc=perform_mu, scale=perform_var, size=self.encoded_vector_size)).to(self.device)
-
-            return mean_perform_z
-        times.append(time.perf_counter())
+            return total_perform_z
 
         perform_z = self.style_vector_expandor(perform_z)
         perform_z_batched = perform_z.repeat(x.shape[1], 1).view(1,x.shape[1], -1)
@@ -373,7 +377,6 @@ class ISGN(nn.Module):
         initial_beat_hidden = torch.zeros((note_out.size(0), num_notes, self.time_regressive_size * 2)).to(self.device)
         initial_margin = torch.zeros((note_out.size(0), num_notes, self.final_graph_margin_size)).to(self.device)
 
-
         num_beats = beat_numbers[-1] - beat_numbers[0] + 1
         qpm_primo = x[:, :, QPM_PRIMO_IDX].view(1, -1, 1)
         tempo_primo = x[:, :, TEMPO_PRIMO_IDX:].view(1, -1, 2)
@@ -384,8 +387,6 @@ class ISGN(nn.Module):
 
         total_iterated_output = [initial_output]
 
-        # for i in range(2):
-        times.append(time.perf_counter())
         if self.is_baseline:
             tempo_vector = x[:, :, TEMPO_IDX:TEMPO_IDX + 5].view(1, -1, 5)
             tempo_info_in_note = torch.cat((qpm_primo, tempo_primo, tempo_vector), 2)
@@ -423,9 +424,7 @@ class ISGN(nn.Module):
 
             for i in range(self.num_sequence_iteration):
                 times=[]
-                times.append(time.perf_counter())
                 out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
-                times.append(time.perf_counter())
 
                 initial_out = out_with_result[:, :,
                               -self.output_size - self.final_graph_margin_size: -self.final_graph_margin_size]
@@ -436,14 +435,11 @@ class ISGN(nn.Module):
                 out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
                                                        beat_numbers, lower_is_note=True)
                 out_beat_cat = torch.cat((out_in_beat, margin_in_beat, beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), 2)
-                times.append(time.perf_counter())
                 out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
                 tempo_out = self.tempo_fc(out_beat_rnn_result)
-                times.append(time.perf_counter())
 
                 tempos_spanned = span_beat_to_note_num(tempo_out, beat_numbers, num_notes)
                 out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers, num_notes)
-                times.append(time.perf_counter())
 
                 out_with_result = torch.cat((out_with_result[:, :, :self.final_beat_hidden_idx],
                                              out_beat_spanned,
@@ -455,7 +451,6 @@ class ISGN(nn.Module):
                 out_with_result = torch.cat((out_with_result[:, :, :-self.output_size - self.final_graph_margin_size],
                                              final_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
                 total_iterated_output.append(final_out)
-                times.append(time.perf_counter())
                 # print([times[i]-times[i-1] for i in range(1, len(times))])
         return final_out, perform_mu, perform_var, total_iterated_output
 
@@ -520,6 +515,8 @@ class HAN_Integrated(nn.Module):
         self.num_graph_iteration = network_parameters.graph_iteration
         self.hierarchy = network_parameters.hierarchy_level
         self.drop_out = network_parameters.drop_out
+        self.network_params = network_parameters
+
         if hasattr(network_parameters, 'is_test_version') and network_parameters.is_test_version:
             self.test_version = True
         else:

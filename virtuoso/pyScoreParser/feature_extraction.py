@@ -36,7 +36,8 @@ class ScoreExtractor:
     def get_note_location(self, piece_data):
         # TODO: need check up
         beat_indices = [utils.binary_index(piece_data.beat_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
-        measure_indices = [x.measure_number - 1 for x in piece_data.xml_notes]
+        # measure_indices = [x.measure_number - 1 for x in piece_data.xml_notes]
+        measure_indices = [utils.binary_index(piece_data.measure_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
         voice_indices =  [x.voice for x in piece_data.xml_notes]
         section_indices = [utils.binary_index(piece_data.section_positions, x.note_duration.xml_position) for x in piece_data.xml_notes]
         beat_indices = feature_utils.make_index_continuous(beat_indices)
