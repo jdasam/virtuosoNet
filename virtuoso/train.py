@@ -20,7 +20,8 @@ from .loss import LossCalculator
 from .model_utils import make_higher_node
 from .model import SimpleAttention
 from . import utils
-from .inference import save_output_as_midi
+from .inference import generate_midi_from_xml
+from .model_constants import valid_piece_list
 # from . import inference
 
 def sigmoid(x, gain=1):
@@ -52,16 +53,20 @@ def prepare_dataloader(args):
 
     train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
     valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, graph_keys=args.graph_keys, hier_type=curr_type)
-    
+    emotion_set = ScorePerformDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys, hier_type=curr_type)
+
     train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
     valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
-    return train_loader, valid_loader
+    emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
+
+    return train_loader, valid_loader, emotion_loader
 
 def prepare_directories_and_logger(output_dir, log_dir, exp_name):
-    print(output_dir, log_dir)
-    (output_dir / exp_name / log_dir).mkdir(exist_ok=True, parents=True)
-    logger = Logger(output_dir / exp_name / log_dir)
-    return logger
+    out_dir = output_dir / exp_name
+    print(out_dir)
+    (out_dir / log_dir).mkdir(exist_ok=True, parents=True)
+    logger = Logger(out_dir/ log_dir)
+    return logger, out_dir
 
 def batch_to_device(batch, device):
     batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch
@@ -69,7 +74,8 @@ def batch_to_device(batch, device):
     batch_y = batch_y.to(device)
     align_matched = align_matched.to(device)
     pedal_status = pedal_status.to(device)
-    edges = edges.to(device)
+    if edges is not None:
+        edges = edges.to(device)
     return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
 
 def generate_midi_for_validation(model, valid_data, args):
@@ -84,9 +90,9 @@ def train(args,
           exp_name,
           ):
 
-    train_loader, valid_loader = prepare_dataloader(args)
+    train_loader, valid_loader, emotion_loader = prepare_dataloader(args)
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    logger = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name)
+    logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name)
     shutil.copy(args.yml_path, args.checkpoints_dir/exp_name)
     loss_calculator = LossCalculator(criterion, args, logger)
     
@@ -101,16 +107,26 @@ def train(args,
 
     if args.resume_training:
         model, optimizer, start_epoch, iteration, best_valid_loss = load_model(model, optimizer, device, args)
+    model.stats = train_loader.dataset.stats
     scheduler = th.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_decay_step, gamma=args.lr_decay_rate)
 
     # load data
     print('Loading the training data...')
 
+    total_perform_z = []
+    for i, batch in enumerate(emotion_loader):
+        perform_z_set = {}
+        origin_data = emotion_loader.dataset.data[i]
+        for j, perform in enumerate(batch):
+            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(perform, device)
+            perform_z_list = model(batch_x, batch_y, edges, note_locations, return_z=True)
+            perform_z_set[f'E{j+1}'] = perform_z_list
+        total_perform_z.append(perform_z_set)
+
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
         for _, batch in enumerate(train_loader):
-            '''
             start =time.perf_counter()
             batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
     
@@ -143,13 +159,20 @@ def train(args,
                         batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
 
                         outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-                        total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
+                        total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list[-1:], note_locations, align_matched, pedal_status)
                         perform_kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                         loss_dict['kld'] = perform_kld
                         valid_loss.append(total_loss.item())
                         valid_loss_dict.append(loss_dict)
                     valid_loss = sum(valid_loss) / len(valid_loss)
                     print('Valid loss: {}'.format(valid_loss))
+
+                    # for piece in valid_loader.dataset.data[12:13]:
+                    for piece in valid_piece_list:
+                        xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
+                        composer = piece[1]
+                        save_path = out_dir / f"{'_'.join(piece[0].split('/'))}iter_{iteration}.mid"
+                        generate_midi_from_xml(model, xml_path, composer, save_path, device)
 
                 model.train()
                 logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
@@ -160,10 +183,11 @@ def train(args,
                     'state_dict': model.state_dict(),
                     'best_valid_loss': best_valid_loss,
                     'optimizer': optimizer.state_dict(),
-                    'training_step': iteration
-                }, is_best)
-            '''
-                
+                    'training_step': iteration,
+                    'stats': model.stats,
+                    'network_params': model.network_params,
+                    'model_code': args.model_code
+                }, is_best)                
 
 
         

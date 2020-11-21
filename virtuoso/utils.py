@@ -22,6 +22,8 @@ def load_dat(path):
 def load_weight(model, checkpoint_path):
     checkpoint = th.load(checkpoint_path,  map_location='cpu')
     model.load_state_dict(checkpoint['state_dict'])
+    model.stats = checkpoint['stats']
+    model.model_code = checkpoint['model_code']
     print("=> loaded checkpoint '{}' (epoch {})"
             .format(checkpoint_path, checkpoint['epoch']))
     return model
@@ -173,30 +175,3 @@ def categorize_value_to_vector(y, bins):
         y_categorized.append(total_vec)
 
     return y_categorized
-
-
-def handle_data_in_tensor(x, y, args, DEVICE, hierarchy_test=False):
-    x = th.Tensor(x)
-    y = th.Tensor(y)
-    if args.hier_meas:
-        hierarchy_output = y[:, const.MEAS_TEMPO_IDX:const.MEAS_TEMPO_IDX+2]
-    elif y:
-        hierarchy_output = y[:, const.BEAT_TEMPO_IDX:const.BEAT_TEMPO_IDX+2]
-
-    if hierarchy_test:
-        y = y[:, :const.NUM_PRIME_PARAM]
-        return x.to(DEVICE), (hierarchy_output.to(DEVICE), y.to(DEVICE))
-
-    if args.hierarchy:
-        y = hierarchy_output
-    elif args.in_hier:
-        x = th.cat((x, hierarchy_output), 1)
-        y = y[:, :const.NUM_PRIME_PARAM]
-    elif args.trill:
-        x = th.cat((x, y[:, :const.NUM_PRIME_PARAM]), 1)
-        y = y[:, -const.NUM_TRILL_PARAM:]
-    else:
-        y = y[:, :const.NUM_PRIME_PARAM]
-
-    return x.to(DEVICE), y.to(DEVICE)
-

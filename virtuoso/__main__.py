@@ -35,13 +35,13 @@ def main():
     else:
         device = args.device
 
-    config = utils.read_model_setting(args.yml_path)
-    torch.manual_seed(args.seed)
-    # Prevents too many threads to be started when running `museval` as it can be quite
-    # inefficient on NUMA architectures.
-    # os.environ["OMP_NUM_THREADS"] = "1"
+    if args.yml_path is not None:
+        config = utils.read_model_setting(args.yml_path)
+        net_param = config.nn_params
+        args.graph_keys = net_param.graph_keys
+    else:
+        net_param = torch.load(args.checkpoint)['network_params']
 
-    
     if args.world_size > 1:
         if device != "cuda" and args.rank == 0:
             print("Error: distributed training is only available with cuda device", file=sys.stderr)
@@ -52,13 +52,7 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
-    args.graph_keys = ['onset', 'forward', 'melisma', 'rest']
-    if args.slurEdge:
-        args.graph_keys.append('slur')
-    if args.voiceEdge:
-        args.graph_keys.append('voice')
     
-    net_param = config.nn_params
 
     # Suggestion: 
     # load parameter directly.
@@ -111,8 +105,8 @@ def main():
             name,
             )
     elif args.session_mode == "inference":
-        stats= utils.load_dat(args.data_path / 'stat.dat')
-        inference(args, model, stats['stats'], config.input_feature_keys, config.output_feature_keys, device)
+        # stats= utils.load_dat(args.data_path / 'stat.dat')
+        inference(args, model, device)
     
 
 if __name__ == '__main__':

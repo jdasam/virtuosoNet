@@ -8,7 +8,8 @@ from .constants import *
 from .pyScoreParser.data_class import ScoreData
 from .pyScoreParser.feature_extraction import ScoreExtractor
 from .pyScoreParser.data_for_training import convert_feature_to_VirtuosoNet_format
-from .pyScoreParser.feature_to_performance import apply_tempo_perform_features, xml_notes_to_midi
+from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
+from .pyScoreParser.xml_utils import xml_notes_to_midi
 from .pyScoreParser.performanceWorm import plot_performance_worm
 from .pyScoreParser.midi_utils.midi_utils import save_midi_notes_as_piano_midi
 from pathlib import Path
@@ -16,27 +17,32 @@ from .utils import load_weight
 from . import graph
 
 
-def inference(args, model, stats, input_keys, output_keys, device):
+def inference(args, model, device):
     model = load_weight(model, args.checkpoint)
     model.eval()
     # load score
-    score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, input_keys, args.graph_keys, stats, device)
+    score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
-    save_output_as_midi(outputs, args.output_path, args.xml_path, args.model_code, score, output_keys, stats, note_locations, args.boolPedal, args.disklavier)
+    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.boolPedal, args.disklavier)
+
+def generate_midi_from_xml(model, xml_path, composer, save_path, device, bool_pedal=False, disklavier=False):
+    score, input, edges, note_locations = get_input_from_xml(xml_path, composer, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
+    with torch.no_grad():
+        outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
+
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-
-def save_output_as_midi(model_outputs, output_path, xml_path, model_code, score, output_keys, stats, note_locations, bool_pedal=False, disklavier=False):
+def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, bool_pedal=False, disklavier=False):
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
     xml_notes = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True)
-
-    save_path = output_path / f"{xml_path.parent.stem}_{xml_path.stem}_by_{model_code}.mid"
-    if not output_path.exists():
-        output_path.mkdir()
+    if not save_path.parent.exists():
+        save_path.parent.mkdir()
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
@@ -48,6 +54,8 @@ def get_input_from_xml(xml_path, composer, input_keys, graph_keys, stats, device
     score = ScoreData(xml_path, None, composer, read_xml_only=True)
     feature_extractor = ScoreExtractor(input_keys)
     input_features = feature_extractor.extract_score_features(score)
+    if 'note_location' not in input_features:
+        input_features['note_location'] = feature_extractor.get_note_location(score)
     input, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, output_keys=[], meas_keys=[])
     input = torch.Tensor(input).unsqueeze(0).to(device)
     edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys).to(device)

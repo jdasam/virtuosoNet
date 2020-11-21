@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import pickle
 import random
+import math
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
@@ -17,17 +18,21 @@ class ScorePerformDataset:
         path = Path(path)
         self.path = path / type
         stat_data = load_dat(path/"stat.dat")
-        self.stat = stat_data['stats']
+        self.stats = stat_data
         self.device = device
 
         self.data_paths = list(self.path.glob("*.dat"))
         self.data = [load_dat(x) for x in self.data_paths]
         self.len_slice = len_slice
+        self.len_graph_slice = 400
+        self.graph_margin = 100
         if len(graph_keys)>0:
             self.is_graph = True
             self.graph_keys = graph_keys
+            self.stats['graph_keys'] = graph_keys
         else:
             self.is_graph = False
+            self.stats['graph_keys'] = []
         hier_keys = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas']
         for key in hier_keys:
             if key in hier_type:
@@ -55,7 +60,7 @@ class ScorePerformDataset:
         batch_start, batch_end = sl_idx
 
         aug_key = random.randrange(-5, 7)
-        batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stat["midi_pitch"]["stds"]))
+        batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
         if self.in_hier:
             if self.hier_meas:
                 batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
@@ -70,17 +75,13 @@ class ScorePerformDataset:
             'section': torch.Tensor(data['note_location']['section'][batch_start:batch_end]).type(torch.int32),
             'voice': torch.Tensor(data['note_location']['voice'][batch_start:batch_end]).type(torch.int32),
         }
-        if torch.max(note_locations['measure'][1:] - note_locations['measure'][:-1]) > 1:
-            print(data['score_path'])
-        if torch.min(note_locations['measure'][1:] - note_locations['measure'][:-1]) < 0:
-            print(data['score_path'])
-        if torch.min(note_locations['beat'][1:] - note_locations['beat'][:-1]) < 0:
-            print(data['score_path'])
 
         align_matched = torch.Tensor(data['align_matched'][batch_start:batch_end])
         articulation_loss_weight = torch.Tensor(data['articulation_loss_weight'][batch_start:batch_end])
         if self.is_graph:
             graphs = graph.edges_to_matrix_short(data['graph'], sl_idx, self.graph_keys)
+            if self.len_graph_slice != self.len_slice:
+                graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
         else:
             graphs = None
         return batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs
@@ -88,6 +89,17 @@ class ScorePerformDataset:
     def __len__(self):
         return len(self.slice_info)
 
+def split_graph_to_batch(graphs, len_slice, len_margin):
+    if graphs.shape[1] < len_slice:
+        return graphs
+    num_types = graphs.shape[0]
+    num_batch = 1 + math.ceil( (graphs.shape[1] - len_slice) / (len_slice - len_margin*2) )
+    input_split = torch.zeros((num_batch * num_types, len_slice, len_slice)).to(graphs.device)
+    hop_size = len_slice - len_margin * 2
+    for i in range(num_batch-1):
+        input_split[i*num_types:(i+1)*num_types] = graphs[:, hop_size*i:hop_size*i+len_slice, hop_size*i:hop_size*i+len_slice]
+    input_split[-num_types:] = graphs[:,-len_slice:, -len_slice:]
+    return input_split
 
 class FeatureCollate:
     # def __init__(self, device='cuda'):

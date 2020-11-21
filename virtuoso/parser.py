@@ -6,9 +6,12 @@ def get_parser():
     parser.add_argument("-sess", "--session_mode", type=str,
                         default="train", help="train or inference")
     parser.add_argument("-yml", "--yml_path", type=str,
-                        default="isgn_param.yml", help="yml file path")
+                        #default="isgn_param.yml",
+                         help="yml file path")
     parser.add_argument("-data", "--data_path", type=Path,
                         default=Path("dataset/"), help="data dir name")
+    parser.add_argument("--emotion_data_path", type=Path,
+                    default=Path("dataset_emotion/"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
@@ -18,16 +21,16 @@ def get_parser():
     # model model options
     parser.add_argument("-trill", "--is_trill", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="train trill")
-    parser.add_argument("-slur", "--slurEdge", default=False,
-                        type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
-    parser.add_argument("-voice", "--voiceEdge", default=True,
-                        type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
+    # parser.add_argument("-slur", "--slurEdge", default=False,
+    #                     type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
+    # parser.add_argument("-voice", "--voiceEdge", default=True,
+    #                     type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
     # TODO: no redundancy?
-    parser.add_argument("--is_hier", default=False)
-    parser.add_argument("--in_hier", default=False)
-    parser.add_argument("--hier_beat", default=False)   
-    parser.add_argument("--hier_model", default=False)   
-    parser.add_argument("--hier_meas", default=False)   
+    parser.add_argument("--is_hier", default=False, type=lambda x: (str(x).lower() == 'true'))
+    parser.add_argument("--in_hier", default=False, type=lambda x: (str(x).lower() == 'true'))
+    parser.add_argument("--hier_beat", default=False, type=lambda x: (str(x).lower() == 'true'))   
+    parser.add_argument("--hier_model", default=False, type=lambda x: (str(x).lower() == 'true'))   
+    parser.add_argument("--hier_meas", default=False, type=lambda x: (str(x).lower() == 'true'))   
     
     # training parameters
     parser.add_argument("--num_key_augmentation", type=int, default=1)
@@ -166,6 +169,7 @@ def get_name(parser, args):
         "workers",
         "world_size",
         "device",
+        "num_workers",
     ])
     parts = []
     name_args = dict(args.__dict__)
