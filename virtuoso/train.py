@@ -5,6 +5,7 @@ import random
 import math
 import copy
 import time
+from virtuoso import emotion
 
 import numpy as np
 import torch as th
@@ -22,6 +23,7 @@ from .model import SimpleAttention
 from . import utils
 from .inference import generate_midi_from_xml
 from .model_constants import valid_piece_list
+from . import style_analysis as sty
 # from . import inference
 
 def sigmoid(x, gain=1):
@@ -58,7 +60,7 @@ def prepare_dataloader(args):
     train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
     valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
     emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
-
+    # emotion_loader = None
     return train_loader, valid_loader, emotion_loader
 
 def prepare_directories_and_logger(output_dir, log_dir, exp_name):
@@ -80,7 +82,28 @@ def batch_to_device(batch, device):
 
 def generate_midi_for_validation(model, valid_data, args):
     input = th.Tensor(valid_data['input_data'])
-    
+
+def get_style_from_emotion_data(model, emotion_loader, device):
+    total_perform_z = []
+    with th.no_grad():
+        for i, batch in enumerate(emotion_loader):
+            origin_data = emotion_loader.dataset.data[i*5]
+            perform_z_set = {'score_path':origin_data['score_path'], 'perform_path':origin_data['perform_path']}
+            for j, perform in enumerate(batch):
+                batch_x, batch_y, note_locations, _, _, edges = batch_to_device(perform, device)
+                perform_z_list = model(batch_x, batch_y, edges, note_locations, return_z=True)
+                perform_z_set[f'E{j+1}'] = [x.detach().cpu().numpy()[0] for x in perform_z_list]
+            total_perform_z.append(perform_z_set)
+    return total_perform_z
+
+def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration):
+    total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
+    tsne_z, tsne_normalized_z = sty.embedd_tsne_of_emotion_dataset(total_perform_z)
+
+    save_name = out_dir / f"emotion_tsne_it{iteration}.png"
+    sty.draw_tsne_for_emotion_data(tsne_z, save_name)
+    save_name = out_dir / f"emotion_tsne_norm_it{iteration}.png"
+    sty.draw_tsne_for_emotion_data(tsne_normalized_z, save_name)
 
 def train(args,
           model,
@@ -112,17 +135,9 @@ def train(args,
 
     # load data
     print('Loading the training data...')
-
-    total_perform_z = []
-    for i, batch in enumerate(emotion_loader):
-        perform_z_set = {}
-        origin_data = emotion_loader.dataset.data[i]
-        for j, perform in enumerate(batch):
-            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(perform, device)
-            perform_z_list = model(batch_x, batch_y, edges, note_locations, return_z=True)
-            perform_z_set[f'E{j+1}'] = perform_z_list
-        total_perform_z.append(perform_z_set)
-
+    
+    total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
+                
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
@@ -168,11 +183,12 @@ def train(args,
                     print('Valid loss: {}'.format(valid_loss))
 
                     # for piece in valid_loader.dataset.data[12:13]:
-                    for piece in valid_piece_list:
-                        xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
-                        composer = piece[1]
-                        save_path = out_dir / f"{'_'.join(piece[0].split('/'))}iter_{iteration}.mid"
-                        generate_midi_from_xml(model, xml_path, composer, save_path, device)
+                    if not args.is_hier:
+                        for piece in valid_piece_list:
+                            xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
+                            composer = piece[1]
+                            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}iter_{iteration}.mid"
+                            generate_midi_from_xml(model, xml_path, composer, save_path, device)
 
                 model.train()
                 logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
@@ -187,10 +203,12 @@ def train(args,
                     'stats': model.stats,
                     'network_params': model.network_params,
                     'model_code': args.model_code
-                }, is_best)                
+                }, is_best)
+
+                validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration)
 
 
-        
+                
 
 
     #end of epoch
