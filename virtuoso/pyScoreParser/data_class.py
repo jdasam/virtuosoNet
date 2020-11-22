@@ -232,9 +232,15 @@ class PieceData:
         self.meta = PieceMeta(xml_path, perform_lists=perform_lists, score_midi_path=score_midi_path, composer=composer)
         self.performances = []
 
+        path = Path(xml_path)
+        if 'musicxml_cleaned.musicxml' in xml_path:
+            score_dat_path = path.parent / 'score.dat'
+            score_feat_path = path.parent / 'score_feature.dat'
+        else:
+            score_dat_path = path.with_suffix('.dat')
+            score_feat_path = path.parent / (path.stem + '_feature.dat')
+
         if features_only:
-            score_feat_path = Path(xml_path).parent / 'score_feature.dat'
-            score_dat_path =  Path(xml_path).parent / 'score.dat'
             with open(score_feat_path, "rb") as f:
                 self.score_features = cPickle.load(f)
             with open(score_dat_path, 'rb') as f:
@@ -251,10 +257,6 @@ class PieceData:
                     # else:
                     self.performances.append(perform_data)
         else:
-            if 'musicxml_cleaned.musicxml' in xml_path:
-                score_dat_path = os.path.dirname(xml_path) + '/score.dat'
-            else:
-                score_dat_path = Path(xml_path).with_suffix('.dat')
             if save:
                 self.score = ScoreData(xml_path, score_midi_path, composer=composer)
                 with open(score_dat_path , 'wb') as f:
@@ -332,7 +334,11 @@ class PieceData:
         self.score_features = score_extractor.extract_score_features(self.score)
 
     def save_score_features(self):
-        score_feature_path = self.meta.folder_path + '/score_feature.dat'
+        if 'musicxml_cleaned.musicxml' in self.meta.xml_path:
+            score_feature_path = self.meta.folder_path + '/score_feature.dat'
+        else:
+            path = Path(self.meta.xml_path)
+            score_feature_path = path.parent / (path.stem + '_feature.dat')
         with open(score_feature_path, 'wb') as f:
             pickle.dump(self.score_features, f,  protocol=2)
 
@@ -589,14 +595,19 @@ class EmotionDataset(DataSet):
         perform_lists = []
         for xml in xml_list:
             midis = sorted(xml.parent.glob(f'{xml.stem}*.mid'))
-            midis = [str(midi) for midi in midis if midi.name not in ['midi.mid', 'midi_cleaned.mid']]
+            midis = [str(midi) for midi in midis if midi.name != (xml.stem + '_score.mid') ]
             perform_lists.append(midis)
 
         # Path -> string wrapper
         xml_list = [str(xml) for xml in xml_list]
         score_midis = [str(midi) for midi in score_midis]
         return xml_list, score_midis, perform_lists, composers
-
+    def load_all_features(self, scores, perform_midis, score_midis, composers,):
+        for n in tqdm(range(len(scores))):
+            score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
+            if score_feature_path.exists():
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
+                self.pieces.append(piece)
 
 class StandardDataset(DataSet):
     def __init__(self, path, save=False):

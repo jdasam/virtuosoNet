@@ -6,6 +6,8 @@ N_EDGE_TYPE=0
 
 
 def edges_to_matrix(edges, num_notes, graph_keys):
+    if len(graph_keys)==0:
+        return None
     num_keywords = len(graph_keys)
     matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
     graph_dict = {key: i for i, key in enumerate(graph_keys) }
@@ -57,6 +59,8 @@ def edges_to_matrix_short_old(edges, slice_index, graph_keys):
     return matrix
 
 def edges_to_matrix_short(edges, slice_index, graph_keys):
+    if len(graph_keys)==0:
+        return None
     num_keywords = len(graph_keys)
     num_notes = slice_index[1] - slice_index[0]
     matrix = np.zeros((num_keywords * 2, num_notes, num_notes))

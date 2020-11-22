@@ -84,7 +84,7 @@ class ScorePerformDataset:
                 graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
         else:
             graphs = None
-        return batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs
+        return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
     def __len__(self):
         return len(self.slice_info)
@@ -115,6 +115,11 @@ class FeatureCollate:
                     edges
             )
         else:
+            for sample in batch:
+                sample[0] = sample[0].unsqueeze(0)
+                sample[1] = sample[1].unsqueeze(0)
+                sample[3] = sample[3].view(1,-1,1)
+                sample[4] = sample[4].view(1,-1,1)
             return batch
 
 
