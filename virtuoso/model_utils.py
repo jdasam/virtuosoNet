@@ -10,12 +10,6 @@ def sum_with_boundary(x_split, attention_split, num_head):
 
 def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices, lower_is_note=False):
     higher_nodes = []
-    prev_higher_index = higher_indices[0]
-    lower_node_start = 0
-    lower_node_end = 0
-    num_lower_nodes = lower_out.shape[1]
-    start_lower_index = lower_indices[0]
-    lower_hidden_size = lower_out.shape[2]
 
     similarity = attention_weights.get_attention(lower_out)
     if lower_is_note:
@@ -34,8 +28,6 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
         weighted_sum = softmax_similarity * lower_out
         higher_nodes = torch.cat([torch.sum(weighted_sum[:,boundaries[i-1]:boundaries[i],:], dim=1) 
                                 for i in range(1, len(boundaries))]).unsqueeze(0)
-    # TODO code for lower is not note
-
     # for low_index in range(num_lower_nodes):
     #     if lower_is_note:
     #         current_note_index = low_index

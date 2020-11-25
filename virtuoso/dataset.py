@@ -26,7 +26,7 @@ class ScorePerformDataset:
         self.len_slice = len_slice
         self.len_graph_slice = 400
         self.graph_margin = 100
-        if len(graph_keys)>0:
+        if graph_keys and len(graph_keys)>0:
             self.is_graph = True
             self.graph_keys = graph_keys
             self.stats['graph_keys'] = graph_keys

@@ -58,7 +58,7 @@ def get_input_from_xml(xml_path, composer, input_keys, graph_keys, stats, device
         input_features['note_location'] = feature_extractor.get_note_location(score)
     input, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, output_keys=[], meas_keys=[])
     input = torch.Tensor(input).unsqueeze(0).to(device)
-    if len(graph_keys) > 0:
+    if graph_keys and len(graph_keys) > 0:
         edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys).to(device)
     else:
         edges = None

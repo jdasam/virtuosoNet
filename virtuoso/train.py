@@ -135,16 +135,13 @@ def train(args,
 
     # load data
     print('Loading the training data...')
-    
-    total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
-                
+                    
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
         for _, batch in enumerate(train_loader):
             start =time.perf_counter()
             batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
-    
             outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
             total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 

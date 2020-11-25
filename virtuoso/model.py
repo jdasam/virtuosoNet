@@ -7,9 +7,13 @@ import random
 import numpy
 import math
 
+from torch.nn.modules import dropout
+
 from . import model_constants as cons
-from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num, combine_splitted_graph_output
+from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from . import model_utils as utils
+from .module import GatedGraph, SimpleAttention, ContextAttention
+from .score_encoder import IsgnResEncoder, IsgnResEncoderV2
 
 QPM_INDEX = 0
 # VOICE_IDX = 11
@@ -21,161 +25,47 @@ QPM_PRIMO_IDX = 4
 TEMPO_PRIMO_IDX = -2
 NUM_VOICE_FEED_PARAM = 2
 
-class GatedGraph(nn.Module):
-    def  __init__(self, size, num_edge_style, device=0, secondary_size=0):
-        super(GatedGraph, self).__init__()
-        if secondary_size == 0:
-            secondary_size = size
-        self.size = size
-        self.secondary_size = secondary_size
 
-        self.ba = torch.nn.Parameter(torch.Tensor(size))
-        self.wz_wr_wh = torch.nn.Parameter(torch.Tensor(num_edge_style,size,secondary_size * 3))
-        self.uz_ur = torch.nn.Parameter(torch.Tensor(size, secondary_size * 2))
-        self.uh = torch.nn.Parameter(torch.Tensor(secondary_size, secondary_size))
 
-        nn.init.xavier_normal_(self.wz_wr_wh)
-        nn.init.xavier_normal_(self.uz_ur)
-        nn.init.xavier_normal_(self.uh)
-        nn.init.zeros_(self.ba)
+class VirtuosoNet(nn.Module):
+    def __init__(self, network_params, device):
+        super(VirtuosoNet, self).__init__()
+        self.network_params = network_params
 
-    def forward(self, input, edge_matrix, iteration=10):
-        for i in range(iteration):
-            if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
-                # splitted edge matrix
-                num_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
-                num_type = self.wz_wr_wh.shape[0]
-                input_split = utils.split_note_input_to_graph_batch(input, num_batch, edge_matrix.shape[1])
-                # num_notes = edge_matrix.shape[1]
-                # split_num = num_notes * 2 //3
-                # edge_matrix_split = torch.cat([edge_matrix[:,:split_num,:split_num],
-                #                             edge_matrix[:,-split_num:, -split_num: ]], dim=0)
-                # input_split = torch.cat([input[:,:split_num,:],
-                #                             input[:,-split_num:,: ]], dim=0)
-                activation_split = torch.bmm(edge_matrix.transpose(1,2), input_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],input.shape[2])) + self.ba
-                activation_wzrh_split = torch.bmm(activation_split, self.wz_wr_wh.repeat(input_split.shape[0],1,1))
-                activation_wz_split, activation_wr_split, activation_wh_split = torch.split(activation_wzrh_split, self.secondary_size, dim=-1)
-                input_uzr_sp = torch.matmul(input_split, self.uz_ur)
-                input_uz_sp, input_ur_sp = torch.split(input_uzr_sp, self.secondary_size, dim=-1)
-                temp_z_sp = torch.sigmoid(activation_wz_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_uz_sp)
-                temp_r_sp = torch.sigmoid(activation_wr_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_ur_sp)
+        self.score_encoder
+        self.performance_encoder
 
-                if self.secondary_size == self.size:
-                    temp_hidden_sp = torch.tanh(
-                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split, self.uh))
-                    input_split = (1 - temp_z_sp) * input_split + temp_r_sp * temp_hidden_sp
-                    input = combine_splitted_graph_output(input_split, input)
-                else:
-                    temp_hidden_sp = torch.tanh(
-                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split[:,:,-self.secondary_size:], self.uh) )
-                    temp_result_sp = (1 - temp_z_sp) * input_split[:,:,-self.secondary_size:] + temp_r_sp * temp_hidden_sp
-                    temp_result_cb = combine_splitted_graph_output(temp_result_sp, input[:,:,-self.secondary_size:])
-                    input = torch.cat((input[:,:,:-self.secondary_size], temp_result_cb), 2)
-                    # input_split = torch.cat((input_split[:,:,:-self.secondary_size], temp_result_sp), 2)
-            else:
-                activation = torch.matmul(edge_matrix.transpose(1,2), input) + self.ba
-                activation_wzrh = torch.bmm(activation, self.wz_wr_wh)
-                activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.secondary_size, dim=-1)
-                input_uzr = torch.matmul(input, self.uz_ur)
-                input_uz, input_ur = torch.split(input_uzr, self.secondary_size, dim=-1)
-                temp_z = torch.sigmoid(activation_wz.sum(0)+input_uz)
-                temp_r = torch.sigmoid(activation_wr.sum(0)+input_ur)
-
-                if self.secondary_size == self.size:
-                    temp_hidden = torch.tanh(
-                        activation_wh.sum(0) + torch.matmul(temp_r * input, self.uh))
-                    input = (1 - temp_z) * input + temp_r * temp_hidden
-                else:
-                    temp_hidden = torch.tanh(
-                        activation_wh.sum(0) + torch.matmul(temp_r * input[:,:,-self.secondary_size:], self.uh) )
-                    temp_result = (1 - temp_z) * input[:,:,-self.secondary_size:] + temp_r * temp_hidden
-                    input = torch.cat((input[:,:,:-self.secondary_size], temp_result), 2)
-
-        return input
-
-class SimpleAttention(nn.Module):
-    def __init__(self, size):
-        super(SimpleAttention, self).__init__()
-        self.attention_net = nn.Linear(size, size)
-
-    def get_attention(self, x):
-        attention = self.attention_net(x)
-        return attention
-
-    def forward(self, x):
-        attention = self.attention_net(x)
-        softmax_weight = torch.softmax(attention, dim=1)
-        attention = softmax_weight * x
-        sum_attention = torch.sum(attention, dim=1)
-        return sum_attention
-
-class ContextAttention(nn.Module):
-    def __init__(self, size, num_head):
-        super(ContextAttention, self).__init__()
-        self.attention_net = nn.Linear(size, size)
-        self.num_head = num_head
-
-        if size % num_head != 0:
-            raise ValueError("size must be dividable by num_head", size, num_head)
-        self.head_size = int(size/num_head)
-        self.context_vector = torch.nn.Parameter(torch.Tensor(num_head, self.head_size, 1))
-        nn.init.uniform_(self.context_vector, a=-1, b=1)
-
-    def get_attention(self, x):
-        attention = self.attention_net(x)
-        attention_tanh = torch.tanh(attention)
-        attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-        similarity = torch.bmm(attention_split, self.context_vector)
-        return similarity
-
-    def forward(self, x):
-        attention = self.attention_net(x)
-        attention_tanh = torch.tanh(attention)
-        if self.head_size != 1:
-            attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-            similarity = torch.bmm(attention_split, self.context_vector)
-            softmax_weight = F.softmax(similarity, dim=1)
-            x_split = torch.cat(x.split(split_size=self.head_size, dim=2), dim=0)
-
-            weighted_mul = torch.bmm(softmax_weight.transpose(1,2), x_split)
-
-            restore_size = int(weighted_mul.size(0) / self.num_head)
-            attention = torch.cat(weighted_mul.split(split_size=restore_size, dim=0), dim=2)
-        else:
-            softmax_weight = F.softmax(attention, dim=1)
-            attention = softmax_weight * x
-
-        sum_attention = torch.sum(attention, dim=1)
-        return sum_attention
 
 
 class ISGN(nn.Module):
-    def __init__(self, network_parameters, device):
+    def __init__(self, net_params, device):
         super(ISGN, self).__init__()
         self.device = device
-        self.num_graph_iteration = network_parameters.graph_iteration
-        self.num_sequence_iteration = network_parameters.sequence_iteration
+        self.num_graph_iteration = net_params.graph_iteration
+        self.num_sequence_iteration = net_params.sequence_iteration
         self.is_graph = True
-        self.network_params = network_parameters
-        self.is_baseline = network_parameters.is_baseline
+        self.network_params = net_params
+        self.is_baseline = net_params.is_baseline
 
-        self.input_size = network_parameters.input_size
-        self.output_size = network_parameters.output_size
-        self.num_layers = network_parameters.note.layer
-        self.note_hidden_size = network_parameters.note.size
-        self.num_measure_layers = network_parameters.measure.layer
-        self.measure_hidden_size = network_parameters.measure.size
-        self.final_hidden_size = network_parameters.final.size
-        self.final_input = network_parameters.final.input
-        self.encoder_size = network_parameters.encoder.size
-        self.encoded_vector_size = network_parameters.encoded_vector_size
-        self.encoder_input_size = network_parameters.encoder.input
-        self.encoder_layer_num = network_parameters.encoder.layer
-        self.time_regressive_size = network_parameters.time_reg.size
-        self.time_regressive_layer = network_parameters.time_reg.layer
-        self.num_edge_types = network_parameters.num_edge_types
-        self.final_graph_margin_size = network_parameters.final.margin
-        self.drop_out = network_parameters.drop_out
+        self.input_size = net_params.input_size
+        self.output_size = net_params.output_size
+        self.num_layers = net_params.note.layer
+        self.note_hidden_size = net_params.note.size
+        self.num_measure_layers = net_params.measure.layer
+        self.measure_hidden_size = net_params.measure.size
+        self.final_hidden_size = net_params.final.size
+        self.final_input = net_params.final.input
+        self.encoder_size = net_params.encoder.size
+        self.encoded_vector_size = net_params.encoded_vector_size
+        self.encoder_input_size = net_params.encoder.input
+        self.encoder_layer_num = net_params.encoder.layer
+        self.time_regressive_size = net_params.time_reg.size
+        self.time_regressive_layer = net_params.time_reg.layer
+        self.num_edge_types = net_params.num_edge_types
+        self.final_graph_margin_size = net_params.final.margin
+        self.drop_out = net_params.drop_out
+        self.num_attention_head = net_params.num_attention_head
+
 
         if self.is_baseline:
             self.final_graph_input_size = self.final_input + self.encoder_size + 8 + self.output_size + self.final_graph_margin_size + self.time_regressive_size * 2
@@ -184,38 +74,33 @@ class ISGN(nn.Module):
             self.final_graph_input_size = self.final_input + self.encoder_size + self.output_size + self.final_graph_margin_size + self.time_regressive_size * 2
             self.final_beat_hidden_idx = self.final_input + self.encoder_size
 
-        self.num_attention_head = network_parameters.num_attention_head
         # self.num_attention_head = 4
 
+
+        '''
         self.note_fc = nn.Sequential(
             nn.Linear(self.input_size, self.note_hidden_size),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.Dropout(self.drop_out),
             nn.ReLU(),
-            nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            # nn.BatchNorm1d(self.note_hidden_size),
-            nn.Dropout(self.drop_out),
-            nn.ReLU(),
-            nn.Linear(self.note_hidden_size, self.note_hidden_size),
-            # nn.BatchNorm1d(self.note_hidden_size),
-            nn.Dropout(self.drop_out),
-            nn.ReLU(),
         )
 
-        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device, secondary_size=self.note_hidden_size)
+        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, secondary_size=self.note_hidden_size)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
             nn.Dropout(self.drop_out),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
-        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, self.device)
+        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types)
 
-        if network_parameters.use_simple_attention:
+        if net_params.use_simple_attention:
             self.measure_attention = SimpleAttention(self.note_hidden_size * 2)
         else:
             self.measure_attention = ContextAttention(self.note_hidden_size * 2, self.num_attention_head)
         self.measure_rnn = nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
+        '''
+        self.score_encoder = IsgnResEncoderV2(net_params)
 
         self.performance_contractor = nn.Sequential(
             nn.Linear(self.encoder_input_size, self.encoder_size),
@@ -227,18 +112,13 @@ class ISGN(nn.Module):
             # nn.BatchNorm1d(self.encoder_size),
             nn.ReLU()
         )
-        self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types, self.device)
-        if network_parameters.use_simple_attention:
-            self.performance_measure_attention = SimpleAttention(self.encoder_size)
-        else:
-            self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
+        self.performance_graph_encoder = GatedGraph(self.encoder_size, self.num_edge_types)
+        self.performance_measure_attention = ContextAttention(self.encoder_size, self.num_attention_head)
 
         self.performance_encoder = nn.LSTM(self.encoder_size, self.encoder_size, num_layers=self.encoder_layer_num,
                                            batch_first=True, bidirectional=True)
-        if network_parameters.use_simple_attention:
-            self.performance_final_attention = SimpleAttention(self.encoder_size * 2)
-        else:
-            self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+
+        self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
         self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
         self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
@@ -263,42 +143,35 @@ class ISGN(nn.Module):
             nn.ReLU()
         )
 
-        self.final_graph = GatedGraph(self.final_graph_input_size, self.num_edge_types, self.device,
+        self.final_graph = GatedGraph(self.final_graph_input_size, self.num_edge_types,
                                       self.output_size + self.final_graph_margin_size)
-        if self.is_baseline:
-            self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size, self.time_regressive_size,
-                                     num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
-            if network_parameters.use_simple_attention:
-                self.final_measure_attention = SimpleAttention(self.output_size)
-                self.final_margin_attention = SimpleAttention(self.final_graph_margin_size)
-            else:
-                self.final_measure_attention = ContextAttention(self.output_size, 1)
-                self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
+        # if self.is_baseline:
+        #     self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size, self.time_regressive_size,
+        #                              num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
+        #     self.final_measure_attention = ContextAttention(self.output_size, 1)
+        #     self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
 
-            self.fc = nn.Sequential(
-                nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
-                nn.Dropout(self.drop_out),
-                nn.ReLU(),
-                nn.Linear(self.final_graph_margin_size, self.output_size),
-            )
-        # elif self.is_test_version:
-        else:
-            self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size + 8, self.time_regressive_size,
-                                     num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
-            if network_parameters.use_simple_attention:
-                self.final_beat_attention = SimpleAttention(self.output_size)
-                self.final_margin_attention = SimpleAttention(self.final_graph_margin_size)
-            else:
-                self.final_beat_attention = ContextAttention(self.output_size, 1)
-                self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
-            self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
+        #     self.fc = nn.Sequential(
+        #         nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
+        #         nn.Dropout(self.drop_out),
+        #         nn.ReLU(),
+        #         nn.Linear(self.final_graph_margin_size, self.output_size),
+        #     )
+        # # elif self.is_test_version:
+        # else:
+        self.tempo_rnn = nn.LSTM(self.final_graph_margin_size + self.output_size + 8, self.time_regressive_size,
+                                    num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
 
-            self.fc = nn.Sequential(
-                nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
-                nn.Dropout(self.drop_out),
-                nn.ReLU(),
-                nn.Linear(self.final_graph_margin_size, self.output_size-1),
-            )
+        self.final_beat_attention = ContextAttention(self.output_size, 1)
+        self.final_margin_attention = ContextAttention(self.final_graph_margin_size, self.num_attention_head)
+        self.tempo_fc = nn.Linear(self.time_regressive_size * 2, 1)
+
+        self.fc = nn.Sequential(
+            nn.Linear(self.final_graph_input_size, self.final_graph_margin_size),
+            nn.Dropout(self.drop_out),
+            nn.ReLU(),
+            nn.Linear(self.final_graph_margin_size, self.output_size-1),
+        )
         # else:
         #     self.tempo_rnn = nn.LSTM(self.time_regressive_size + 3 + 5, self.time_regressive_size, num_layers=self.time_regressive_layer, batch_first=True, bidirectional=True)
         #     self.final_beat_attention = ContextAttention(self.final_graph_input_size - self.time_regressive_size * 2, 1)
@@ -321,8 +194,8 @@ class ISGN(nn.Module):
         section_numbers = note_locations['section']
         num_notes = x.size(1)
 
-
-        note_out, measure_hidden_out = self.run_graph_network(x, edges, measure_numbers)
+        # note_out, measure_hidden_out = self.run_graph_network(x, edges, measure_numbers)
+        note_out, measure_hidden_out = self.score_encoder(x, edges, measure_numbers)
         times.append(time.perf_counter())
 
         if type(initial_z) is not bool:
@@ -330,7 +203,7 @@ class ISGN(nn.Module):
                 # zero_mean = torch.zeros(self.encoded_vector_size)
                 # one_std = torch.ones(self.encoded_vector_size)
                 # perform_z = reparameterize(zero_mean, one_std).to(self.device)
-                perform_z = torch.Tensor(numpy.random.normal(size=self.encoded_vector_size)).to(self.device)
+                perform_z = torch.Tensor(numpy.random.normal(size=self.encoded_vector_size)).to(x.device)
             # if type(initial_z) is list:
             #     perform_z = reparameterize(torch.Tensor(initial_z), torch.Tensor(initial_z)).to(self.device)
             elif not initial_z.is_cuda:
@@ -459,10 +332,10 @@ class ISGN(nn.Module):
         num_notes = nodes.shape[1]
         notes_dense_hidden = self.note_fc(nodes)
         initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.measure_hidden_size * 2)).to(self.device)
-        notes_and_measure_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
+        notes_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
         for i in range(self.num_sequence_iteration):
         # for i in range(3):
-            notes_hidden = self.graph_1st(notes_and_measure_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
+            notes_hidden = self.graph_1st(notes_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
             notes_between = self.graph_between(notes_hidden)
             notes_hidden_second = self.graph_2nd(notes_between, adjacency_matrix, iteration=self.num_graph_iteration)
             notes_hidden_cat = torch.cat((notes_hidden[:,:, -self.note_hidden_size:],
@@ -505,46 +378,46 @@ class ISGN(nn.Module):
 
 
 class HAN_Integrated(nn.Module):
-    def __init__(self, network_parameters, device, step_by_step=False):
+    def __init__(self, net_params, device, step_by_step=False):
         super(HAN_Integrated, self).__init__()
         self.device = device
         self.step_by_step = step_by_step
-        self.is_graph = network_parameters.is_graph
-        self.is_teacher_force = network_parameters.is_teacher_force
-        self.is_baseline = network_parameters.is_baseline
-        self.num_graph_iteration = network_parameters.graph_iteration
-        self.hierarchy = network_parameters.hierarchy_level
-        self.drop_out = network_parameters.drop_out
-        self.network_params = network_parameters
+        self.is_graph = net_params.is_graph
+        self.is_teacher_force = net_params.is_teacher_force
+        self.is_baseline = net_params.is_baseline
+        self.num_graph_iteration = net_params.graph_iteration
+        self.hierarchy = net_params.hierarchy_level
+        self.drop_out = net_params.drop_out
+        self.network_params = net_params
 
-        if hasattr(network_parameters, 'is_test_version') and network_parameters.is_test_version:
+        if hasattr(net_params, 'is_test_version') and net_params.is_test_version:
             self.test_version = True
         else:
             self.test_version = False
-        # self.is_simplified_note = network_parameters.is_simplified
+        # self.is_simplified_note = net_params.is_simplified
 
-        self.input_size = network_parameters.input_size
-        self.output_size = network_parameters.output_size
-        self.num_layers = network_parameters.note.layer
-        self.hidden_size = network_parameters.note.size
-        self.num_beat_layers = network_parameters.beat.layer
-        self.beat_hidden_size = network_parameters.beat.size
-        self.num_measure_layers = network_parameters.measure.layer
-        self.measure_hidden_size = network_parameters.measure.size
-        self.performance_embedding_size = network_parameters.performance.size
+        self.input_size = net_params.input_size
+        self.output_size = net_params.output_size
+        self.num_layers = net_params.note.layer
+        self.hidden_size = net_params.note.size
+        self.num_beat_layers = net_params.beat.layer
+        self.beat_hidden_size = net_params.beat.size
+        self.num_measure_layers = net_params.measure.layer
+        self.measure_hidden_size = net_params.measure.size
+        self.performance_embedding_size = net_params.performance.size
 
-        self.final_hidden_size = network_parameters.final.size
-        self.num_voice_layers = network_parameters.voice.layer
-        self.voice_hidden_size = network_parameters.voice.size
-        self.final_input = network_parameters.final.input
+        self.final_hidden_size = net_params.final.size
+        self.num_voice_layers = net_params.voice.layer
+        self.voice_hidden_size = net_params.voice.size
+        self.final_input = net_params.final.input
         if self.test_version:
             self.final_input -= 1
-        self.encoder_size = network_parameters.encoder.size
-        self.encoded_vector_size = network_parameters.encoded_vector_size
-        self.encoder_input_size = network_parameters.encoder.input
-        self.encoder_layer_num = network_parameters.encoder.layer
-        self.num_attention_head = network_parameters.num_attention_head
-        self.num_edge_types = network_parameters.num_edge_types
+        self.encoder_size = net_params.encoder.size
+        self.encoded_vector_size = net_params.encoded_vector_size
+        self.encoder_input_size = net_params.encoder.input
+        self.encoder_layer_num = net_params.encoder.layer
+        self.num_attention_head = net_params.num_attention_head
+        self.num_edge_types = net_params.num_edge_types
 
         if self.is_graph:
             self.graph_1st = GatedGraph(self.hidden_size, self.num_edge_types)
@@ -772,7 +645,6 @@ class HAN_Integrated(nn.Module):
                 prev_out_list = []
                 # if args.beatTempo:
                 #     prev_out[0] = tempos_spanned[0, 0, 0]
-                has_ground_truth = y.size(1) > 1
                 if self.is_baseline:
                     for i in range(num_notes):
                         out_combined = torch.cat((note_out[0, i, :], prev_out, qpm_primo, tempo_primo, perform_z)).view(1, 1, -1)
@@ -994,12 +866,12 @@ class HAN_Integrated(nn.Module):
 
 
 class TrillRNN(nn.Module):
-    def __init__(self, network_parameters, device):
+    def __init__(self, net_params, device):
         super(TrillRNN, self).__init__()
-        self.hidden_size = network_parameters.note.size
-        self.num_layers = network_parameters.note.layer
-        self.input_size = network_parameters.input_size
-        self.output_size = network_parameters.output_size
+        self.hidden_size = net_params.note.size
+        self.num_layers = net_params.note.layer
+        self.input_size = net_params.input_size
+        self.output_size = net_params.output_size
         self.device = device
         self.is_graph = False
         self.loss_type = 'MSE'
@@ -1039,14 +911,14 @@ class TrillRNN(nn.Module):
 
 
 class TrillGraph(nn.Module):
-    def __init__(self, network_parameters, trill_index, loss_type, device):
+    def __init__(self, net_params, trill_index, loss_type, device):
         super(TrillGraph, self).__init__()
         self.loss_type = loss_type
-        self.hidden_size = network_parameters.note.size
-        self.num_layers = network_parameters.note.layer
-        self.input_size = network_parameters.input_size
-        self.output_size = network_parameters.output_size
-        self.num_edge_types = network_parameters.num_edge_types
+        self.hidden_size = net_params.note.size
+        self.num_layers = net_params.note.layer
+        self.input_size = net_params.input_size
+        self.output_size = net_params.output_size
+        self.num_edge_types = net_params.num_edge_types
         self.is_trill_index = trill_index
         self.device = device
 
