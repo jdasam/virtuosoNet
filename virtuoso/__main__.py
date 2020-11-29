@@ -74,13 +74,11 @@ def main():
     #     TRILL_MODEL = modelzoo.TrillRNN(TrillNET_Param, device).to(device)
 
     if 'isgn' in args.model_code:
-        model = modelzoo.ISGN(net_param, device).to(device)
+        # model = modelzoo.ISGN(net_param, device).to(device)
+        model = modelzoo.IsgnVirtuosoNet(net_param).to(device)
     elif 'han' in args.model_code:
-        if 'ar' in args.model_code:
-            step_by_step = True
-        else:
-            step_by_step = False
-        model = modelzoo.HAN_Integrated(net_param, device, step_by_step).to(device)
+        model = modelzoo.HanVirtuosoNet(net_param).to(device)
+        # model = modelzoo.HAN_Integrated(net_param, device, step_by_step).to(device)
     elif 'trill' in args.model_code:
         model = modelzoo.TrillRNN(net_param, device).to(device)
     else:

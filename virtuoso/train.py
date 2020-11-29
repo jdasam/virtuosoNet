@@ -185,10 +185,16 @@ def train(args,
                 model.eval()
                 with th.no_grad():
                     for _, batch in enumerate(valid_loader):
-                        batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                        if args.meas_note:
+                            batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                            outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+                            total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
+                            total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
+                        else:
+                            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                            outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+                            total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list[-1:], note_locations, align_matched, pedal_status)
 
-                        outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-                        total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list[-1:], note_locations, align_matched, pedal_status)
                         perform_kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
                         loss_dict['kld'] = perform_kld
                         valid_loss.append(total_loss.item())
