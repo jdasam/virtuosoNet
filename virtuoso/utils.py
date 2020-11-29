@@ -1,7 +1,7 @@
 from numpy.lib.arraysetops import isin
 import torch as th
 import shutil
-from . import model_constants as const
+from .model_constants import TEMPO_IDX
 from . import data_process as dp
 from omegaconf import OmegaConf
 import yaml
@@ -28,18 +28,18 @@ def load_weight(model, checkpoint_path):
             .format(checkpoint_path, checkpoint['epoch']))
     return model
 
-def note_tempo_infos_to_beat(y, beat_numbers, index=0):
-    beat_tempos = []
-    num_notes = y.size(1)
-    prev_beat = -1
-    for i in range(num_notes):
-        cur_beat = beat_numbers[i]
-        if cur_beat > prev_beat:
-            beat_tempos.append(y[0,i,index])
-            prev_beat = cur_beat
-    num_beats = len(beat_tempos)
-    beat_tempos = th.stack(beat_tempos).view(1,num_beats,-1)
-    return beat_tempos
+# def note_tempo_infos_to_beat(y, beat_numbers, index=0):
+#     beat_tempos = []
+#     num_notes = y.size(1)
+#     prev_beat = -1
+#     for i in range(num_notes):
+#         cur_beat = beat_numbers[i]
+#         if cur_beat > prev_beat:
+#             beat_tempos.append(y[0,i,index])
+#             prev_beat = cur_beat
+#     num_beats = len(beat_tempos)
+#     beat_tempos = th.stack(beat_tempos).view(1,num_beats,-1)
+#     return beat_tempos
 
 def make_criterion_func(loss_type, device):
     if loss_type == 'MSE':
@@ -175,3 +175,22 @@ def categorize_value_to_vector(y, bins):
         y_categorized.append(total_vec)
 
     return y_categorized
+
+
+def note_tempo_infos_to_beat(y, beat_numbers, index=0):
+    beat_tempos = []
+    num_notes = y.size(1)
+    prev_beat = -1
+    for i in range(num_notes):
+        cur_beat = beat_numbers[i]
+        if cur_beat > prev_beat:
+            if index is None:
+                beat_tempos.append(y[0,i,:])
+            if index == TEMPO_IDX:
+                beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
+            else:
+                beat_tempos.append(y[0,i,index])
+            prev_beat = cur_beat
+    num_beats = len(beat_tempos)
+    beat_tempos = th.stack(beat_tempos).view(1,num_beats,-1)
+    return beat_tempos

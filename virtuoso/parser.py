@@ -31,6 +31,7 @@ def get_parser():
     parser.add_argument("--hier_beat", default=False, type=lambda x: (str(x).lower() == 'true'))   
     parser.add_argument("--hier_model", default=False, type=lambda x: (str(x).lower() == 'true'))   
     parser.add_argument("--hier_meas", default=False, type=lambda x: (str(x).lower() == 'true'))   
+    parser.add_argument("--meas_note", default=False, type=lambda x: (str(x).lower() == 'true'))   
     
     # training parameters
     parser.add_argument("--num_key_augmentation", type=int, default=1)
@@ -119,6 +120,11 @@ def get_parser():
                         default=0, help="cuda device number")
     parser.add_argument("--num_workers", type=int,
                         default=0, help="num workers for dataloader")
+    parser.add_argument("--pin_memory", default=True,
+                        type=lambda x: (str(x).lower() == 'true'), help="pin memory for loader")
+    parser.add_argument("--make_log", default=True,
+                        type=lambda x: (str(x).lower() == 'true'), help="make log for training")
+
     parser.add_argument("-code", "--model_code", type=str,
                         default='isgn', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,
@@ -170,6 +176,8 @@ def get_name(parser, args):
         "world_size",
         "device",
         "num_workers",
+        "pin_memory",
+        "make_log",
     ])
     parts = []
     name_args = dict(args.__dict__)

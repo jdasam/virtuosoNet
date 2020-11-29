@@ -51,9 +51,10 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     # higher_nodes = torch.stack(higher_nodes).view(1, -1, lower_hidden_size)
     return higher_nodes
 
-def span_beat_to_note_num(beat_out, beat_number, num_notes):
+def span_beat_to_note_num(beat_out, beat_number):
     start_beat = beat_number[0]
     num_beat = beat_out.shape[1]
+    num_notes = beat_number.shape[0]
     span_mat = torch.zeros(1, num_notes, num_beat)
     beat_indices = torch.Tensor(list(enumerate(beat_number - start_beat))).to(torch.long)
     span_mat[0, beat_indices[:,0], beat_indices[:,1]] = 1
@@ -106,3 +107,15 @@ def split_note_input_to_graph_batch(orig_input, num_batch, num_notes_per_batch, 
         input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
     input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
     return input_split
+
+def masking_half(y):
+    num_notes = y.shape[1]
+    y = y[:,:num_notes//2,:]
+    return y
+
+def encode_with_net(score_input, mean_net, var_net):
+    mu = mean_net(score_input)
+    var = var_net(score_input)
+
+    z = reparameterize(mu, var)
+    return z, mu, var

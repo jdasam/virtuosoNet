@@ -23,7 +23,7 @@ def embedd_tsne_of_emotion_dataset(total_perform_z):
     z_embedded = TSNE(n_components=2).fit_transform(selected_z)
     z_embedded = z_embedded.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
 
-    z_reshaped = selected_z.reshape(len(total_perform_z), 5, 11, -1)
+    z_reshaped = selected_z.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
     mean_z = np.mean(z_reshaped[:,0,:,:], axis=1)
     normalized_z = z_reshaped - mean_z.reshape(len(total_perform_z), 1, 1, -1)
     normalized_z = normalized_z.reshape(len(total_perform_z) * 5 * num_sample_per_performances, -1)
@@ -39,6 +39,7 @@ def draw_tsne_for_emotion_data(z_embedded, output_name):
     num_sample = z_embedded.shape[2]
     [plt.scatter(z_embedded[i,j,k,0], z_embedded[i,j,k,1] , c=colors[j], s=16) for i in range(num_piece) for j in range(5) for k in range(num_sample)]
     plt.savefig(output_name)
+    plt.close()
 
 def embedd_tsne(z, perf_names):
     # z = np.asarray([x.reshape(-1).cpu().numpy() for x in z])

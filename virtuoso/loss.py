@@ -12,6 +12,7 @@ class LossCalculator:
         self.is_hier = args.is_hier
         self.hier_meas = args.hier_meas
         self.hier_beat = args.hier_beat
+        self.meas_note = args.meas_note
         self.is_trill = args.is_trill
         self.intermediate_loss = args.intermediate_loss
         self.tempo_loss_in_note = args.tempo_loss_in_note
@@ -92,6 +93,28 @@ class LossCalculator:
                 vel_loss /= 1 + self.delta_weight
             total_loss = tempo_loss + vel_loss
             loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
+        elif self.meas_note:
+            iterative_out_list = total_out_list['iter_out']
+            meas_out = total_out_list['meas_out']
+            note_target = target['note']
+            measure_target = target['measure']
+            measure_numbers = note_locations['measure']
+            if self.intermediate_loss:
+                total_loss = torch.zeros(1).to(output.device)
+                for out in iterative_out_list:
+                    total_l, loss_dict = self.cal_loss_by_term(out, note_target, note_locations, align_matched, pedal_status)
+                    total_loss += total_l
+                total_loss /= len(iterative_out_list)
+            else:
+                total_loss, loss_dict = self.cal_loss_by_term(output, note_target, note_locations, align_matched, pedal_status)
+            tempo_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 0)
+            dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
+            meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
+            meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+            loss_dict['meas_tempo'] = meas_tempo_loss
+            loss_dict['meas_vel'] = meas_vel_loss
+            total_loss += (meas_tempo_loss + meas_vel_loss) / 2
+            total_loss /= 2
         # elif self.is_trill:
         #     trill_bool = batch_x[:, :,
         #                         is_trill_index_concated:is_trill_index_concated + 1]
@@ -102,7 +125,6 @@ class LossCalculator:
         else:
             if self.intermediate_loss:
                 total_loss = torch.zeros(1).to(output.device)
-                # for out in total_out_list:
                 for out in total_out_list:
                     total_l, loss_dict = self.cal_loss_by_term(out, target, note_locations, align_matched, pedal_status)
                     total_loss += total_l

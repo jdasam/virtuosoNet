@@ -6,15 +6,17 @@ nn_params:
     size: 0
   encoded_vector_size: 16
   encoder:
-    input: 523
+    input: 384
     layer: 2
     margin: 0
     size: 64
   final:
-    input: 512
+    input: 427
     layer: 1
     margin: 32
     size: 0
+  performance:
+    size: 128
   graph_iteration: 4
   hierarchy_level: null
   input_size: 78

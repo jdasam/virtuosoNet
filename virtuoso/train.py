@@ -50,16 +50,16 @@ def load_model(model, optimizer, device, args):
     return model, optimizer, start_epoch, iteration, best_valid_loss
 
 def prepare_dataloader(args):
-    hier_type = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas']
+    hier_type = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas', 'meas_note']
     curr_type = [x for x in hier_type if getattr(args, x)]
 
     train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
     valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, graph_keys=args.graph_keys, hier_type=curr_type)
-    emotion_set = ScorePerformDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys, hier_type=curr_type)
+    emotion_set = ScorePerformDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys)
 
-    train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
-    valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
-    emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=True, collate_fn=FeatureCollate())
+    train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
+    valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
+    emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     # emotion_loader = None
     return train_loader, valid_loader, emotion_loader
 
@@ -71,14 +71,25 @@ def prepare_directories_and_logger(output_dir, log_dir, exp_name):
     return logger, out_dir
 
 def batch_to_device(batch, device):
-    batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch
+    if len(batch) == 6:
+        batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch
+    elif len(batch) == 7:
+        batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch
+    else:
+        print(f'Unrecognizable batch length: {len(batch)}')
+        return
     batch_x = batch_x.to(device)
     batch_y = batch_y.to(device)
     align_matched = align_matched.to(device)
     pedal_status = pedal_status.to(device)
     if edges is not None:
         edges = edges.to(device)
-    return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
+
+    if len(batch) == 6:
+        return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
+    elif len(batch) == 7:
+        return batch_x, batch_y, meas_y.to(device), note_locations, align_matched, pedal_status, edges
+    
 
 def generate_midi_for_validation(model, valid_data, args):
     input = th.Tensor(valid_data['input_data'])
@@ -91,7 +102,7 @@ def get_style_from_emotion_data(model, emotion_loader, device):
             perform_z_set = {'score_path':origin_data['score_path'], 'perform_path':origin_data['perform_path']}
             for j, perform in enumerate(batch):
                 batch_x, batch_y, note_locations, _, _, edges = batch_to_device(perform, device)
-                perform_z_list = model(batch_x, batch_y, edges, note_locations, return_z=True)
+                perform_z_list = model.encode_style(batch_x, batch_y, edges, note_locations)
                 perform_z_set[f'E{j+1}'] = [x.detach().cpu().numpy()[0] for x in perform_z_list]
             total_perform_z.append(perform_z_set)
     return total_perform_z
@@ -135,15 +146,20 @@ def train(args,
 
     # load data
     print('Loading the training data...')
-                    
+
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
         for _, batch in enumerate(train_loader):
             start =time.perf_counter()
-            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
-            outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-            total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
+            if args.meas_note:
+                batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+                total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
+            else:
+                batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+                total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
             kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
             # if isinstance(perform_mu, bool):
@@ -159,7 +175,8 @@ def train(args,
             scheduler.step()
             duration = time.perf_counter() - start
             loss_dict["kld"] = perform_kld
-            logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
+            if args.make_log:
+                logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1
 
             if iteration % args.iters_per_checkpoint == 0:
@@ -188,7 +205,8 @@ def train(args,
                             generate_midi_from_xml(model, xml_path, composer, save_path, device)
 
                 model.train()
-                logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
+                if args.make_log:
+                    logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
                 is_best = valid_loss < best_valid_loss
                 best_valid_loss = min(best_valid_loss, valid_loss)
                 utils.save_checkpoint(args.checkpoints_dir / exp_name, 

@@ -33,7 +33,7 @@ class ScorePerformDataset:
         else:
             self.is_graph = False
             self.stats['graph_keys'] = []
-        hier_keys = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas']
+        hier_keys = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas', 'meas_note']
         for key in hier_keys:
             if key in hier_type:
                 setattr(self, key, True)
@@ -84,7 +84,11 @@ class ScorePerformDataset:
                 graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
         else:
             graphs = None
-        return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
+        if self.meas_note:
+            meas_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
+            return [batch_x, batch_y, meas_y, note_locations, align_matched, articulation_loss_weight, graphs]
+        else:
+            return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
     def __len__(self):
         return len(self.slice_info)
@@ -106,14 +110,25 @@ class FeatureCollate:
     #     self.device= device
     def __call__(self, batch):
         if len(batch) == 1:
-            batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch[0]
-            return (batch_x.unsqueeze(0), 
-                    batch_y.unsqueeze(0), 
-                    note_locations, 
-                    align_matched.view(1,-1,1), 
-                    pedal_status.view(1,-1,1), 
-                    edges
-            )
+            if len(batch[0]) == 6:
+                batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch[0]
+                return (batch_x.unsqueeze(0), 
+                        batch_y.unsqueeze(0), 
+                        note_locations, 
+                        align_matched.view(1,-1,1), 
+                        pedal_status.view(1,-1,1), 
+                        edges
+                )
+            else:
+                batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch[0]
+                return (batch_x.unsqueeze(0), 
+                        batch_y.unsqueeze(0), 
+                        meas_y.unsqueeze(0),
+                        note_locations, 
+                        align_matched.view(1,-1,1), 
+                        pedal_status.view(1,-1,1), 
+                        edges
+                )
         else:
             for sample in batch:
                 sample[0] = sample[0].unsqueeze(0)
