@@ -162,9 +162,6 @@ def train(args,
                 total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
             kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
-            # if isinstance(perform_mu, bool):
-            #     perform_kld = th.zeros(1)
-            # else:
             perform_kld = -0.5 * \
                 th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
             total_loss += perform_kld * kld_weight
@@ -175,6 +172,7 @@ def train(args,
             scheduler.step()
             duration = time.perf_counter() - start
             loss_dict["kld"] = perform_kld
+            loss_dict["kld_weight"] = kld_weight
             if args.make_log:
                 logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1

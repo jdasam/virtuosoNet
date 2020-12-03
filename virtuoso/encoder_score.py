@@ -111,7 +111,6 @@ class IsgnOldEncoder(nn.Module):
     def __init__(self, net_params):
         super(IsgnOldEncoder, self).__init__()
         net_params.input_size = net_params.input_size
-        self.num_layers = net_params.note.layer
         self.note_hidden_size = net_params.note.size
         self.num_measure_layers = net_params.measure.layer
         self.measure_hidden_size = net_params.measure.size
@@ -125,21 +124,21 @@ class IsgnOldEncoder(nn.Module):
             nn.Linear(net_params.input_size, self.note_hidden_size),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
+            nn.Tanh(),
         )
-        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types)
+        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, secondary_size=self.note_hidden_size)
         self.graph_between = nn.Sequential(
             nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
             nn.Dropout(net_params.drop_out),
             # nn.BatchNorm1d(self.note_hidden_size),
             nn.ReLU()
         )
-        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types)
+        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, self.num_edge_types, secondary_size=self.note_hidden_size)
         self.attention = ContextAttention(self.note_hidden_size * 2, self.num_attention_head)
         self.lstm =  nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
         
-    def forward(self, nodes, adjacency_matrix, measure_numbers):
-        num_notes = nodes.shape[1]
+    def forward(self, nodes, adjacency_matrix, note_locations):
+        measure_numbers = note_locations['measure']
         notes_dense_hidden = self.note_fc(nodes)
         initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.measure_hidden_size * 2)).to(nodes.device)
         notes_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
@@ -158,7 +157,7 @@ class IsgnOldEncoder(nn.Module):
             notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
 
         final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
-        return final_out, measure_hidden, None,None,None
+        return final_out, measure_hidden
 
 class IsgnOldGraphSingleEncoder(nn.Module):
     def __init__(self, net_params):

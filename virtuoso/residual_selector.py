@@ -23,3 +23,20 @@ class TempoVecSelector(nn.Module):
         beat_tempo_vector = note_tempo_infos_to_beat(x, beat_numbers, TEMPO_IDX)
 
         return torch.cat((beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), dim=-1)
+
+class TempoVecMeasSelector(nn.Module):
+    def __init__(self):
+        super(TempoVecMeasSelector, self).__init__()
+
+    def forward(self, x, note_locations):
+        measure_numbers = note_locations['measure']
+        num_measures = measure_numbers[-1] - measure_numbers[0] + 1
+
+        qpm_primo = x[:, :, QPM_PRIMO_IDX].view(1, -1, 1)
+        tempo_primo = x[:, :, TEMPO_PRIMO_IDX:].view(1, -1, 2)
+        # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
+        beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_measures, 1))
+        beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_measures, 1))
+        beat_tempo_vector = note_tempo_infos_to_beat(x, measure_numbers, TEMPO_IDX)
+
+        return torch.cat((beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), dim=-1)
