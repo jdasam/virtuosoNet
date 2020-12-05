@@ -15,9 +15,9 @@ from torch.utils.data import DataLoader
 from .parser import get_parser
 from .utils import categorize_value_to_vector
 from . import model_constants as const
-from .dataset import ScorePerformDataset, FeatureCollate
+from .dataset import ScorePerformDataset, FeatureCollate, MultiplePerformSet, multi_collate
 from .logger import Logger
-from .loss import LossCalculator
+from .loss import LossCalculator, cal_multiple_perf_style_loss
 from .model_utils import make_higher_node
 from .model import SimpleAttention
 from . import utils
@@ -56,19 +56,24 @@ def prepare_dataloader(args):
     train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
     valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, graph_keys=args.graph_keys, hier_type=curr_type)
     emotion_set = ScorePerformDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys)
+    multi_perf_set = MultiplePerformSet(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
 
     train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
+    multi_perf_loader = DataLoader(multi_perf_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=multi_collate)
     # emotion_loader = None
-    return train_loader, valid_loader, emotion_loader
+    return train_loader, valid_loader, emotion_loader, multi_perf_loader
 
-def prepare_directories_and_logger(output_dir, log_dir, exp_name):
+def prepare_directories_and_logger(output_dir, log_dir, exp_name, make_log=True):
     out_dir = output_dir / exp_name
     print(out_dir)
     (out_dir / log_dir).mkdir(exist_ok=True, parents=True)
-    logger = Logger(out_dir/ log_dir)
-    return logger, out_dir
+    if make_log:
+        logger = Logger(out_dir/ log_dir)
+        return logger, out_dir
+    else:
+        return None, out_dir
 
 def batch_to_device(batch, device):
     if len(batch) == 6:
@@ -124,9 +129,9 @@ def train(args,
           exp_name,
           ):
 
-    train_loader, valid_loader, emotion_loader = prepare_dataloader(args)
+    train_loader, valid_loader, emotion_loader, multi_perf_loader = prepare_dataloader(args)
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name)
+    logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name, args.make_log)
     shutil.copy(args.yml_path, args.checkpoints_dir/exp_name)
     loss_calculator = LossCalculator(criterion, args, logger)
     
@@ -138,6 +143,7 @@ def train(args,
     # best_trill_loss = float("inf")
     start_epoch = 0
     iteration = 0
+    multi_perf_iter = 0 
 
     if args.resume_training:
         model, optimizer, start_epoch, iteration, best_valid_loss = load_model(model, optimizer, device, args)
@@ -177,6 +183,28 @@ def train(args,
                 logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1
 
+
+            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 1:
+                batch = next(iter(multi_perf_loader))
+                batch_x, batch_y, note_locations, edges  = batch
+                batch_x = batch_x.to(device)
+                batch_y = batch_y.to(device)
+                if edges is not None:
+                    edges = edges.to(device)
+                perform_mu, perform_var = model.encode_style_distribution(batch_x, batch_y, edges, note_locations)
+                loss, loss_dict = cal_multiple_perf_style_loss(perform_mu, perform_var, args.multi_perf_dist_loss_margin)
+                optimizer.zero_grad()
+                loss.backward()
+                grad_norm = th.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                optimizer.step()
+                multi_perf_iter += 1
+                if multi_perf_iter == len(multi_perf_loader):
+                    multi_perf_loader.dataset.update_slice_info()
+                    multi_perf_iter = 0
+                if args.make_log:
+                    logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
+
+                
             if iteration % args.iters_per_checkpoint == 0:
                 valid_loss = []
                 valid_loss_dict = []

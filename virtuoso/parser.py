@@ -72,6 +72,10 @@ def get_parser():
                     type=int,
                     default=1000
                     )
+    parser.add_argument("--iters_per_multi_perf",
+                    type=int,
+                    default=50
+                    )
     parser.add_argument("--lr",
                         type=float,
                         default=1e-4
@@ -100,6 +104,10 @@ def get_parser():
                         type=float,
                         default=1
                         )
+    parser.add_argument("--multi_perf_dist_loss_margin",
+                        type=float,
+                        default=1
+                        )
     parser.add_argument("--grad_clip",
                         type=float,
                         default=2
@@ -124,7 +132,8 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="pin memory for loader")
     parser.add_argument("--make_log", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="make log for training")
-
+    parser.add_argument("--multi_perf_compensation", default=False,
+                        type=lambda x: (str(x).lower() == 'true'), help="train style vector to be zero with multiple performances")
     parser.add_argument("-code", "--model_code", type=str,
                         default='isgn', help="code name for saving the model")
     parser.add_argument("-tCode", "--trillCode", type=str,

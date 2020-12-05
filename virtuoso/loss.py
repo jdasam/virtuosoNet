@@ -133,8 +133,24 @@ class LossCalculator:
                 total_loss, loss_dict = self.cal_loss_by_term(output, target, note_locations, align_matched, pedal_status)
         return total_loss, loss_dict
 
+
 def get_mean_of_loss_dict(loss_dict_list):
     output = {}
     for key in loss_dict_list[0].keys():
         output[key] = sum([x[key] for x in loss_dict_list]) / len(loss_dict_list)
     return output
+
+def cal_multiple_perf_style_loss(perf_mu, perf_var, margin=2):
+    num_perf = int(perf_mu.shape[0])
+    perf_mu_loss = torch.mean(torch.abs(torch.sum(perf_mu, dim=0)))
+    perf_var_loss = torch.mean(torch.abs(torch.sum(perf_var, dim=0)))
+    distance = [torch.dist(perf_mu[i], perf_mu[j]) for i in range(num_perf) for j in range(i+1,num_perf)]
+    mean_distance = sum(distance) / len(distance)
+
+    total_loss = perf_mu_loss + perf_var_loss + torch.max(torch.zeros_like(mean_distance), (margin - mean_distance))
+    loss_dict = {
+        'mu': perf_mu_loss,
+        'var': perf_var_loss,
+        'dist': mean_distance
+    }
+    return total_loss, loss_dict

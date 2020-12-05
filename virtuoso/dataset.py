@@ -8,21 +8,20 @@ import math
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
+from collections import Counter
 from .utils import load_dat
 from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number, key_augmentation
 from . import graph
 
 class ScorePerformDataset:
-    def __init__(self, path, type, len_slice, graph_keys, hier_type=[], device='cuda'):
+    def __init__(self, path, type, len_slice, graph_keys, hier_type=[]):
         # type = one of ['train', 'valid', 'test']
         path = Path(path)
         self.path = path / type
-        stat_data = load_dat(path/"stat.dat")
-        self.stats = stat_data
-        self.device = device
+        self.stats = load_dat(path/"stat.dat")
 
-        self.data_paths = list(self.path.glob("*.dat"))
-        self.data = [load_dat(x) for x in self.data_paths]
+        self.data_paths = self.get_data_path()
+        self.data = self.load_data()
         self.len_slice = len_slice
         self.len_graph_slice = 400
         self.graph_margin = 100
@@ -57,8 +56,10 @@ class ScorePerformDataset:
     def __getitem__(self, index):
         idx, sl_idx = self.slice_info[index]
         data = self.data[idx]
-        batch_start, batch_end = sl_idx
+        return self.data_to_formatted_tensor(data, sl_idx)
 
+    def data_to_formatted_tensor(self, data, sl_idx):
+        batch_start, batch_end = sl_idx
         aug_key = random.randrange(-5, 7)
         batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
         if self.in_hier:
@@ -90,8 +91,92 @@ class ScorePerformDataset:
         else:
             return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
+    def get_data_path(self):
+        return list(self.path.glob("*.dat"))
+    
+    def load_data(self):
+        return [load_dat(x) for x in self.data_paths]
+
     def __len__(self):
         return len(self.slice_info)
+
+
+class MultiplePerformSet(ScorePerformDataset):
+    def __init__(self, path, type, len_slice, graph_keys, hier_type=[], min_perf=5):
+        super(MultiplePerformSet, self).__init__(path, type, len_slice, graph_keys, hier_type)
+        self.min_perf = min_perf
+
+    def get_data_path(self):
+        data_lists = list(self.path.glob("*.dat"))
+        return filter_performs_by_num_perf_by_piece(data_lists)
+
+    def load_data(self):
+        return [[load_dat(x) for x in piece] for piece in self.data_paths] 
+
+    def update_slice_info(self):
+        self.slice_info = []
+        for i, piece in enumerate(self.data):
+            data = piece[0]
+            data_size = len(data['input_data'])
+            measure_numbers = data['note_location']['measure']
+            if self.is_hier and self.hier_meas:
+                slice_indices = make_slice_with_same_measure_number(data_size, measure_numbers, measure_steps=self.len_slice)
+            else:
+                slice_indices = make_slicing_indexes_by_measure(data_size, measure_numbers, steps=self.len_slice)
+            for idx in slice_indices:
+                self.slice_info.append((i, idx))
+
+    def __getitem__(self, index):
+        idx, sl_idx = self.slice_info[index]
+        piece = self.data[idx]
+        selected_piece = random.sample(piece, self.min_perf)
+        batch_start, batch_end = sl_idx
+        aug_key = random.randrange(-5, 7)
+        total_batch_x = []
+        total_batch_y = []
+        for data in selected_piece:
+            batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
+            if self.in_hier:
+                if self.hier_meas:
+                    batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
+            if self.is_hier:
+                if self.hier_meas:
+                    batch_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
+            else:
+                batch_y = torch.Tensor(data['output_data'][batch_start:batch_end])
+            total_batch_x.append(batch_x)
+            total_batch_y.append(batch_y)
+        data = selected_piece[0]
+        note_locations = {
+            'beat': torch.Tensor(data['note_location']['beat'][batch_start:batch_end]).type(torch.int32),
+            'measure': torch.Tensor(data['note_location']['measure'][batch_start:batch_end]).type(torch.int32),
+            'section': torch.Tensor(data['note_location']['section'][batch_start:batch_end]).type(torch.int32),
+            'voice': torch.Tensor(data['note_location']['voice'][batch_start:batch_end]).type(torch.int32),
+        }
+
+        if self.is_graph:
+            graphs = graph.edges_to_matrix_short(data['graph'], sl_idx, self.graph_keys)
+            if self.len_graph_slice != self.len_slice:
+                graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
+        else:
+            graphs = None
+        return [torch.stack(total_batch_x), torch.stack(total_batch_y), note_locations, graphs]
+
+    
+def multi_collate(batch):
+    return batch[0]
+
+
+def filter_performs_by_num_perf_by_piece(perform_dat_paths, min_perf=5):
+    '''
+    Input: List of PosixPath for performance data
+    output: List of PosixPath that has multiple performances per piece  (more than min_perf)
+    '''
+    piece_name = ['_'.join(x.stem.split('_')[:-1]) for x in perform_dat_paths]
+    perf_counter = Counter(piece_name)
+    filtered_piece = [piece for piece in set(piece_name) if perf_counter[piece] >= min_perf]
+    return [[perf for perf in perform_dat_paths if '_'.join(perf.stem.split('_')[:-1])==piece] for piece in filtered_piece]
+
 
 def split_graph_to_batch(graphs, len_slice, len_margin):
     if graphs.shape[1] < len_slice:

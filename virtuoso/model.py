@@ -41,6 +41,12 @@ class VirtuosoNet(nn.Module):
 
         return performance_embedding
 
+    def encode_style_distribution(self, x, y, edges, note_locations):
+        score_embedding = self.score_encoder(x, edges, note_locations)
+        _, perform_mu, perform_var = self.performance_encoder(score_embedding, y, edges, note_locations)
+
+        return perform_mu, perform_var
+
     def forward(self, x, y, edges, note_locations, initial_z=None):
         score_embedding = self.score_encoder(x, edges, note_locations)
         if initial_z is None:
@@ -72,12 +78,15 @@ class IsgnVirtuosoNet(VirtuosoNet):
     def __init__(self, net_params):
         super(IsgnVirtuosoNet, self).__init__()
         self.network_params = net_params
-        self.score_encoder = encs.IsgnResEncoderV2(net_params)
+        # self.score_encoder = encs.IsgnResEncoderV2(net_params)
+        self.score_encoder = encs.IsgnOldEncoder(net_params)
+
         self.performance_encoder = encp.IsgnPerfEncoder(net_params)
         # self.performance_decoder = dec.IsgnDecoder(net_params)
-        self.performance_decoder = dec.IsgnMeasNoteDecoder(net_params)
+        self.performance_decoder = dec.IsgnMeasNoteDecoderV2(net_params)
 
-        self.residual_info_selector = res.TempoVecSelector() 
+        # self.residual_info_selector = res.TempoVecSelector() 
+        self.residual_info_selector = res.TempoVecMeasSelector()
 
 class ISGN(nn.Module):
     def __init__(self, net_params, device):
