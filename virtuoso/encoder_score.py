@@ -275,7 +275,7 @@ class HanEncoder(nn.Module):
 
     def run_voice_net(self, batch_x, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
-        output = torch.zeros(1, batch_x.size(1), self.voice_hidden_size * 2).to(batch_x.device)
+        output = torch.zeros(batch_x.shape[0], batch_x.shape[1], self.voice_hidden_size * 2).to(batch_x.device)
         # voice_numbers = torch.Tensor(voice_numbers)
         for i in range(1,max_voice+1):
             voice_x_bool = voice_numbers == i
@@ -287,8 +287,8 @@ class HanEncoder(nn.Module):
                     if voice_x_bool[j] ==1:
                         span_mat[j, note_index_in_voice] = 1
                         note_index_in_voice += 1
-                span_mat = span_mat.view(1,num_notes,-1).to(batch_x.device)
-                voice_x = batch_x[0:1,voice_x_bool,:]
+                span_mat = span_mat.view(1,num_notes,-1).repeat(batch_x.shape[0],1,1).to(batch_x.device)
+                voice_x = batch_x[:,voice_x_bool,:]
                 # voice_x = batch_x[0,voice_x_bool,:].view(1,-1, self.hidden_size)
                 # ith_hidden = voice_hidden[i-1]
 

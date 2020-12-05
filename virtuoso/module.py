@@ -107,7 +107,7 @@ class ContextAttention(nn.Module):
         attention = self.attention_net(x)
         attention_tanh = torch.tanh(attention)
         attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-        similarity = torch.bmm(attention_split, self.context_vector)
+        similarity = torch.bmm(attention_split, self.context_vector.repeat(1, x.shape[0], 1).view(-1, self.head_size ,1))
         return similarity
 
     def forward(self, x):
@@ -115,7 +115,7 @@ class ContextAttention(nn.Module):
         attention_tanh = torch.tanh(attention)
         if self.head_size != 1:
             attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-            similarity = torch.bmm(attention_split, self.context_vector)
+            similarity = torch.bmm(attention_split, self.context_vector.repeat(1, x.shape[0], 1).view(-1, self.head_size ,1))
             softmax_weight = torch.softmax(similarity, dim=1)
             x_split = torch.cat(x.split(split_size=self.head_size, dim=2), dim=0)
 

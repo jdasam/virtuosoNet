@@ -21,9 +21,12 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     softmax_similarity = torch.cat([torch.softmax(similarity[:,boundaries[i-1]:boundaries[i],:].permute(0,1,2), dim=1) for i in range(1, len(boundaries))], dim=1)
     if hasattr(attention_weights, 'head_size'):
         x_split = torch.cat(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=0)
-        higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
+        # higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
+        #                     softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
+        #                     for i in range(1, len(boundaries))]).unsqueeze(0)
+        higher_nodes = torch.stack([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
                             softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
-                            for i in range(1, len(boundaries))]).unsqueeze(0)
+                            for i in range(1, len(boundaries))]).permute(1,0,2)
     else:
         weighted_sum = softmax_similarity * lower_out
         higher_nodes = torch.cat([torch.sum(weighted_sum[:,boundaries[i-1]:boundaries[i],:], dim=1) 
@@ -55,9 +58,9 @@ def span_beat_to_note_num(beat_out, beat_number):
     start_beat = beat_number[0]
     num_beat = beat_out.shape[1]
     num_notes = beat_number.shape[0]
-    span_mat = torch.zeros(1, num_notes, num_beat)
+    span_mat = torch.zeros(beat_out.shape[0], num_notes, num_beat)
     beat_indices = torch.Tensor(list(enumerate(beat_number - start_beat))).to(torch.long)
-    span_mat[0, beat_indices[:,0], beat_indices[:,1]] = 1
+    span_mat[:, beat_indices[:,0], beat_indices[:,1]] = 1
     # for i in range(num_notes):
     #     beat_index = beat_number[i] - start_beat
     #     if beat_index >= num_beat:
