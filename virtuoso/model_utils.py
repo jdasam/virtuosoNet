@@ -94,22 +94,28 @@ def combine_splitted_graph_output(temp_output, orig_input, margin=100):
         updated_input
     '''
     updated_input = torch.zeros_like(orig_input)
-    updated_input[0, 0:temp_output.shape[1] - margin,:] = temp_output[0, :-margin, :]
-    cur_idx = temp_output.shape[1] - margin
-    end_idx = cur_idx + temp_output.shape[1] - margin * 2
-    for i in range(1, temp_output.shape[0]-1):
-        updated_input[0, cur_idx:end_idx, :] = temp_output[i, margin:-margin, :]
+    temp_output = temp_output.view(orig_input.shape[0], -1, temp_output.shape[1], temp_output.shape[2])
+    updated_input[:, 0:temp_output.shape[2] - margin,:] = temp_output[:, 0, :-margin, :]
+    cur_idx = temp_output.shape[2] - margin
+    end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    for i in range(1, temp_output.shape[1]-1):
+        updated_input[:, cur_idx:end_idx, :] = temp_output[:, i, margin:-margin, :]
         cur_idx = end_idx
-        end_idx = cur_idx + temp_output.shape[1] - margin * 2
-    updated_input[0, cur_idx:, :] = temp_output[-1, -(orig_input.shape[1]-cur_idx):, :]
+        end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    updated_input[:, cur_idx:, :] = temp_output[:, -1, -(orig_input.shape[1]-cur_idx):, :]
     return updated_input
 
-def split_note_input_to_graph_batch(orig_input, num_batch, num_notes_per_batch, overlap=200):
-    input_split = torch.zeros((num_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
-    for i in range(num_batch-1):
-        input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
-    input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
-    return input_split
+def split_note_input_to_graph_batch(orig_input, num_graph_batch, num_notes_per_batch, overlap=200):
+    input_split = torch.zeros((orig_input.shape[0], num_graph_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
+    for i in range(num_graph_batch-1):
+        input_split[:, i] = orig_input[:, overlap*i:overlap*i+num_notes_per_batch, :]
+    input_split[:, -1] = orig_input[:,-num_notes_per_batch:, :]
+    return input_split.view(-1, num_notes_per_batch, orig_input.shape[-1])
+    # input_split = torch.zeros((num_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
+    # for i in range(num_batch-1):
+    #     input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
+    # input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
+    # return input_split
 
 def masking_half(y):
     num_notes = y.shape[1]

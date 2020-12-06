@@ -103,12 +103,12 @@ class ScorePerformDataset:
 
 class MultiplePerformSet(ScorePerformDataset):
     def __init__(self, path, type, len_slice, graph_keys, hier_type=[], min_perf=5):
-        super(MultiplePerformSet, self).__init__(path, type, len_slice, graph_keys, hier_type)
         self.min_perf = min_perf
+        super(MultiplePerformSet, self).__init__(path, type, len_slice, graph_keys, hier_type)
 
     def get_data_path(self):
         data_lists = list(self.path.glob("*.dat"))
-        return filter_performs_by_num_perf_by_piece(data_lists)
+        return filter_performs_by_num_perf_by_piece(data_lists, min_perf=self.min_perf)
 
     def load_data(self):
         return [[load_dat(x) for x in piece] for piece in self.data_paths] 
@@ -158,9 +158,11 @@ class MultiplePerformSet(ScorePerformDataset):
             graphs = graph.edges_to_matrix_short(data['graph'], sl_idx, self.graph_keys)
             if self.len_graph_slice != self.len_slice:
                 graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
+                
+            return [torch.mean(torch.stack(total_batch_x),dim=0, keepdim=True), torch.stack(total_batch_y), note_locations, graphs]
         else:
             graphs = None
-        return [torch.stack(total_batch_x), torch.stack(total_batch_y), note_locations, graphs]
+            return [torch.stack(total_batch_x), torch.stack(total_batch_y), note_locations, graphs]
 
     
 def multi_collate(batch):

@@ -1,6 +1,8 @@
 import torch
-from .utils import note_tempo_infos_to_beat
+from .utils import note_tempo_infos_to_beat, note_feature_to_beat_mean
+from .model_utils import span_beat_to_note_num
 from . import model_constants as const
+from .pyScoreParser.feature_utils import make_index_continuous
 
 class LossCalculator:
     def __init__(self, criterion, args, logger):
@@ -9,6 +11,7 @@ class LossCalculator:
 
         self.delta = args.delta_loss
         self.delta_weight = args.delta_weight
+        self.vel_balance = args.vel_balance_loss
         self.is_hier = args.is_hier
         self.hier_meas = args.hier_meas
         self.hier_beat = args.hier_beat
@@ -30,6 +33,10 @@ class LossCalculator:
         tempo_loss = self.cal_tempo_loss_in_beat(out, target, note_locations['beat'])
         vel_loss = self.criterion(out[:, :, self.vel_idx:self.dev_idx],
                             target[:, :, self.vel_idx:self.dev_idx], align_matched)
+        if self.vel_balance:
+            vel_loss += cal_velocity_balance_loss(out[:, :, self.vel_idx:self.dev_idx], 
+                                            target[:, :, self.vel_idx:self.dev_idx], 
+                                            note_locations, align_matched, self.criterion)
         dev_loss = self.criterion(out[:, :, self.dev_idx:self.pedal_idx],
                             target[:, :, self.dev_idx:self.pedal_idx], align_matched)
         articul_loss = self.criterion(out[:, :, self.pedal_idx:self.pedal_idx+1],
@@ -42,28 +49,33 @@ class LossCalculator:
          
 
     def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
-        previous_beat = -1
+        boundaries = [0] + (torch.where(beat_indices[1:] - beat_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(beat_indices)]
+        use_mean = False
+        if self.tempo_loss_in_note:
+            use_mean = True
+        pred_beat_tempo = note_feature_to_beat_mean(pred_x[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
+        true_beat_tempo = note_feature_to_beat_mean(target[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
 
-        num_notes = pred_x.shape[1]
-        start_beat = beat_indices[0]
-        num_beats = beat_indices[num_notes-1] - start_beat + 1
+        # num_notes = pred_x.shape[1]
+        # start_beat = beat_indices[0]
+        # num_beats = beat_indices[num_notes-1] - start_beat + 1
 
-        pred_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
-        true_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
-        for i in range(num_notes):
-            current_beat = beat_indices[i]
-            if current_beat > previous_beat:
-                previous_beat = current_beat
-                if self.tempo_loss_in_note:
-                    for j in range(i, num_notes):
-                        if beat_indices[j] > current_beat:
-                            break
-                    if not i == j:
-                        pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, self.tempo_idx])
-                        true_beat_tempo[current_beat - start_beat] = torch.mean(target[0, i:j, self.tempo_idx])
-                else:
-                    pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
-                    true_beat_tempo[current_beat-start_beat] = target[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
+        # pred_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
+        # true_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
+        # for i in range(num_notes):
+        #     current_beat = beat_indices[i]
+        #     if current_beat > previous_beat:
+        #         previous_beat = current_beat
+        #         if self.tempo_loss_in_note:
+        #             for j in range(i, num_notes):
+        #                 if beat_indices[j] > current_beat:
+        #                     break
+        #             if not i == j:
+        #                 pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, self.tempo_idx])
+        #                 true_beat_tempo[current_beat - start_beat] = torch.mean(target[0, i:j, self.tempo_idx])
+        #         else:
+        #             pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
+        #             true_beat_tempo[current_beat-start_beat] = target[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
 
         tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo)
         if self.delta and pred_beat_tempo.shape[0] > 1:
@@ -154,3 +166,20 @@ def cal_multiple_perf_style_loss(perf_mu, perf_var, margin=2):
         'dist': mean_distance
     }
     return total_loss, loss_dict
+
+
+
+def cal_velocity_balance_loss(pred_vel, target_vel, note_locations, align_matched, criterion):
+    # filter matched notes only 
+    valid_notes_indices = (align_matched==1).squeeze()
+    beat_numbers = note_locations['beat'][valid_notes_indices]
+    beat_numbers = torch.LongTensor(make_index_continuous(beat_numbers.tolist()))
+    valid_pred = pred_vel[:,valid_notes_indices]
+    valid_target = target_vel[:,valid_notes_indices]
+    beat_pred = note_feature_to_beat_mean(valid_pred, beat_numbers)
+    beat_target = note_feature_to_beat_mean(valid_target, beat_numbers)
+    beat_pred_in_note = span_beat_to_note_num(beat_pred, beat_numbers)
+    beat_target_in_note = span_beat_to_note_num(beat_target, beat_numbers)
+    
+    loss = criterion(valid_pred / beat_pred_in_note, valid_target / beat_target_in_note) 
+    return loss 

@@ -25,31 +25,33 @@ class GatedGraph(nn.Module):
         for i in range(iteration):
             if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
                 # splitted edge matrix
-                num_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
+                num_graph_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
                 num_type = self.wz_wr_wh.shape[0]
-                input_split = utils.split_note_input_to_graph_batch(input, num_batch, edge_matrix.shape[1])
+                input_split = utils.split_note_input_to_graph_batch(input, num_graph_batch, edge_matrix.shape[1])
                 # num_notes = edge_matrix.shape[1]
                 # split_num = num_notes * 2 //3
                 # edge_matrix_split = torch.cat([edge_matrix[:,:split_num,:split_num],
                 #                             edge_matrix[:,-split_num:, -split_num: ]], dim=0)
                 # input_split = torch.cat([input[:,:split_num,:],
                 #                             input[:,-split_num:,: ]], dim=0)
-                activation_split = torch.bmm(edge_matrix.transpose(1,2), input_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],input.shape[2])) + self.ba
+                
+                # Batch dimension order: Performance Batch / Graph Batch / Graph Type
+                activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), input_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],input.shape[2])) + self.ba
                 activation_wzrh_split = torch.bmm(activation_split, self.wz_wr_wh.repeat(input_split.shape[0],1,1))
                 activation_wz_split, activation_wr_split, activation_wh_split = torch.split(activation_wzrh_split, self.secondary_size, dim=-1)
-                input_uzr_sp = torch.matmul(input_split, self.uz_ur)
+                input_uzr_sp = torch.bmm(input_split, self.uz_ur.unsqueeze(0).repeat(input_split.shape[0], 1,1))
                 input_uz_sp, input_ur_sp = torch.split(input_uzr_sp, self.secondary_size, dim=-1)
-                temp_z_sp = torch.sigmoid(activation_wz_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_uz_sp)
-                temp_r_sp = torch.sigmoid(activation_wr_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1)+input_ur_sp)
+                temp_z_sp = torch.sigmoid(activation_wz_split.view(input.shape[0] * num_graph_batch,num_type,input_split.shape[1],-1).sum(1)+input_uz_sp)
+                temp_r_sp = torch.sigmoid(activation_wr_split.view(input.shape[0] * num_graph_batch,num_type,input_split.shape[1],-1).sum(1)+input_ur_sp)
 
                 if self.secondary_size == self.size:
                     temp_hidden_sp = torch.tanh(
-                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split, self.uh))
+                        activation_wh_split.view(input.shape[0] * num_graph_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split, self.uh))
                     input_split = (1 - temp_z_sp) * input_split + temp_r_sp * temp_hidden_sp
                     input = combine_splitted_graph_output(input_split, input)
                 else:
                     temp_hidden_sp = torch.tanh(
-                        activation_wh_split.view(num_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split[:,:,-self.secondary_size:], self.uh) )
+                        activation_wh_split.view(input.shape[0] * num_graph_batch,num_type,input_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * input_split[:,:,-self.secondary_size:], self.uh) )
                     temp_result_sp = (1 - temp_z_sp) * input_split[:,:,-self.secondary_size:] + temp_r_sp * temp_hidden_sp
                     temp_result_cb = combine_splitted_graph_output(temp_result_sp, input[:,:,-self.secondary_size:])
                     input = torch.cat((input[:,:,:-self.secondary_size], temp_result_cb), 2)

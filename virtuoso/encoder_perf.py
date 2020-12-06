@@ -88,7 +88,7 @@ class IsgnPerfEncoder(nn.Module):
 
         expanded_y = self.performance_embedding_layer(y)
 
-        perform_concat = torch.cat((note_out, expanded_y), 2)
+        perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
         perform_style_contracted = self.performance_contractor(perform_concat)
         perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
         performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,

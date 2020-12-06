@@ -148,7 +148,9 @@ def get_parser():
     parser.add_argument("-perf", "--perfName", default='Anger_sub1',
                         type=str, help='resume training after loading model')
     parser.add_argument("-delta", "--delta_loss", default=False,
-                        type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
+                        type=lambda x: (str(x).lower() == 'true'), help="apply delta value as loss during training")
+    parser.add_argument("--vel_balance_loss", default=False,
+                        type=lambda x: (str(x).lower() == 'true'), help="apply velocity balance as loss during training")
     parser.add_argument("-hCode", "--hierCode", type=str,
                         default='han_measure', help="code name for loading hierarchy model")
     parser.add_argument("-intermd", "--intermediate_loss", default=True,

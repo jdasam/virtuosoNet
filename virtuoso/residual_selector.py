@@ -4,7 +4,7 @@ import torch
 import torch
 import torch.nn as nn
 from .model_constants import TEMPO_PRIMO_IDX, QPM_PRIMO_IDX, TEMPO_IDX
-from .utils import note_tempo_infos_to_beat
+from .utils import note_feature_to_beat_mean, note_tempo_infos_to_beat
 
 
 class TempoVecSelector(nn.Module):
@@ -20,7 +20,7 @@ class TempoVecSelector(nn.Module):
         # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
         beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_beats, 1))
         beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_beats, 1))
-        beat_tempo_vector = note_tempo_infos_to_beat(x, beat_numbers, TEMPO_IDX)
+        beat_tempo_vector = note_feature_to_beat_mean(x[:,:,TEMPO_IDX:TEMPO_IDX+5], beat_numbers, use_mean=False)
 
         return torch.cat((beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), dim=-1)
 
@@ -37,6 +37,6 @@ class TempoVecMeasSelector(nn.Module):
         # beat_tempos = self.note_tempo_infos_to_beat(y, beat_numbers, start_index, QPM_INDEX)
         beat_qpm_primo = qpm_primo[0, 0, 0].repeat((1, num_measures, 1))
         beat_tempo_primo = tempo_primo[0, 0, :].repeat((1, num_measures, 1))
-        beat_tempo_vector = note_tempo_infos_to_beat(x, measure_numbers, TEMPO_IDX)
+        beat_tempo_vector = note_feature_to_beat_mean(x[:,:,TEMPO_IDX:TEMPO_IDX+5], measure_numbers, use_mean=False)
 
         return torch.cat((beat_qpm_primo, beat_tempo_primo, beat_tempo_vector), dim=-1)
