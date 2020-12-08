@@ -140,6 +140,7 @@ def get_parser():
                         default='trill_default', help="code name for loading trill model")
     parser.add_argument("-comp", "--composer", type=str,
                         default='Beethoven', help="composer name of the input piece")
+    parser.add_argument("--qpm_primo", type=int, help="Tempo at the beginning of the input piece in quarter notes per minute")
     parser.add_argument("--latent", type=float, default=0, help='initial_z value')
     parser.add_argument("-bp", "--boolPedal", default=False, type=lambda x: (
         str(x).lower() == 'true'), help='make pedal value zero under threshold')

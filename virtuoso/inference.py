@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import torch
 import copy
+from math import log
 
 from .constants import *
 from .pyScoreParser.data_class import ScoreData
@@ -21,7 +22,7 @@ def inference(args, model, device):
     model = load_weight(model, args.checkpoint)
     model.eval()
     # load score
-    score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
+    score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, args.qpm_primo, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
@@ -29,7 +30,7 @@ def inference(args, model, device):
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.boolPedal, args.disklavier)
 
 def generate_midi_from_xml(model, xml_path, composer, save_path, device, bool_pedal=False, disklavier=False):
-    score, input, edges, note_locations = get_input_from_xml(xml_path, composer, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
+    score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
@@ -50,10 +51,12 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
                                                bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-def get_input_from_xml(xml_path, composer, input_keys, graph_keys, stats, device='cuda'):
+def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda'):
     score = ScoreData(xml_path, None, composer, read_xml_only=True)
     feature_extractor = ScoreExtractor(input_keys)
     input_features = feature_extractor.extract_score_features(score)
+    if qpm_primo is not None:
+        input_features['qpm_primo'] = log(qpm_primo, 10)
     if 'note_location' not in input_features:
         input_features['note_location'] = feature_extractor.get_note_location(score)
     input, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, output_keys=[], meas_keys=[])
