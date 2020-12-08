@@ -288,12 +288,100 @@ class IsgnMeasNoteDecoderV2(IsgnDecoder):
             # print([times[i]-times[i-1] for i in range(1, len(times))])
         return final_out, {'iter_out': total_iterated_output, 'meas_out':measure_tempo_vel}
 
+
 class HanDecoder(nn.Module):
-    def __init__(self, net_params) -> None:
+    def __init__(self, net_params):
         super(HanDecoder, self).__init__()
+        self.num_attention_head = net_params.num_attention_head
+        self.final_hidden_size = net_params.final.size
+
+        self.result_for_tempo_attention = ContextAttention(net_params.output_size - 1, 1)
+        self.beat_tempo_fc = nn.Linear(net_params.beat.size, 1)
+        self.fc = nn.Linear(self.final_hidden_size, net_params.output_size - 1)
+
+    def handle_style_vector(self, perf_emb, score_emb, note_locations):
+        return None
+
+    def concat_beat_rnn_input(self, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
+        return None
+
+    def concat_final_rnn_input(self, note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, note_index, beat_index, measure_index):
+        return None
+
+    def init_hidden(self, num_layer, num_direction, batch_size, hidden_size, device):
+        h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(device)
+        return (h0, h0)
+
+    def run_beat_and_note_regressive_decoding(self, score_embedding, perf_emb, res_info, note_locations):
+        note_emb, beat_emb, measure_emb, _, _ = score_embedding
+        beat_numbers = note_locations['beat']
+        measure_numbers = note_locations['measure']
+
+        num_notes = note_emb.shape[1]
+        num_beats = beat_emb.shape[1]
+
+        beat_results = torch.zeros(num_beats, self.fc.out_features).to(note_emb.device)
+        final_hidden = self.init_hidden(1, 1, note_emb.size(0), self.final_hidden_size, note_emb.device)
+        tempo_hidden = self.init_hidden(1, 1, note_emb.size(0), self.beat_tempo_fc.in_features, note_emb.device)
+
+        prev_out = torch.zeros(self.fc.out_features + 1).to(note_emb.device)
+        prev_tempo = prev_out[QPM_INDEX:QPM_INDEX+1]
+        prev_beat = -1
+        prev_beat_end = 0
+        out_total = torch.zeros(num_notes, self.fc.out_features + 1).to(note_emb.device)
+        prev_out_list = []
+
+        for i in range(num_notes):
+            current_beat = beat_numbers[i] - beat_numbers[0]
+            current_measure = measure_numbers[i] - measure_numbers[0]
+            if current_beat > prev_beat:  # beat changed
+                if i - prev_beat_end > 0:  # if there are outputs to consider
+                    corresp_result = torch.stack(prev_out_list).unsqueeze_(0)
+                else:  # there is no previous output
+                    corresp_result = torch.zeros((1,1,self.fc.out_features)).to(note_emb.device)
+                result_node = self.result_for_tempo_attention(corresp_result)
+                prev_out_list = []
+                beat_results[current_beat, :] = result_node
+
+                beat_tempo_cat = self.concat_beat_rnn_input(beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, i, current_beat, current_measure)
+                beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+
+                tmp_tempos = self.beat_tempo_fc(beat_forward)
+
+                prev_beat_end = i
+                prev_tempo = tmp_tempos.view(1)
+                prev_beat = current_beat
+
+            out_combined = self.concat_final_rnn_input(note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, i, current_beat, current_measure)
+
+            out, final_hidden = self.output_lstm(out_combined, final_hidden)
+            # out = torch.cat((out, out_combined), 2)
+            out = out.view(-1)
+            out = self.fc(out)
+
+            prev_out_list.append(out)
+            out = torch.cat((prev_tempo, out))
+
+            prev_out = out
+            out_total[i, :] = out
+
+        out_total = out_total.unsqueeze(0)
+        return out_total
+
+    def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
+        perf_emb = self.handle_style_vector(perf_embedding, score_embedding, note_locations)
+        return self.run_beat_and_note_regressive_decoding(score_embedding, perf_emb, res_info, note_locations), []
+
+
+
+class HanMeasureZDecoder(HanDecoder):
+    def __init__(self, net_params) -> None:
+        super(HanMeasureZDecoder, self).__init__(net_params)
         self.final_hidden_size = net_params.final.size
         self.final_input = net_params.final.input
         self.num_attention_head = net_params.num_attention_head
+        self.final_input = net_params.final.input
+
 
         self.style_vector_expandor = nn.Sequential(
             nn.Linear(net_params.encoded_vector_size, net_params.encoder.size),
@@ -306,97 +394,40 @@ class HanDecoder(nn.Module):
         self.beat_tempo_forward = nn.LSTM(
                 (net_params.beat.size + net_params.measure.size) * 2 + 5 + 3 + net_params.output_size + net_params.encoder.size, net_params.beat.size,
                 num_layers=1, batch_first=True, bidirectional=False)
-        self.result_for_tempo_attention = ContextAttention(net_params.output_size - 1, 1)
-        self.beat_tempo_fc = nn.Linear(net_params.beat.size, 1)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.fc = nn.Linear(self.final_hidden_size, net_params.output_size - 1)
 
-
-    def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_emb, beat_emb, measure_emb, _, _ = score_embedding
-        assert beat_emb.shape[1] == res_info.shape[1]
-        beat_numbers = note_locations['beat']
+    def handle_style_vector(self, perf_emb, score_emb, note_locations):
         measure_numbers = note_locations['measure']
-
-        num_notes = note_emb.shape[1]
-
-        perform_z = self.style_vector_expandor(perf_embedding)
+        _, _, measure_emb, _, _ = score_emb
+        
+        perform_z = self.style_vector_expandor(perf_emb)
         perform_z = perform_z.view(-1)
-
-        tempo_hidden = self.init_hidden(1,1, note_emb.size(0), self.beat_tempo_fc.in_features, note_emb.device)
-        num_beats = beat_emb.size(1)
-        result_nodes = torch.zeros(num_beats, self.fc.out_features).to(note_emb.device)
-
-        # num_measures = measure_numbers[start_index + num_notes - 1] - measure_numbers[start_index] + 1
+        
         num_measures = measure_numbers[-1] - measure_numbers[0] + 1
         perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1, num_measures, -1)
-        if perform_z_measure_spanned.shape[1] != measure_emb.shape[1]:
-            print(measure_numbers)
         perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_emb), 2)
         measure_perform_style, _ = self.perform_style_to_measure(perform_z_measure_cat)
         measure_perform_style = self.measure_perf_fc(measure_perform_style)
-        final_hidden = self.init_hidden(1, 1, note_emb.size(0), self.final_hidden_size, note_emb.device)
-        prev_out = torch.zeros(self.fc.out_features + 1).to(note_emb.device)
-        prev_tempo = prev_out[QPM_INDEX:QPM_INDEX+1]
-        prev_beat = -1
-        prev_beat_end = 0
-        out_total = torch.zeros(num_notes, self.fc.out_features + 1).to(note_emb.device)
-        prev_out_list = []
-        for i in range(num_notes):
-            current_beat = beat_numbers[i] - beat_numbers[0]
-            current_measure = measure_numbers[i] - measure_numbers[0]
-            if current_beat > prev_beat:  # beat changed
-                if i - prev_beat_end > 0:  # if there are outputs to consider
-                    corresp_result = torch.stack(prev_out_list).unsqueeze_(0)
-                else:  # there is no previous output
-                    corresp_result = torch.zeros((1,1,self.fc.out_features)).to(note_emb.device)
-                result_node = self.result_for_tempo_attention(corresp_result)
-                prev_out_list = []
-                result_nodes[current_beat, :] = result_node
 
-                beat_tempo_cat = torch.cat((beat_emb[0, current_beat, :],
-                                            measure_emb[0, current_measure, :], prev_tempo, res_info[0, current_beat, :],
-                                            result_nodes[current_beat, :],
-                                            measure_perform_style[0, current_measure, :])).view(1, 1, -1)
-                beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+        return measure_perform_style
 
-                tmp_tempos = self.beat_tempo_fc(beat_forward)
+    def concat_beat_rnn_input(self, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
+        return torch.cat((beat_emb[0, beat_index, :],
+                                            measure_emb[0, measure_index, :], prev_tempo, res_info[0, beat_index, :],
+                                            beat_results[beat_index, :],
+                                            perf_emb[0, measure_index, :])).view(1, 1, -1)
 
-                prev_beat_end = i
-                prev_tempo = tmp_tempos.view(1)
-                prev_beat = current_beat
-
-            out_combined = torch.cat(
-                (note_emb[0, i, :], beat_emb[0, current_beat, :],
-                    measure_emb[0, current_measure, :],
-                    prev_out, measure_perform_style[0, current_measure,:])).view(1, 1, -1)
-
-            out, final_hidden = self.output_lstm(out_combined, final_hidden)
-            # out = torch.cat((out, out_combined), 2)
-            out = out.view(-1)
-            out = self.fc(out)
-
-            prev_out_list.append(out)
-            out = torch.cat((prev_tempo, out))
-
-            prev_out = out
-            out_total[i, :] = out
-
-        out_total = out_total.unsqueeze(0)
-            # hidden_total = torch.cat((note_emb, beat_emb, measure), 2)
-        return out_total, []
-        
-
-    def init_hidden(self, num_layer, num_direction, batch_size, hidden_size, device):
-        h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(device)
-        return (h0, h0)
+    def concat_final_rnn_input(self, note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, note_index, beat_index, measure_index):
+        return torch.cat(
+                (note_emb[0, note_index, :], beat_emb[0, beat_index, :],
+                    measure_emb[0, measure_index, :],
+                    prev_out, perf_emb[0, measure_index,:])).view(1, 1, -1)
 
 
 
-
-class HanDecoderSingleZ(nn.Module):
+class HanDecoderSingleZ(HanDecoder):
     def __init__(self, net_params) -> None:
-        super(HanDecoderSingleZ, self).__init__()
+        super(HanDecoderSingleZ, self).__init__(net_params)
         self.final_hidden_size = net_params.final.size
         self.final_input = net_params.final.input
         self.num_attention_head = net_params.num_attention_head
@@ -410,83 +441,70 @@ class HanDecoderSingleZ(nn.Module):
         self.beat_tempo_forward = nn.LSTM(
                 (net_params.beat.size + net_params.measure.size) * 2 + 5 + 3 + net_params.output_size + net_params.encoder.size, net_params.beat.size,
                 num_layers=1, batch_first=True, bidirectional=False)
-        self.result_for_tempo_attention = ContextAttention(net_params.output_size - 1, 1)
-        self.beat_tempo_fc = nn.Linear(net_params.beat.size, 1)
         self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
-        self.fc = nn.Linear(self.final_hidden_size, net_params.output_size - 1)
 
 
-    def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_emb, beat_emb, measure_emb, _, _ = score_embedding
-        assert beat_emb.shape[1] == res_info.shape[1]
-        beat_numbers = note_locations['beat']
-        measure_numbers = note_locations['measure']
-
-        num_notes = note_emb.shape[1]
-
-        perform_z = self.style_vector_expandor(perf_embedding)
+    def handle_style_vector(self, perf_emb, score_emb, note_locations):
+        perform_z = self.style_vector_expandor(perf_emb)
         perform_z = perform_z.view(-1)
 
-        tempo_hidden = self.init_hidden(1,1, note_emb.size(0), self.beat_tempo_fc.in_features, note_emb.device)
-        num_beats = beat_emb.size(1)
-        result_nodes = torch.zeros(num_beats, self.fc.out_features).to(note_emb.device)
+        return perform_z
+
+    def concat_beat_rnn_input(self, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
+        return torch.cat((beat_emb[0, beat_index, :],
+                                            measure_emb[0, measure_index, :], prev_tempo, res_info[0, beat_index, :],
+                                            beat_results[beat_index, :],
+                                            perf_emb)).view(1, 1, -1)
+
+    def concat_final_rnn_input(self, note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, note_index, beat_index, measure_index):
+        return torch.cat(
+                (note_emb[0, note_index, :], beat_emb[0, beat_index, :],
+                    measure_emb[0, measure_index, :],
+                    prev_out, perf_emb)).view(1, 1, -1)
 
 
-        final_hidden = self.init_hidden(1, 1, note_emb.size(0), self.final_hidden_size, note_emb.device)
-        prev_out = torch.zeros(self.fc.out_features + 1).to(note_emb.device)
-        prev_tempo = prev_out[QPM_INDEX:QPM_INDEX+1]
-        prev_beat = -1
-        prev_beat_end = 0
-        out_total = torch.zeros(num_notes, self.fc.out_features + 1).to(note_emb.device)
-        prev_out_list = []
-        for i in range(num_notes):
-            current_beat = beat_numbers[i] - beat_numbers[0]
-            current_measure = measure_numbers[i] - measure_numbers[0]
-            if current_beat > prev_beat:  # beat changed
-                if i - prev_beat_end > 0:  # if there are outputs to consider
-                    corresp_result = torch.stack(prev_out_list).unsqueeze_(0)
-                else:  # there is no previous output
-                    corresp_result = torch.zeros((1,1,self.fc.out_features)).to(note_emb.device)
-                result_node = self.result_for_tempo_attention(corresp_result)
-                prev_out_list = []
-                result_nodes[current_beat, :] = result_node
+class HanMeasNoteDecoder(HanDecoder):
+    def __init__(self, net_params) -> None:
+        super(HanDecoderSingleZ, self).__init__(net_params)
+        self.final_hidden_size = net_params.final.size
+        self.final_input = net_params.final.input
+        self.num_attention_head = net_params.num_attention_head
 
-                beat_tempo_cat = torch.cat((beat_emb[0, current_beat, :],
-                                            measure_emb[0, current_measure, :], prev_tempo, res_info[0, current_beat, :],
-                                            result_nodes[current_beat, :],
-                                            perform_z)).view(1, 1, -1)
-                beat_forward, tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, tempo_hidden)
+        self.style_vector_expandor = nn.Sequential(
+            nn.Linear(net_params.encoded_vector_size, net_params.encoder.size),
+            nn.Dropout(net_params.drop_out),
+            nn.ReLU()
+        )
 
-                tmp_tempos = self.beat_tempo_fc(beat_forward)
+        self.beat_tempo_forward = nn.LSTM(
+                (net_params.beat.size + net_params.measure.size) * 2 + 5 + 3 + net_params.output_size + net_params.encoder.size, net_params.beat.size,
+                num_layers=1, batch_first=True, bidirectional=False)
+        self.output_lstm = nn.LSTM(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
 
-                prev_beat_end = i
-                prev_tempo = tmp_tempos.view(1)
-                prev_beat = current_beat
 
-            out_combined = torch.cat(
-                (note_emb[0, i, :], beat_emb[0, current_beat, :],
-                    measure_emb[0, current_measure, :],
-                    prev_out, perform_z)).view(1, 1, -1)
+    def handle_style_vector(self, perf_emb, score_emb, note_locations):
+        perform_z = self.style_vector_expandor(perf_emb)
+        perform_z = perform_z.view(-1)
 
-            out, final_hidden = self.output_lstm(out_combined, final_hidden)
-            # out = torch.cat((out, out_combined), 2)
-            out = out.view(-1)
-            out = self.fc(out)
+        return perform_z
+    
+    def run_measure_level(self, score_embedding, perform_z, note_locations):
+        _, _, measure_out, _, _ = score_embedding
+        measure_numbers = note_locations['measure']
+        num_measures = measure_out.sbape[1]
 
-            prev_out_list.append(out)
-            out = torch.cat((prev_tempo, out))
 
-            prev_out = out
-            out_total[i, :] = out
+        prev_out = torch.zeros(measure_out.shape[0], 1, 2).to(measure_out.device)
+        measure_tempo_vel = torch.zeros(measure_out.shape[0], num_measures, 2).to(measure_out.device)
+        measure_hidden = self.init_hidden(self.measure_out_lstm.num_layers, 1, measure_out.shape[0], self.measure_out_lstm.hidden_size, measure_out.device)
+        for i in range(num_measures):
+            cur_input = torch.cat([perform_z, prev_out], dim=-1)
+            cur_tempo_vel, measure_hidden =  self.measure_out_lstm(cur_input, measure_hidden)
+            measure_tempo_vel[:,i:i+1,:] = self.measure_out_fc(cur_tempo_vel)
+            prev_out = measure_tempo_vel[:,i:i+1,:]
 
-        out_total = out_total.unsqueeze(0)
-            # hidden_total = torch.cat((note_emb, beat_emb, measure), 2)
-        return out_total, []
-        
-
-    def init_hidden(self, num_layer, num_direction, batch_size, hidden_size, device):
-        h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(device)
-        return (h0, h0)
+        measure_tempo_vel_broadcasted = span_beat_to_note_num(measure_tempo_vel, measure_numbers)
+        return measure_tempo_vel_broadcasted
 
 
 class HanHierDecoder(nn.Module):

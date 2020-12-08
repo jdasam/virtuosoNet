@@ -39,6 +39,7 @@ def main():
         config = utils.read_model_setting(args.yml_path)
         net_param = config.nn_params
         args.graph_keys = net_param.graph_keys
+        criterion = utils.make_criterion_func(config.train_params.loss_type, device)
     else:
         net_param = torch.load(args.checkpoint)['network_params']
 
@@ -90,9 +91,6 @@ def main():
     # checkpoint_tmp = args.checkpoints / f"{name}.pt.tmp"
     # if args.resume_training and checkpoint.exists():
     #     checkpoint.unlink()
-
-    criterion = utils.make_criterion_func(config.train_params.loss_type, device)
-
 
     if args.session_mode == "train":
         train(args,
