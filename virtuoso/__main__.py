@@ -12,6 +12,10 @@ from . import model_parameters as param
 from . import utils
 from .train import train
 from .inference import inference
+from . import encoder_score as encs
+from . import encoder_perf as encp
+from . import decoder as dec
+from . import residual_selector as res
 
 def main():
     parser = get_parser()
@@ -73,17 +77,24 @@ def main():
     #     # if not hasattr(TrillNET_Param, 'num_edge_types'):
     #     #     TrillNET_Param.num_edge_types = 10
     #     TRILL_MODEL = modelzoo.TrillRNN(TrillNET_Param, device).to(device)
-
-    if 'isgn' in args.model_code:
-        # model = modelzoo.ISGN(net_param, device).to(device)
-        model = modelzoo.IsgnVirtuosoNet(net_param).to(device)
-    elif 'han' in args.model_code:
-        model = modelzoo.HanVirtuosoNet(net_param).to(device)
-        # model = modelzoo.HAN_Integrated(net_param, device, step_by_step).to(device)
-    elif 'trill' in args.model_code:
-        model = modelzoo.TrillRNN(net_param, device).to(device)
-    else:
-        print('Error: Unclassified model code')
+    model = modelzoo.VirtuosoNet()
+    model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
+    model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
+    model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)()
+    model.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
+    model.network_params = net_param
+    model = model.to(device)
+    
+    # if 'isgn' in args.model_code:
+    #     # model = modelzoo.ISGN(net_param, device).to(device)
+    #     model = modelzoo.IsgnVirtuosoNet(net_param).to(device)
+    # elif 'han' in args.model_code:
+    #     model = modelzoo.HanVirtuosoNet(net_param).to(device)
+    #     # model = modelzoo.HAN_Integrated(net_param, device, step_by_step).to(device)
+    # elif 'trill' in args.model_code:
+    #     model = modelzoo.TrillRNN(net_param, device).to(device)
+    # else:
+    #     print('Error: Unclassified model code')
 
     # if not (args.session_mode =="train" and args.resume_training):
     #     checkpoint = torch.load(args.checkpoint)
