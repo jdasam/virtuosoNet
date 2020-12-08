@@ -156,7 +156,7 @@ class IsgnOldEncoder(nn.Module):
             measure_hidden_spanned = span_beat_to_note_num(measure_hidden, measure_numbers)
             notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
 
-        final_out = torch.cat((notes_hidden, notes_hidden_second),-1)
+        final_out = torch.cat((notes_hidden, notes_hidden_second[:,:, -self.note_hidden_size:]),-1)
         return final_out, measure_hidden
 
 class IsgnOldGraphSingleEncoder(nn.Module):
