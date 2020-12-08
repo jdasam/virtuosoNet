@@ -47,43 +47,26 @@ class LossCalculator:
         loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': dev_loss.item(), 'articul': articul_loss.item(), 'pedal': pedal_loss.item()}
         return total_loss, loss_dict
          
+    def cal_delta_loss(self, pred, target):
+        prediction_delta = pred[:, 1:] - pred[:, :-1]
+        target_delta = target[:, 1:] - target[:, :-1]
+        delta_loss = self.criterion(prediction_delta, target_delta)
+        return delta_loss
+    
+    def add_delta_loss_with_weight(self, loss, delta_loss):
+        return (loss + delta_loss * self.delta_weight) / (1 + self.delta_weight)
 
     def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
-        boundaries = [0] + (torch.where(beat_indices[1:] - beat_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(beat_indices)]
         use_mean = False
         if self.tempo_loss_in_note:
             use_mean = True
         pred_beat_tempo = note_feature_to_beat_mean(pred_x[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
         true_beat_tempo = note_feature_to_beat_mean(target[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
 
-        # num_notes = pred_x.shape[1]
-        # start_beat = beat_indices[0]
-        # num_beats = beat_indices[num_notes-1] - start_beat + 1
-
-        # pred_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(pred_x.device)
-        # true_beat_tempo = torch.zeros([num_beats, const.NUM_TEMPO_PARAM]).to(target.device)
-        # for i in range(num_notes):
-        #     current_beat = beat_indices[i]
-        #     if current_beat > previous_beat:
-        #         previous_beat = current_beat
-        #         if self.tempo_loss_in_note:
-        #             for j in range(i, num_notes):
-        #                 if beat_indices[j] > current_beat:
-        #                     break
-        #             if not i == j:
-        #                 pred_beat_tempo[current_beat - start_beat] = torch.mean(pred_x[0, i:j, self.tempo_idx])
-        #                 true_beat_tempo[current_beat - start_beat] = torch.mean(target[0, i:j, self.tempo_idx])
-        #         else:
-        #             pred_beat_tempo[current_beat-start_beat] = pred_x[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
-        #             true_beat_tempo[current_beat-start_beat] = target[0,i,self.tempo_idx:self.tempo_idx + const.NUM_TEMPO_PARAM]
-
         tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo)
-        if self.delta and pred_beat_tempo.shape[0] > 1:
-            prediction_delta = pred_beat_tempo[1:] - pred_beat_tempo[:-1]
-            true_delta = true_beat_tempo[1:] - true_beat_tempo[:-1]
-            delta_loss = self.criterion(prediction_delta, true_delta)
-
-            tempo_loss = (tempo_loss + delta_loss * self.delta_weight) / (1 + self.delta_weight)
+        if self.delta and pred_beat_tempo.shape[1] > 1:
+            delta_loss = self.cal_delta_loss(pred_beat_tempo, true_beat_tempo)
+            tempo_loss = self.add_delta_loss_with_weight(tempo_loss, delta_loss)
 
         return tempo_loss
 
@@ -123,6 +106,12 @@ class LossCalculator:
             dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
             meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
             meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+            if self.delta and meas_out.shape[1] > 1:
+                tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
+                meas_tempo_loss = self.add_delta_loss_with_weight(meas_tempo_loss, tempo_delta_loss)
+                vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
+                meas_vel_loss = self.add_delta_loss_with_weight(meas_vel_loss, vel_delta_loss)
+
             loss_dict['meas_tempo'] = meas_tempo_loss
             loss_dict['meas_vel'] = meas_vel_loss
             total_loss += (meas_tempo_loss + meas_vel_loss) / 2
