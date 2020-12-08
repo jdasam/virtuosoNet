@@ -181,5 +181,5 @@ def cal_velocity_balance_loss(pred_vel, target_vel, note_locations, align_matche
     beat_pred_in_note = span_beat_to_note_num(beat_pred, beat_numbers)
     beat_target_in_note = span_beat_to_note_num(beat_target, beat_numbers)
     
-    loss = criterion(valid_pred / beat_pred_in_note, valid_target / beat_target_in_note) 
+    loss = criterion(valid_pred - beat_pred_in_note, valid_target - beat_target_in_note) 
     return loss 
