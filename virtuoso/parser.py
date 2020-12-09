@@ -104,6 +104,10 @@ def get_parser():
                         type=float,
                         default=1
                         )
+    parser.add_argument("--meas_loss_weight",
+                        type=float,
+                        default=1
+                        )
     parser.add_argument("--multi_perf_dist_loss_margin",
                         type=float,
                         default=1

@@ -16,6 +16,7 @@ class LossCalculator:
         self.hier_meas = args.hier_meas
         self.hier_beat = args.hier_beat
         self.meas_note = args.meas_note
+        self.meas_loss_weight = args.meas_loss_weight
         self.is_trill = args.is_trill
         self.intermediate_loss = args.intermediate_loss
         self.tempo_loss_in_note = args.tempo_loss_in_note
@@ -30,21 +31,34 @@ class LossCalculator:
         #     tempo_loss = self.criterion(out[:, :, 0:1],
         #                         target[:, :, 0:1], align_matched)
         # else:
-        tempo_loss = self.cal_tempo_loss_in_beat(out, target, note_locations['beat'])
+        tempo_loss, tempo_delta_loss = self.cal_tempo_loss_in_beat(out, target, note_locations['beat'])
+        
+
         vel_loss = self.criterion(out[:, :, self.vel_idx:self.dev_idx],
                             target[:, :, self.vel_idx:self.dev_idx], align_matched)
-        if self.vel_balance:
-            vel_loss += cal_velocity_balance_loss(out[:, :, self.vel_idx:self.dev_idx], 
-                                            target[:, :, self.vel_idx:self.dev_idx], 
-                                            note_locations, align_matched, self.criterion)
         dev_loss = self.criterion(out[:, :, self.dev_idx:self.pedal_idx],
                             target[:, :, self.dev_idx:self.pedal_idx], align_matched)
         articul_loss = self.criterion(out[:, :, self.pedal_idx:self.pedal_idx+1],
                                 target[:, :, self.pedal_idx:self.pedal_idx+1], pedal_status)
         pedal_loss = self.criterion(out[:, :, self.pedal_idx+1:], target[:, :, self.pedal_idx+1:],
                             align_matched)
-        total_loss = (tempo_loss + vel_loss + dev_loss + articul_loss + pedal_loss * 7) / 11
-        loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': dev_loss.item(), 'articul': articul_loss.item(), 'pedal': pedal_loss.item()}
+
+        if self.vel_balance:
+            vel_balance_loss = cal_velocity_balance_loss(out[:, :, self.vel_idx:self.dev_idx], 
+                                            target[:, :, self.vel_idx:self.dev_idx], 
+                                            note_locations, align_matched, self.criterion)
+        else:
+            vel_balance_loss = torch.zeros_like(vel_loss)
+                                    
+        total_loss = (tempo_loss + tempo_delta_loss + vel_loss + vel_balance_loss + dev_loss + articul_loss + pedal_loss * 7) / 11
+        loss_dict = {'tempo': tempo_loss.item(), 
+                     'vel': vel_loss.item(), 
+                     'dev': dev_loss.item(), 
+                     'articul': articul_loss.item(), 
+                     'pedal': pedal_loss.item(),
+                     'tempo_delta': tempo_delta_loss.item(),
+                     'vel_balance': vel_balance_loss.item(),
+                     }
         return total_loss, loss_dict
          
     def cal_delta_loss(self, pred, target):
@@ -54,7 +68,7 @@ class LossCalculator:
         return delta_loss
     
     def add_delta_loss_with_weight(self, loss, delta_loss):
-        return (loss + delta_loss * self.delta_weight) / (1 + self.delta_weight)
+        return (loss + delta_loss * self.delta_weight)  # / (1 + self.delta_weight)
 
     def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
         use_mean = False
@@ -66,9 +80,9 @@ class LossCalculator:
         tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo)
         if self.delta and pred_beat_tempo.shape[1] > 1:
             delta_loss = self.cal_delta_loss(pred_beat_tempo, true_beat_tempo)
-            tempo_loss = self.add_delta_loss_with_weight(tempo_loss, delta_loss)
-
-        return tempo_loss
+        else:
+            delta_loss = torch.zeros_like(tempo_loss)
+        return tempo_loss, delta_loss
 
     def __call__(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
         if self.is_hier:
@@ -89,12 +103,12 @@ class LossCalculator:
             total_loss = tempo_loss + vel_loss
             loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
         elif self.meas_note:
-            iterative_out_list = total_out_list['iter_out']
             meas_out = total_out_list['meas_out']
             note_target = target['note']
             measure_target = target['measure']
             measure_numbers = note_locations['measure']
             if self.intermediate_loss:
+                iterative_out_list = total_out_list['iter_out']
                 total_loss = torch.zeros(1).to(output.device)
                 for out in iterative_out_list:
                     total_l, loss_dict = self.cal_loss_by_term(out, note_target, note_locations, align_matched, pedal_status)
@@ -106,16 +120,20 @@ class LossCalculator:
             dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
             meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
             meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+            loss_dict['meas_tempo'] = meas_tempo_loss.item()
+            loss_dict['meas_vel'] = meas_vel_loss.item()
+
             if self.delta and meas_out.shape[1] > 1:
                 tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
-                meas_tempo_loss = self.add_delta_loss_with_weight(meas_tempo_loss, tempo_delta_loss)
                 vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
-                meas_vel_loss = self.add_delta_loss_with_weight(meas_vel_loss, vel_delta_loss)
+                loss_dict['meas_tempo_delta'] = tempo_delta_loss.item()
+                loss_dict['meas_vel_delta'] = vel_delta_loss.item()
+            else:
+                loss_dict['meas_tempo_delta'] = 0
+                loss_dict['meas_vel_delta'] = 0
 
-            loss_dict['meas_tempo'] = meas_tempo_loss
-            loss_dict['meas_vel'] = meas_vel_loss
-            total_loss += (meas_tempo_loss + meas_vel_loss) / 2
-            total_loss /= 2
+            total_loss += (meas_tempo_loss + meas_vel_loss) / 2 * self.meas_loss_weight
+            # total_loss /= 2
         # elif self.is_trill:
         #     trill_bool = batch_x[:, :,
         #                         is_trill_index_concated:is_trill_index_concated + 1]
