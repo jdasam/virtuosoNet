@@ -184,7 +184,7 @@ def train(args,
             iteration += 1
 
 
-            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 1:
+            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
                 batch = next(iter(multi_perf_loader))
                 batch_x, batch_y, note_locations, edges  = batch
                 batch_x = batch_x.to(device)
@@ -205,7 +205,7 @@ def train(args,
                     logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
 
                 
-            if iteration % args.iters_per_checkpoint == 0:
+            if iteration % args.iters_per_checkpoint == 1:
                 valid_loss = []
                 valid_loss_dict = []
                 model.eval()

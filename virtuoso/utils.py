@@ -20,6 +20,8 @@ def load_dat(path):
         return pickle.load(f)
 
 def load_weight(model, checkpoint_path):
+    if not isinstance(checkpoint_path, str):
+        checkpoint_path = str(checkpoint_path)
     checkpoint = torch.load(checkpoint_path,  map_location='cpu')
     model.load_state_dict(checkpoint['state_dict'])
     model.stats = checkpoint['stats']
