@@ -1,4 +1,8 @@
 nn_params:
+  score_encoder_name: IsgnOldEncoder
+  performance_encoder_name: IsgnPerfEncoder
+  residual_info_selector_name: TempoVecMeasSelector
+  performance_decoder_name: IsgnMeasNoteDecoderV3
   beat:
     input: 0
     layer: 1
@@ -6,15 +10,17 @@ nn_params:
     size: 0
   encoded_vector_size: 16
   encoder:
-    input: 523
+    input: 512
     layer: 2
     margin: 0
     size: 64
   final:
-    input: 512
+    input: 557
     layer: 1
     margin: 32
     size: 0
+  performance:
+    size: 128
   graph_iteration: 4
   hierarchy_level: null
   input_size: 78
@@ -68,7 +74,7 @@ nn_params:
     margin: 0
     size: 0
   graph_keys: ['onset', 'forward', 'melisma', 'rest', 'voice']
-  drop_out: 0.1
+  drop_out: 0.2
 train_params:
   bool_pedal: false
   composer: Beethoven

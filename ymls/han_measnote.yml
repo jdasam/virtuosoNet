@@ -1,4 +1,8 @@
 nn_params:
+  score_encoder_name: HanEncoder
+  performance_encoder_name: HanPerfEncoder
+  residual_info_selector_name: TempoVecMeasSelector
+  performance_decoder_name: HanMeasNoteDecoder
   beat:
     input: 0
     layer: 2
