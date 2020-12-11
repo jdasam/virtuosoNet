@@ -42,10 +42,13 @@ def main():
     if args.yml_path is not None:
         config = utils.read_model_setting(args.yml_path)
         net_param = config.nn_params
-        args.graph_keys = net_param.graph_keys
-        criterion = utils.make_criterion_func(config.train_params.loss_type, device)
     else:
         net_param = torch.load(args.checkpoint)['network_params']
+        args.yml_path = list(Path(args.checkpoint).parent.rglob('*.yml'))[0]
+        config = utils.read_model_setting(args.yml_path)
+    args.graph_keys = net_param.graph_keys
+    criterion = utils.make_criterion_func(config.train_params.loss_type, device)
+
 
     if args.world_size > 1:
         if device != "cuda" and args.rank == 0:
