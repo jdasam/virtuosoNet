@@ -233,7 +233,7 @@ def make_available_note_feature_list(notes, features, predicted):
 
     if not predicted:
         available_notes = []
-        num_features = len(features)
+        num_features = len(features['beat_tempo'])
         for i in range(num_features):
             feature = features[i]
             if not feature.qpm == None:
@@ -255,7 +255,7 @@ def make_available_note_feature_list(notes, features, predicted):
 
     else:
         available_notes = []
-        num_features = len(features)
+        num_features = len(features['beat_tempo'])
         for i in range(num_features):
             xml_note = notes[i]
             xml_pos = xml_note.note_duration.xml_position
