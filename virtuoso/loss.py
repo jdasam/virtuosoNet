@@ -97,7 +97,6 @@ class LossCalculator:
             if self.delta and output.shape[1] > 1:
                 vel_out_delta = output[:, 1:, 1:2] - output[:, :-1, 1:2]
                 vel_true_delta = dynamics_in_hierarchy[:,1:, :] - dynamics_in_hierarchy[:, :-1, :]
-
                 vel_loss += self.criterion(vel_out_delta, vel_true_delta) * self.delta_weight
                 vel_loss /= 1 + self.delta_weight
             total_loss = tempo_loss + vel_loss
@@ -129,10 +128,12 @@ class LossCalculator:
                 loss_dict['meas_tempo_delta'] = tempo_delta_loss.item()
                 loss_dict['meas_vel_delta'] = vel_delta_loss.item()
             else:
+                tempo_delta_loss = torch.zeros_like(meas_tempo_loss)
+                vel_delta_loss = torch.zeros_like(meas_vel_loss)
                 loss_dict['meas_tempo_delta'] = 0
                 loss_dict['meas_vel_delta'] = 0
 
-            total_loss += (meas_tempo_loss + meas_vel_loss) / 2 * self.meas_loss_weight
+            total_loss += (meas_tempo_loss + meas_vel_loss + tempo_delta_loss + vel_delta_loss ) / 2 * self.meas_loss_weight
             # total_loss /= 2
         # elif self.is_trill:
         #     trill_bool = batch_x[:, :,
