@@ -109,7 +109,8 @@ class PairDataset:
         
         for pair_data in tqdm(self.data_pairs):
             formatted_data = dict()
-            formatted_data['input_data'], formatted_data['output_data'], formatted_data['meas_level_data'] = convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
+            formatted_data['input_data'], formatted_data['output_data'], formatted_data['meas_level_data'], formatted_data['beat_level_data'] = \
+                 convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
             for key in VNET_COPY_DATA_KEYS:
                 formatted_data[key] = pair_data.features[key]
             formatted_data['graph'] = pair_data.graph_edges
@@ -197,7 +198,7 @@ def cal_mean_stds(feat_datas, target_features):
     return stats
 
 
-def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_INPUT_KEYS, output_keys=VNET_OUTPUT_KEYS, meas_keys=VNET_MEAS_KEYS):
+def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_INPUT_KEYS, output_keys=VNET_OUTPUT_KEYS, meas_keys=VNET_MEAS_KEYS, beat_keys=VNET_BEAT_KEYS):
     if 'num_notes' not in feature_data.keys():
         feature_data['num_notes'] = len(feature_data[input_keys[0]])
 
@@ -247,6 +248,7 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
     input_array = make_feat_to_array(input_keys)
     output_array = make_feat_to_array(output_keys)
     meas_array = make_feat_to_array(meas_keys)
+    beat_array = make_feat_to_array(beat_keys)
     # for key in input_keys:
     #     value = check_if_global_and_normalize(key)
     #     input_data.append(value)
@@ -294,6 +296,6 @@ def convert_feature_to_VirtuosoNet_format(feature_data, stats, input_keys=VNET_I
     #         meas_array[:,current_idx] = value
     #     current_idx += length
 
-    return input_array, output_array, meas_array
+    return input_array, output_array, meas_array, beat_array
 
 

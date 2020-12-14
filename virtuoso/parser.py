@@ -9,9 +9,9 @@ def get_parser():
                         #default="isgn_param.yml",
                          help="yml file path")
     parser.add_argument("-data", "--data_path", type=Path,
-                        default=Path("dataset/"), help="data dir name")
+                        default=Path("dataset_beat/"), help="data dir name")
     parser.add_argument("--emotion_data_path", type=Path,
-                    default=Path("dataset_emotion/"), help="data dir name")
+                    default=Path("dataset_emotion_beat/"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
@@ -70,7 +70,7 @@ def get_parser():
                     )
     parser.add_argument("--iters_per_checkpoint",
                     type=int,
-                    default=1000
+                    default=5000
                     )
     parser.add_argument("--iters_per_multi_perf",
                     type=int,

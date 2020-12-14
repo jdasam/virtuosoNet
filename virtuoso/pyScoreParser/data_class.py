@@ -604,7 +604,10 @@ class EmotionDataset(DataSet):
         return xml_list, score_midis, perform_lists, composers
     def load_all_features(self, scores, perform_midis, score_midis, composers,):
         for n in tqdm(range(len(scores))):
-            score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
+            if 'musicxml_cleaned.musicxml' in scores[n]:
+                score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
+            else:
+                score_feature_path = Path(scores[n]).with_suffix('.dat')
             if score_feature_path.exists():
                 piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
                 self.pieces.append(piece)
