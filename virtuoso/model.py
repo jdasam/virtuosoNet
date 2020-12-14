@@ -14,11 +14,6 @@ from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from . import model_utils as utils
 from .utils import note_tempo_infos_to_beat
 from .module import GatedGraph, SimpleAttention, ContextAttention
-from .encoder_score import IsgnResEncoder, IsgnResEncoderV2, IsgnOldEncoder
-from . import encoder_score as encs
-from . import encoder_perf as encp
-from . import decoder as dec
-from . import residual_selector as res
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX, TEMPO_IDX, PITCH_IDX
 
 # VOICE_IDX = 11
@@ -35,9 +30,9 @@ class VirtuosoNet(nn.Module):
     def __init__(self):
         super(VirtuosoNet, self).__init__()
 
-    def encode_style(self, x, y, edges, note_locations):
+    def encode_style(self, x, y, edges, note_locations, num_samples=10):
         score_embedding = self.score_encoder(x, edges, note_locations)
-        performance_embedding = self.performance_encoder(score_embedding, y, edges, note_locations, return_z=True)
+        performance_embedding = self.performance_encoder(score_embedding, y, edges, note_locations, return_z=True, num_samples=num_samples)
 
         return performance_embedding
 

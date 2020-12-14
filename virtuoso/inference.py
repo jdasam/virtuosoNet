@@ -29,10 +29,10 @@ def inference(args, model, device):
     save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.boolPedal, args.disklavier)
 
-def generate_midi_from_xml(model, xml_path, composer, save_path, device, bool_pedal=False, disklavier=False):
+def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
-        outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
+        outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z=initial_z)
 
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, bool_pedal=bool_pedal, disklavier=disklavier)
 
@@ -59,7 +59,7 @@ def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, st
         input_features['qpm_primo'] = log(qpm_primo, 10)
     if 'note_location' not in input_features:
         input_features['note_location'] = feature_extractor.get_note_location(score)
-    input, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, output_keys=[], meas_keys=[])
+    input, _, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, output_keys=[], meas_keys=[], beat_keys=[])
     input = torch.Tensor(input).unsqueeze(0).to(device)
     if graph_keys and len(graph_keys) > 0:
         edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys).to(device)

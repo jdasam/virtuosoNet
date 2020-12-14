@@ -5,7 +5,6 @@ import random
 import math
 import copy
 import time
-from virtuoso import emotion
 
 import numpy as np
 import torch as th
@@ -15,7 +14,7 @@ from torch.utils.data import DataLoader
 from .parser import get_parser
 from .utils import categorize_value_to_vector
 from . import model_constants as const
-from .dataset import ScorePerformDataset, FeatureCollate, MultiplePerformSet, multi_collate
+from .dataset import ScorePerformDataset, FeatureCollate, MultiplePerformSet, multi_collate, EmotionDataset
 from .logger import Logger
 from .loss import LossCalculator, cal_multiple_perf_style_loss
 from .model_utils import make_higher_node
@@ -55,7 +54,7 @@ def prepare_dataloader(args):
 
     train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
     valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, graph_keys=args.graph_keys, hier_type=curr_type)
-    emotion_set = ScorePerformDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys)
+    emotion_set = EmotionDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys)
     multi_perf_set = MultiplePerformSet(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
 
     train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
@@ -78,8 +77,8 @@ def prepare_directories_and_logger(output_dir, log_dir, exp_name, make_log=True)
 def batch_to_device(batch, device):
     if len(batch) == 6:
         batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch
-    elif len(batch) == 7:
-        batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch
+    elif len(batch) == 8:
+        batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch
     else:
         print(f'Unrecognizable batch length: {len(batch)}')
         return
@@ -92,8 +91,8 @@ def batch_to_device(batch, device):
 
     if len(batch) == 6:
         return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
-    elif len(batch) == 7:
-        return batch_x, batch_y, meas_y.to(device), note_locations, align_matched, pedal_status, edges
+    elif len(batch) == 8:
+        return batch_x, batch_y, beat_y.to(device), meas_y.to(device), note_locations, align_matched, pedal_status, edges
     
 
 def generate_midi_for_validation(model, valid_data, args):
@@ -114,12 +113,31 @@ def get_style_from_emotion_data(model, emotion_loader, device):
 
 def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration):
     total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
+    abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = sty.get_classification_error_with_svm(total_perform_z, emotion_loader.dataset.cross_valid_split)
+    
     tsne_z, tsne_normalized_z = sty.embedd_tsne_of_emotion_dataset(total_perform_z)
 
     save_name = out_dir / f"emotion_tsne_it{iteration}.png"
     sty.draw_tsne_for_emotion_data(tsne_z, save_name)
     save_name = out_dir / f"emotion_tsne_norm_it{iteration}.png"
     sty.draw_tsne_for_emotion_data(tsne_normalized_z, save_name)
+
+    return total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy
+
+def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device):
+    abs_mean_by_emotion, norm_mean_by_emotion = sty.get_emotion_representative_vectors(total_perform_z)
+    for piece in valid_piece_list:
+        xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
+        composer = piece[1]
+        save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_zero_iter_{iteration}.mid"
+        generate_midi_from_xml(model, xml_path, composer, save_path, device)
+        for i, emotion_z in enumerate(abs_mean_by_emotion):
+            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_absE{i+1}_iter_{iteration}.mid"
+            generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
+        for i, emotion_z in enumerate(norm_mean_by_emotion):
+            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_normE{i+1}_iter_{iteration}.mid"
+            generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
+    
 
 def train(args,
           model,
@@ -159,9 +177,9 @@ def train(args,
         for _, batch in enumerate(train_loader):
             start =time.perf_counter()
             if args.meas_note:
-                batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
                 outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-                total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
+                total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'beat':beat_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
             else:
                 batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
                 outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
@@ -184,7 +202,7 @@ def train(args,
             iteration += 1
 
 
-            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
+            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 1:
                 batch = next(iter(multi_perf_loader))
                 batch_x, batch_y, note_locations, edges  = batch
                 batch_x = batch_x.to(device)
@@ -212,7 +230,7 @@ def train(args,
                 with th.no_grad():
                     for _, batch in enumerate(valid_loader):
                         if args.meas_note:
-                            batch_x, batch_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
+                            batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
                             outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
                             total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
                             total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
@@ -226,17 +244,8 @@ def train(args,
                         valid_loss.append(total_loss.item())
                         valid_loss_dict.append(loss_dict)
                     valid_loss = sum(valid_loss) / len(valid_loss)
-                    print('Valid loss: {}'.format(valid_loss))
+                    print('Valid loss: {}'.format(valid_loss))     
 
-                    # for piece in valid_loader.dataset.data[12:13]:
-                    if not args.is_hier:
-                        for piece in valid_piece_list:
-                            xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
-                            composer = piece[1]
-                            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}iter_{iteration}.mid"
-                            generate_midi_from_xml(model, xml_path, composer, save_path, device)
-
-                model.train()
                 if args.make_log:
                     logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
                 is_best = valid_loss < best_valid_loss
@@ -251,9 +260,14 @@ def train(args,
                     'network_params': model.network_params,
                     'model_code': args.model_code
                 }, is_best)
+                total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration)
+                if args.make_log:
+                    logger.log_style_analysis(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy, iteration)
+                if not args.is_hier:
+                    validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device)
+                
 
-                validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration)
-
+                model.train()
 
                 
 
@@ -263,24 +277,3 @@ def train(args,
 
 # elif args.sessMode in ['test', 'testAll', 'testAllzero', 'encode', 'encodeAll', 'evaluate', 'correlation']:
 # ### test session
-
-
-
-
-def train_model(dataset, model, kwargs):
-    '''
-    train model for specific steps.
-    return average loss to monitor
-    '''
-
-    raise NotImplementedError
-
-    return average_loss
-
-def validate_model(dataset, model, kwargs):
-    '''
-    validate model without backprop, with longer sequence length
-    return average loss
-    '''
-
-    return average_loss

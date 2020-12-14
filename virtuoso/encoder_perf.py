@@ -37,7 +37,7 @@ class HanPerfEncoder(nn.Module):
         self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
 
-    def forward(self, score_embedding, y, edges, note_locations, return_z=False):
+    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
         note_out, _, _, beat_out_spanned, measure_out_spanned = score_embedding
@@ -55,7 +55,7 @@ class HanPerfEncoder(nn.Module):
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         if return_z:
-            return sample_multiple_z(perform_mu, perform_var)
+            return sample_multiple_z(perform_mu, perform_var, num_samples)
         return perform_z, perform_mu, perform_var
 
 
@@ -82,7 +82,7 @@ class IsgnPerfEncoder(nn.Module):
         self.performance_encoder_mean = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
         self.performance_encoder_var = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
 
-    def forward(self, score_embedding, y, edges, note_locations, return_z=False):
+    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
         measure_numbers = note_locations['measure']
         note_out, _, = score_embedding
 
@@ -98,7 +98,7 @@ class IsgnPerfEncoder(nn.Module):
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         if return_z:
-            return sample_multiple_z(perform_mu, perform_var)
+            return sample_multiple_z(perform_mu, perform_var, num_samples)
         return perform_z, perform_mu, perform_var
 
 

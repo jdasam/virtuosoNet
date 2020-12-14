@@ -20,7 +20,12 @@ class Logger(SummaryWriter):
                 self.add_scalar("traning.multi_perf.{}_loss".format(key), loss_dict[key], iteration)
             self.add_scalar("grad.norm.multi_perf", grad_norm, iteration)
     
-    
+    def log_style_analysis(self, abs_confusion_matrix, abs_accuracy, norm_confusion_matrix, norm_accuracy, iteration):
+        self.add_scalar("validation.style_analysis.abs.accuracy", abs_accuracy, iteration)
+        self.add_image("validation.style_analysis.abs.confusion_matrix", abs_confusion_matrix.reshape(1,5,5), iteration)
+        self.add_scalar("validation.style_analysis.norm.accuracy", norm_accuracy, iteration)
+        self.add_image("validation.style_analysis.norm.confusion_matrix", norm_confusion_matrix.reshape(1,5,5), iteration) 
+
 
     def log_validation(self, reduced_loss, loss_dict, model, iteration):
         self.add_scalar("validation.total_loss", reduced_loss, iteration)

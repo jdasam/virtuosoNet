@@ -2,15 +2,37 @@ import matplotlib
 matplotlib.use('Agg')
 from sklearn.manifold import TSNE
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
-
+from sklearn.svm import SVC
 
 import pickle
 import _pickle as cPickle
 # from . import pyScoreParser.xml_matching as xml_matching
 import os
 from .pyScoreParser.midi_utils import utils as utils
+
+def get_emotion_representative_vectors(total_perform_z):
+    '''
+    total_perform_z: List of dictionary {'E1': List of style vector z in 1D numpy array }
+    Out: [style_vectors for Emotion in (E1, E2, E3, E4, E5)]
+    '''
+    total_z_flattened = torch.Tensor([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
+    num_pieces = len(total_perform_z)
+    num_emotions = 5
+    num_sample_per_performances = len(total_perform_z[0]['E1'])
+    
+    
+    total_z_flattened = total_z_flattened.view(num_pieces, num_emotions, num_sample_per_performances, -1)
+    abs_mean_by_emotion = torch.mean(total_z_flattened, dim=(0,2))
+
+    orig_emotion_mean = torch.mean(total_z_flattened[:,0,:,:], dim=1)
+    normalized_z = total_z_flattened - orig_emotion_mean.unsqueeze(1).unsqueeze(1)
+    norm_mean_by_emotion = torch.mean(normalized_z, dim=(0,2))
+    
+    return abs_mean_by_emotion, norm_mean_by_emotion
+    
 
 
 def embedd_tsne_of_emotion_dataset(total_perform_z):
@@ -32,12 +54,56 @@ def embedd_tsne_of_emotion_dataset(total_perform_z):
 
     return z_embedded, tsne_normalized
 
+def total_perform_z_to_abs_and_norm(total_perform_z):
+    selected_z = np.asarray([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
+    num_sample_per_performances = len(total_perform_z[0]['E1'])
+    perform_z_array = selected_z.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
+
+    mean_z = np.mean(perform_z_array[:,0,:,:], axis=1)
+    normalized_z = perform_z_array - mean_z.reshape(len(total_perform_z), 1, 1, -1)
+
+    return perform_z_array, normalized_z
+
+def cross_validate_with_svm(perform_z_array, valid_slices):
+    num_sample_per_performances = perform_z_array.shape[-2]
+    y = np.zeros_like(perform_z_array)[:,:,:,0]
+    for i in range(y.shape[1]):
+        y[:,i,:] = i
+    perform_z_array = perform_z_array.reshape(-1, num_sample_per_performances, perform_z_array.shape[-1])
+    y = y.reshape(-1, num_sample_per_performances)
+    confusion_matrix = np.zeros((5,5))
+    for valid_ids in valid_slices:
+        train_ids = list(set(range(y.shape[0])) - set(valid_ids))
+        linear_svc = SVC(kernel='linear')
+        linear_svc.fit(perform_z_array[train_ids].reshape(-1,perform_z_array.shape[-1]), y[train_ids].flatten())
+        confusion_matrix += cal_svm_accuracy(linear_svc, perform_z_array[valid_ids].reshape(-1,perform_z_array.shape[-1]),y[valid_ids].flatten())
+
+    accuracy = np.trace(confusion_matrix) / np.sum(confusion_matrix)
+    confusion_matrix /= np.max(np.sum(confusion_matrix, axis=1))
+    return confusion_matrix, accuracy
+
+def get_classification_error_with_svm(total_perform_z, valid_slices):    
+    abs_z, norm_z = total_perform_z_to_abs_and_norm(total_perform_z)
+
+    abs_confusion, abs_accuracy = cross_validate_with_svm(abs_z, valid_slices)
+    norm_confusion, norm_accuracy = cross_validate_with_svm(norm_z, valid_slices)
+
+    return abs_confusion, abs_accuracy, norm_confusion, norm_accuracy
+
+def cal_svm_accuracy(svc, x, y):
+    prediction = svc.predict(x)
+    confusion_matrix = np.zeros((5,5))
+    for i in range(5):
+        ids = np.where(y==i)[0]
+        for j in range(5):
+            confusion_matrix[i,j] = sum(prediction[ids]==j)
+    
+    return confusion_matrix
+
 def draw_tsne_for_emotion_data(z_embedded, output_name):
     plt.figure(figsize=(10,10))
     colors = ['black', 'green', 'gold', 'blue', 'red']
-    num_piece = z_embedded.shape[0]
-    num_sample = z_embedded.shape[2]
-    [plt.scatter(z_embedded[i,j,k,0], z_embedded[i,j,k,1] , c=colors[j], s=16) for i in range(num_piece) for j in range(5) for k in range(num_sample)]
+    [plt.scatter(z_embedded[:,j,:,0], z_embedded[:,j,:,1] , c=colors[j], s=16) for j in range(5)]
     plt.savefig(output_name)
     plt.close()
 
