@@ -202,7 +202,7 @@ def train(args,
             iteration += 1
 
 
-            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 1:
+            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
                 batch = next(iter(multi_perf_loader))
                 batch_x, batch_y, note_locations, edges  = batch
                 batch_x = batch_x.to(device)
@@ -223,7 +223,7 @@ def train(args,
                     logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
 
                 
-            if iteration % args.iters_per_checkpoint == 1:
+            if iteration % args.iters_per_checkpoint == 0:
                 valid_loss = []
                 valid_loss_dict = []
                 model.eval()
@@ -233,7 +233,7 @@ def train(args,
                             batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
                             outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
                             total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
-                            total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
+                            total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y, 'beat':beat_y}, total_out_list, note_locations, align_matched, pedal_status)
                         else:
                             batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch_to_device(batch, device)
                             outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)

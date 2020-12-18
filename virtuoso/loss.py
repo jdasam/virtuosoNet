@@ -84,6 +84,30 @@ class LossCalculator:
             delta_loss = torch.zeros_like(tempo_loss)
         return tempo_loss, delta_loss
 
+    def cal_measure_loss(self, meas_out, target, note_locations, loss_dict, hier_type='measure'):
+        measure_target = target[hier_type]
+        measure_numbers = note_locations[hier_type]
+        tempo_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 0)
+        meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
+        loss_dict[f'{hier_type[:4]}_tempo'] = meas_tempo_loss.item()
+
+        dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
+        meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+        loss_dict[f'{hier_type[:4]}_vel'] = meas_vel_loss.item()
+
+        if self.delta and meas_out.shape[1] > 1:
+            tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
+            vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+            loss_dict[f'{hier_type[:4]}_tempo_delta'] = tempo_delta_loss.item()
+            loss_dict[f'{hier_type[:4]}_vel_delta'] = vel_delta_loss.item()
+        else:
+            tempo_delta_loss = torch.zeros_like(meas_tempo_loss)
+            vel_delta_loss = torch.zeros_like(meas_vel_loss)
+            loss_dict[f'{hier_type[:4]}_tempo_delta'] = 0
+            loss_dict[f'{hier_type[:4]}_vel_delta'] = 0
+        
+        return meas_tempo_loss, meas_vel_loss, tempo_delta_loss, vel_delta_loss
+
     def __call__(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
         if self.is_hier:
             if self.hier_meas:
@@ -102,10 +126,7 @@ class LossCalculator:
             total_loss = tempo_loss + vel_loss
             loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
         elif self.meas_note:
-            meas_out = total_out_list['meas_out']
             note_target = target['note']
-            measure_target = target['measure']
-            measure_numbers = note_locations['measure']
             if self.intermediate_loss:
                 iterative_out_list = total_out_list['iter_out']
                 total_loss = torch.zeros(1).to(output.device)
@@ -115,25 +136,14 @@ class LossCalculator:
                 total_loss /= len(iterative_out_list)
             else:
                 total_loss, loss_dict = self.cal_loss_by_term(output, note_target, note_locations, align_matched, pedal_status)
-            tempo_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 0)
-            dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
-            meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
-            meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
-            loss_dict['meas_tempo'] = meas_tempo_loss.item()
-            loss_dict['meas_vel'] = meas_vel_loss.item()
-
-            if self.delta and meas_out.shape[1] > 1:
-                tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
-                vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
-                loss_dict['meas_tempo_delta'] = tempo_delta_loss.item()
-                loss_dict['meas_vel_delta'] = vel_delta_loss.item()
+            meas_tempo_loss, meas_vel_loss, tempo_delta_loss, vel_delta_loss = self.cal_measure_loss(total_out_list['meas_out'], target, note_locations, loss_dict)
+            if 'beat_out' in total_out_list:
+                _, beat_vel_loss, _, beat_vel_delta_loss = self.cal_measure_loss(total_out_list['beat_out'], target, note_locations, loss_dict, hier_type='beat')
             else:
-                tempo_delta_loss = torch.zeros_like(meas_tempo_loss)
-                vel_delta_loss = torch.zeros_like(meas_vel_loss)
-                loss_dict['meas_tempo_delta'] = 0
-                loss_dict['meas_vel_delta'] = 0
-
-            total_loss += (meas_tempo_loss + meas_vel_loss + tempo_delta_loss + vel_delta_loss ) / 2 * self.meas_loss_weight
+                beat_vel_loss = torch.zeros_like(meas_vel_loss)
+                beat_vel_delta_loss = torch.zeros_like(meas_vel_loss)
+            
+            total_loss += (meas_tempo_loss + meas_vel_loss + tempo_delta_loss + vel_delta_loss + beat_vel_loss + beat_vel_delta_loss  ) / 2 * self.meas_loss_weight
             # total_loss /= 2
         # elif self.is_trill:
         #     trill_bool = batch_x[:, :,

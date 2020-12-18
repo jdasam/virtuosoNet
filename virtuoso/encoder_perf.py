@@ -84,7 +84,8 @@ class IsgnPerfEncoder(nn.Module):
 
     def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
         measure_numbers = note_locations['measure']
-        note_out, _, = score_embedding
+        # note_out, _, = score_embedding
+        note_out = score_embedding['total_note_cat']
 
         expanded_y = self.performance_embedding_layer(y)
 
