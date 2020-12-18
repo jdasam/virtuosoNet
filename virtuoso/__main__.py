@@ -43,7 +43,7 @@ def main():
         config = utils.read_model_setting(args.yml_path)
         net_param = config.nn_params
     else:
-        net_param = torch.load(args.checkpoint)['network_params']
+        net_param = torch.load(args.checkpoint, map_location='cpu')['network_params']
         args.yml_path = list(Path(args.checkpoint).parent.rglob('*.yml'))[0]
         config = utils.read_model_setting(args.yml_path)
     args.graph_keys = net_param.graph_keys
