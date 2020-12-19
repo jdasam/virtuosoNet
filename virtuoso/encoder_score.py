@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn.modules import dropout
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from .module import GatedGraph, SimpleAttention, ContextAttention
 
@@ -323,43 +324,27 @@ class IsgnOldGraphSingleEncoder(nn.Module):
         return final_out, measure_hidden
 
 
-
-
 class HanEncoder(nn.Module):
     def __init__(self, net_params):
         super(HanEncoder, self).__init__()
-
-        net_params.input_size = net_params.input_size
-        self.num_layers = net_params.note.layer
-        self.hidden_size = net_params.note.size
-        self.num_beat_layers = net_params.beat.layer
-        self.beat_hidden_size = net_params.beat.size
-        self.num_measure_layers = net_params.measure.layer
-        self.measure_hidden_size = net_params.measure.size
-
-        self.num_voice_layers = net_params.voice.layer
-        self.voice_hidden_size = net_params.voice.size
-        self.num_attention_head = net_params.num_attention_head
 
         self.note_fc = nn.Sequential(
             nn.Linear(net_params.input_size, self.hidden_size),
             nn.Dropout(net_params.drop_out),
             nn.ReLU(),
         )
-        self.lstm = nn.LSTM(self.hidden_size, self.hidden_size, self.num_layers, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+        self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
-        self.voice_net = nn.LSTM(self.hidden_size, self.voice_hidden_size, self.num_voice_layers,
+        self.voice_net = nn.LSTM(net_params.note.size, net_params.voice.size, net_params.voice.layer,
                                     batch_first=True, bidirectional=True, dropout=net_params.drop_out)
-        self.beat_attention = ContextAttention((self.hidden_size + self.voice_hidden_size) * 2,
-                                                self.num_attention_head)
-        self.beat_rnn = nn.LSTM((self.hidden_size + self.voice_hidden_size) * 2, self.beat_hidden_size, self.num_beat_layers, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
-        self.measure_attention = ContextAttention(self.beat_hidden_size*2, self.num_attention_head)
-        self.measure_rnn = nn.LSTM(self.beat_hidden_size * 2, self.measure_hidden_size, self.num_measure_layers, batch_first=True, bidirectional=True)
-    
+        self.beat_attention = ContextAttention((net_params.note.size + net_params.voice.size) * 2,
+                                                net_params.num_attention_head)
+        self.beat_rnn = nn.LSTM((net_params.note.size + net_params.voice.size) * 2, net_params.beat.size, net_params.beat.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+        self.measure_attention = ContextAttention(net_params.beat.size*2, net_params.num_attention_head)
+        self.measure_rnn = nn.LSTM(net_params.beat.size * 2, net_params.measure.size, net_params.measure.layer, batch_first=True, bidirectional=True)
+
     
     def forward(self, x, edges, note_locations):
-        beat_numbers = note_locations['beat']
-        measure_numbers = note_locations['measure']
         voice_numbers = note_locations['voice']
 
         # hidden = self.init_hidden(self.num_layers, 2, x.size(0), self.hidden_size)
@@ -372,20 +357,14 @@ class HanEncoder(nn.Module):
         hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         hidden_out = torch.cat((hidden_out,voice_out), 2)
 
-        beat_nodes = make_higher_node(hidden_out, self.beat_attention, beat_numbers, beat_numbers, lower_is_note=True)
-        beat_hidden_out, _ = self.beat_rnn(beat_nodes)
-        measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
-        measure_hidden_out, _ = self.measure_rnn(measure_nodes)
-
-        beat_out_spanned = span_beat_to_note_num(beat_hidden_out, beat_numbers)
-        measure_out_spanned = span_beat_to_note_num(measure_hidden_out, measure_numbers)
-
-        return hidden_out, beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned
-
+        beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
+        # return hidden_out, beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned
+        return {'note': hidden_out, 'beat': beat_hidden_out, 'measure': measure_hidden_out, 'beat_spanned':beat_out_spanned, 'measure_spanned':measure_out_spanned,
+                'total_note_cat': torch.cat([hidden_out, beat_out_spanned, measure_out_spanned], dim=-1) }
 
     def run_voice_net(self, batch_x, voice_numbers, max_voice):
         num_notes = batch_x.size(1)
-        output = torch.zeros(batch_x.shape[0], batch_x.shape[1], self.voice_hidden_size * 2).to(batch_x.device)
+        output = torch.zeros(batch_x.shape[0], batch_x.shape[1], self.voice_net.hidden_size * 2).to(batch_x.device)
         # voice_numbers = torch.Tensor(voice_numbers)
         for i in range(1,max_voice+1):
             voice_x_bool = voice_numbers == i
@@ -406,3 +385,88 @@ class HanEncoder(nn.Module):
                 # ith_voice_out, ith_hidden = self.lstm(voice_x, ith_hidden)
                 output += torch.bmm(span_mat, ith_voice_out)
         return output
+
+    def run_beat_and_measure(self, hidden_out, note_locations):
+        beat_numbers = note_locations['beat']
+        measure_numbers = note_locations['measure']
+
+        beat_nodes = make_higher_node(hidden_out, self.beat_attention, beat_numbers, beat_numbers, lower_is_note=True)
+        beat_hidden_out, _ = self.beat_rnn(beat_nodes)
+        measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
+        measure_hidden_out, _ = self.measure_rnn(measure_nodes)
+
+        beat_out_spanned = span_beat_to_note_num(beat_hidden_out, beat_numbers)
+        measure_out_spanned = span_beat_to_note_num(measure_hidden_out, measure_numbers)
+
+        return beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned
+
+
+class HanGraphEncoder(HanEncoder):
+    def __init__(self, net_params):
+        super(HanGraphEncoder, self).__init__(net_params)
+        self.note_hidden_summarize = nn.Sequential(
+            nn.Linear((net_params.note.size + net_params.voice.size) * 2, net_params.graph_note.size),
+            nn.Dropout(net_params.drop_out),
+            nn.ReLU()
+        )
+        self.note_graph = GatedGraph(net_params.graph_note.size * 2, self.num_edge_types, secondary_size=self.graph_note.size)
+        self.num_graph_iteration = net_params.num_graph_iteration
+
+        self.beat_attention = ContextAttention( (net_params.note.size + net_params.voice.size) * 2 + net_params.graph_note.size,
+                                                net_params.num_attention_head)
+        self.beat_rnn = nn.LSTM((net_params.note.size + net_params.voice.size) * 2 + net_params.graph_note.size, net_params.beat.size, net_params.beat.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+
+
+    def forward(self, x, edges, note_locations):
+        voice_numbers = note_locations['voice']
+
+        x = self.note_fc(x)
+        max_voice = max(voice_numbers)
+        voice_out = self.run_voice_net(x, voice_numbers, max_voice)
+        hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        hidden_out = torch.cat((hidden_out,voice_out), dim=-1)
+
+        graph_input = self.note_hidden_summarize(hidden_out)
+        graph_output = self.note_graph(graph_input, iteration=self.num_graph_iteration)
+
+        hidden_out = torch.cat([hidden_out, graph_output], dim=-1)
+
+        beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
+
+        return {'note': hidden_out, 'beat': beat_hidden_out, 'measure': measure_hidden_out, 'beat_spanned':beat_out_spanned, 'measure_spanned':measure_out_spanned,
+                'total_note_cat': torch.cat([hidden_out, beat_out_spanned, measure_out_spanned], dim=-1) }
+
+
+class GraphHanEncoder(HanEncoder):
+    def __init__(self, net_params):
+        super(GraphHanEncoder, self).__init__(net_params)
+        self.note_hidden_size = net_params.note.size
+        self.note_graph = GatedGraph(net_params.note.size * 2, self.num_edge_types, secondary_size=self.note.size)
+        self.num_graph_iteration = net_params.num_graph_iteration
+
+        self.beat_attention = ContextAttention( (net_params.note.size + net_params.voice.size) * 2,
+                                                net_params.num_attention_head)
+        self.beat_rnn = nn.LSTM((net_params.note.size + net_params.voice.size) * 2 , net_params.beat.size, net_params.beat.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+
+
+    def forward(self, x, edges, note_locations):
+        voice_numbers = note_locations['voice']
+
+        x = self.note_fc(x)
+        max_voice = max(voice_numbers)
+        initial_hidden = torch.zeros_like(x)
+        x = self.note_graph(torch.cat([x, initial_hidden], dim=-1), iteration=self.num_graph_iteration)[:,:,-self.note_hidden_size:]
+
+        voice_out = self.run_voice_net(x, voice_numbers, max_voice)
+        hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        hidden_out = torch.cat((hidden_out,voice_out), dim=-1)
+
+        graph_input = self.note_hidden_summarize(hidden_out)
+        graph_output = self.note_graph(graph_input, iteration=self.num_graph_iteration)
+
+        hidden_out = torch.cat([hidden_out, graph_output], dim=-1)
+
+        beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
+
+        return {'note': hidden_out, 'beat': beat_hidden_out, 'measure': measure_hidden_out, 'beat_spanned':beat_out_spanned, 'measure_spanned':measure_out_spanned,
+                'total_note_cat': torch.cat([hidden_out, beat_out_spanned, measure_out_spanned], dim=-1) }
