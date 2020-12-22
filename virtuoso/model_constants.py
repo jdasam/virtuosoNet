@@ -41,6 +41,10 @@ valid_piece_list = [
                   ('Beethoven/Piano_Sonatas/30-1/', 'Beethoven'),
                   ('Chopin/Scherzos/31/', 'Chopin'),
                   ('Schubert/Impromptu_op.90_D.899/2/', 'Schubert'),
+                  ('Bach/Prelude/bwv_865/', 'Bach'),
+                  ('Bach/Prelude/bwv_874/', 'Bach'),
+                  ('Bach/Fugue/bwv_865/', 'Bach'),
+                  ('Bach/Fugue/bwv_874/', 'Bach'),
 ]
 
 
