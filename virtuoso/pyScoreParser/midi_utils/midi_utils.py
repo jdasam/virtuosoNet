@@ -462,32 +462,51 @@ def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_ped
         >>> xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
 
     """
-    piano_midi = pretty_midi.PrettyMIDI()
-    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
-    piano = pretty_midi.Instrument(program=piano_program)
     if not isinstance(output_name, str):
         output_name = str(output_name)
-    # pedal_threhsold = 60
-    # pedal_time_margin = 0.2
+    piano_midi = pretty_midi.PrettyMIDI()
+    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
 
-    for note in midi_notes:
-        piano.notes.append(note)
+    if isinstance(midi_notes[0], list): #multi instruments
+        num_instruments = len(midi_notes)
+        for i in range(num_instruments):
+            piano = pretty_midi.Instrument(program=piano_program)
+            for note in midi_notes[i]:
+                piano.notes.append(note)
+            last_note_end = midi_notes[i][-1].end
+            if bool_pedal:
+                for pedal in midi_pedals[i]:
+                    if pedal.value < 64:
+                        pedal.value = 0
+            last_pedal = pretty_midi.ControlChange(number=64, value=0, time=last_note_end + 3)
+            midi_pedals[i].append(last_pedal)
+            piano.control_changes = midi_pedals[i]
+            piano_midi.instruments.append(piano)
 
-    piano_midi.instruments.append(piano)
+        # last_note_end = max([x[-1].end for x in midi_notes])
 
-    # piano_midi = midi_utils.save_note_pedal_to_CC(piano_midi)
+    else:
+        piano = pretty_midi.Instrument(program=piano_program)
+        # pedal_threhsold = 60
+        # pedal_time_margin = 0.2
+        for note in midi_notes:
+            piano.notes.append(note)
 
-    if bool_pedal:
-        for pedal in midi_pedals:
-            if pedal.value < 64:
-                pedal.value = 0
+        piano_midi.instruments.append(piano)
+        last_note_end = midi_notes[-1].end
 
-    last_note_end = midi_notes[-1].end
-    # end pedal 3 seconds after the last note
-    last_pedal = pretty_midi.ControlChange(number=64, value=0, time=last_note_end + 3)
-    midi_pedals.append(last_pedal)
+        # piano_midi = midi_utils.save_note_pedal_to_CC(piano_midi)
+        if bool_pedal:
+            for pedal in midi_pedals:
+                if pedal.value < 64:
+                    pedal.value = 0
 
-    piano_midi.instruments[0].control_changes = midi_pedals
+        last_note_end = midi_notes[-1].end
+        # end pedal 3 seconds after the last note
+        last_pedal = pretty_midi.ControlChange(number=64, value=0, time=last_note_end + 3)
+        midi_pedals.append(last_pedal)
+
+        piano_midi.instruments[0].control_changes = midi_pedals
 
     #
     # if disklavier:

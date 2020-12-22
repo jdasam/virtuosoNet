@@ -84,6 +84,10 @@ def get_parser():
                         type=int,
                         default=800
                         )
+    parser.add_argument("--len_graph_slice",
+                        type=int,
+                        default=400
+                        )
     parser.add_argument("--len_valid_slice",
                         type=int,
                         default=10000
@@ -164,6 +168,8 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="calculate tempo loss in note-level instead of beat-level")
     parser.add_argument("-dskl", "--disklavier", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
+    parser.add_argument("--multi_instruments", default=True,
+                        type=lambda x: (str(x).lower() == 'true'), help="save multi instruments as separate track")
 
     return parser
 

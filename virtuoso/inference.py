@@ -27,7 +27,7 @@ def inference(args, model, device):
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
     save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.boolPedal, args.disklavier)
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.boolPedal, args.disklavier)
 
 def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
@@ -37,14 +37,14 @@ def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, bool_pedal=False, disklavier=False):
+def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, bool_pedal=False, disklavier=False):
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
     xml_notes = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True)
     if not save_path.parent.exists():
         save_path.parent.mkdir()
-    output_midi, midi_pedals = xml_notes_to_midi(xml_notes)
+    output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,

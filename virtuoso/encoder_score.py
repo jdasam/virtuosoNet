@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn.modules import dropout
-from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
+from .model_utils import make_higher_node, span_beat_to_note_num
 from .module import GatedGraph, SimpleAttention, ContextAttention
 
 
