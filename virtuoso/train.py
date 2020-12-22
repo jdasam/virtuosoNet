@@ -52,10 +52,10 @@ def prepare_dataloader(args):
     hier_type = ['is_hier', 'in_hier', 'hier_beat', 'hier_meas', 'meas_note']
     curr_type = [x for x in hier_type if getattr(args, x)]
 
-    train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
-    valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, graph_keys=args.graph_keys, hier_type=curr_type)
-    emotion_set = EmotionDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys)
-    multi_perf_set = MultiplePerformSet(args.data_path, type="train", len_slice=args.len_slice, graph_keys=args.graph_keys, hier_type=curr_type)
+    train_set = ScorePerformDataset(args.data_path, type="train", len_slice=args.len_slice, len_graph_slice=args.len_graph_slice, graph_keys=args.graph_keys, hier_type=curr_type)
+    valid_set = ScorePerformDataset(args.data_path, type="valid", len_slice=args.len_valid_slice, len_graph_slice=args.len_graph_slice, graph_keys=args.graph_keys, hier_type=curr_type)
+    emotion_set = EmotionDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, len_graph_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys,)
+    multi_perf_set = MultiplePerformSet(args.data_path, type="train", len_slice=args.len_slice, len_graph_slice=args.len_graph_slice, graph_keys=args.graph_keys, hier_type=curr_type)
 
     train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
@@ -200,7 +200,6 @@ def train(args,
             if args.make_log:
                 logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1
-
 
             if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
                 batch = next(iter(multi_perf_loader))

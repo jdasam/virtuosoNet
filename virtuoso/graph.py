@@ -9,9 +9,11 @@ def edges_to_matrix(edges, num_notes, graph_keys):
     if len(graph_keys)==0:
         return None
     num_keywords = len(graph_keys)
-    matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
     graph_dict = {key: i for i, key in enumerate(graph_keys) }
-
+    if 'rest_as_forward' in graph_dict:
+        graph_dict['rest_as_forward'] = graph_dict['forward']
+        num_keywords -= 1
+    matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
     edg_indices = [(graph_dict[edg[2]], edg[0], edg[1])  
                 for edg in edges
                 if edg[2] in graph_dict]
@@ -62,11 +64,15 @@ def edges_to_matrix_short(edges, slice_index, graph_keys):
     if len(graph_keys)==0:
         return None
     num_keywords = len(graph_keys)
+    graph_dict = {key: i for i, key in enumerate(graph_keys) }
+    if 'rest_as_forward' in graph_dict:
+        graph_dict['rest_as_forward'] = graph_dict['forward']
+        num_keywords -= 1
     num_notes = slice_index[1] - slice_index[0]
     matrix = np.zeros((num_keywords * 2, num_notes, num_notes))
     start_edge_index = binary_index_for_edge(edges, slice_index[0])
     end_edge_index = binary_index_for_edge(edges, slice_index[1] + 1)
-    graph_dict = {key: i for i, key in enumerate(graph_keys) }
+
 
     edg_indices = [(graph_dict[edg[2]], edg[0]-slice_index[0], edg[1]-slice_index[0])  
                     for edg in edges[start_edge_index:end_edge_index]
