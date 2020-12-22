@@ -328,7 +328,7 @@ class HanEncoder(nn.Module):
         super(HanEncoder, self).__init__()
 
         self.note_fc = nn.Sequential(
-            nn.Linear(net_params.input_size, self.hidden_size),
+            nn.Linear(net_params.input_size, net_params.note.size),
             nn.Dropout(net_params.drop_out),
             nn.ReLU(),
         )
@@ -440,8 +440,8 @@ class GraphHanEncoder(HanEncoder):
     def __init__(self, net_params):
         super(GraphHanEncoder, self).__init__(net_params)
         self.note_hidden_size = net_params.note.size
-        self.note_graph = GatedGraph(net_params.note.size * 2, self.num_edge_types, secondary_size=self.note.size)
-        self.num_graph_iteration = net_params.num_graph_iteration
+        self.note_graph = GatedGraph(net_params.note.size * 2, net_params.num_edge_types, secondary_size=net_params.note.size)
+        self.num_graph_iteration = net_params.graph_iteration
 
         self.beat_attention = ContextAttention( (net_params.note.size + net_params.voice.size) * 2,
                                                 net_params.num_attention_head)
@@ -454,17 +454,11 @@ class GraphHanEncoder(HanEncoder):
         x = self.note_fc(x)
         max_voice = max(voice_numbers)
         initial_hidden = torch.zeros_like(x)
-        x = self.note_graph(torch.cat([x, initial_hidden], dim=-1), iteration=self.num_graph_iteration)[:,:,-self.note_hidden_size:]
+        x = self.note_graph(torch.cat([x, initial_hidden], dim=-1), edges, iteration=self.num_graph_iteration)[:,:,-self.note_hidden_size:]
 
         voice_out = self.run_voice_net(x, voice_numbers, max_voice)
         hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         hidden_out = torch.cat((hidden_out,voice_out), dim=-1)
-
-        graph_input = self.note_hidden_summarize(hidden_out)
-        graph_output = self.note_graph(graph_input, iteration=self.num_graph_iteration)
-
-        hidden_out = torch.cat([hidden_out, graph_output], dim=-1)
-
         beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
 
         return {'note': hidden_out, 'beat': beat_hidden_out, 'measure': measure_hidden_out, 'beat_spanned':beat_out_spanned, 'measure_spanned':measure_out_spanned,

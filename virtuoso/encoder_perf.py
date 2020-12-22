@@ -40,10 +40,11 @@ class HanPerfEncoder(nn.Module):
     def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
-        note_out, _, _, beat_out_spanned, measure_out_spanned = score_embedding
+        total_note_cat = score_embedding['total_note_cat']
 
         expanded_y = self.performance_embedding_layer(y)
-        perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, expanded_y), 2)
+        # perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, expanded_y), 2)
+        perform_concat = torch.cat((total_note_cat, expanded_y), 2)
         perform_concat = masking_half(perform_concat)
         perform_contracted = self.performance_contractor(perform_concat)
         perform_note_encoded, _ = self.performance_note_encoder(perform_contracted)
@@ -82,14 +83,7 @@ class IsgnPerfEncoder(nn.Module):
         self.performance_encoder_mean = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
         self.performance_encoder_var = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
 
-    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
-        measure_numbers = note_locations['measure']
-        # note_out, _, = score_embedding
-        note_out = score_embedding['total_note_cat']
-
-        expanded_y = self.performance_embedding_layer(y)
-
-        perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
+    def get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
         perform_style_contracted = self.performance_contractor(perform_concat)
         perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
         performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
@@ -98,6 +92,35 @@ class IsgnPerfEncoder(nn.Module):
         perform_style_vector = self.performance_final_attention(perform_style_encoded)
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+        return perform_z, perform_mu, perform_var
+
+    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
+        measure_numbers = note_locations['measure']
+        note_out = score_embedding['total_note_cat']
+
+        expanded_y = self.performance_embedding_layer(y)
+
+        perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
+        perform_z, perform_mu, perform_var = self.get_perform_style_from_input(perform_concat, edges, measure_numbers)
+        if return_z:
+            return sample_multiple_z(perform_mu, perform_var, num_samples)
+        return perform_z, perform_mu, perform_var
+
+class IsgnPerfEncoderMasking(IsgnPerfEncoder):
+    def __init__(self, net_params):
+        super(IsgnPerfEncoderMasking, self).__init__(net_params)
+
+    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
+        measure_numbers = note_locations['measure']
+        # note_out, _, = score_embedding
+        note_out = score_embedding['total_note_cat']
+
+        expanded_y = self.performance_embedding_layer(y)
+        perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
+
+        perform_concat = masking_half(perform_concat)
+
+        perform_z, perform_mu, perform_var = self.get_perform_style_from_input(perform_concat, edges, measure_numbers)
         if return_z:
             return sample_multiple_z(perform_mu, perform_var, num_samples)
         return perform_z, perform_mu, perform_var

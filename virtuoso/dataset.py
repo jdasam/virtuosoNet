@@ -14,7 +14,7 @@ from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_
 from . import graph
 
 class ScorePerformDataset:
-    def __init__(self, path, type, len_slice, graph_keys, hier_type=[]):
+    def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[]):
         # type = one of ['train', 'valid', 'test']
         path = Path(path)
         self.path = path / type
@@ -23,7 +23,7 @@ class ScorePerformDataset:
         self.data_paths = self.get_data_path()
         self.data = self.load_data()
         self.len_slice = len_slice
-        self.len_graph_slice = 400
+        self.len_graph_slice = len_graph_slice
         self.graph_margin = 100
         if graph_keys and len(graph_keys)>0:
             self.is_graph = True
@@ -102,8 +102,8 @@ class ScorePerformDataset:
         return len(self.slice_info)
 
 class EmotionDataset(ScorePerformDataset):
-    def __init__(self, path, type, len_slice, graph_keys, hier_type=[]):
-        super(EmotionDataset, self).__init__(path, type, len_slice, graph_keys, hier_type)
+    def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[]):
+        super(EmotionDataset, self).__init__(path, type, len_slice, len_graph_slice, graph_keys, hier_type)
         
         self.cross_valid_split = self.make_cross_validation_split()
 
@@ -138,9 +138,9 @@ class EmotionDataset(ScorePerformDataset):
         return valid_slices
 
 class MultiplePerformSet(ScorePerformDataset):
-    def __init__(self, path, type, len_slice, graph_keys, hier_type=[], min_perf=5):
+    def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[], min_perf=5):
         self.min_perf = min_perf
-        super(MultiplePerformSet, self).__init__(path, type, len_slice, graph_keys, hier_type)
+        super(MultiplePerformSet, self).__init__(path, type, len_slice, len_graph_slice, graph_keys, hier_type)
 
     def get_data_path(self):
         data_lists = list(self.path.glob("*.dat"))
