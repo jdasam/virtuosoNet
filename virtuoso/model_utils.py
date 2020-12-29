@@ -1,5 +1,5 @@
 import torch
-
+import math
 
 def sum_with_boundary(x_split, attention_split, num_head):
     weighted_mul = torch.bmm(attention_split.transpose(1,2), x_split)
@@ -105,6 +105,28 @@ def combine_splitted_graph_output(temp_output, orig_input, margin=100):
     updated_input[:, cur_idx:, :] = temp_output[:, -1, -(orig_input.shape[1]-cur_idx):, :]
     return updated_input
 
+
+def combine_splitted_graph_output_with_several_edges(temp_output, orig_input, num_edge_type, margin=100):
+    '''
+    Input:
+        temp_output: Temporary output of GGNN  [ (number of edge type x number of edge batch)  X notes per edge X vector dimension]
+        edges: Batch of splitted graph [ (Number of Edge type X number of edge batch) X notes per edge X vector dimension]
+        orig_input: original input before GGNN update [ 1 x num notes x vector dimension]
+    Output:
+        updated_input
+    '''
+    updated_input = torch.zeros_like(orig_input.repeat(num_edge_type, 1, 1))
+    temp_output = temp_output.view(updated_input.shape[0], -1, temp_output.shape[1], temp_output.shape[2])
+    updated_input[:, 0:temp_output.shape[2] - margin,:] = temp_output[:, 0, :-margin, :]
+    cur_idx = temp_output.shape[2] - margin
+    end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    for i in range(1, temp_output.shape[1]-1):
+        updated_input[:, cur_idx:end_idx, :] = temp_output[:, i, margin:-margin, :]
+        cur_idx = end_idx
+        end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    updated_input[:, cur_idx:, :] = temp_output[:, -1, -(orig_input.shape[1]-cur_idx):, :]
+    return updated_input
+
 def split_note_input_to_graph_batch(orig_input, num_graph_batch, num_notes_per_batch, overlap=200):
     input_split = torch.zeros((orig_input.shape[0], num_graph_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
     for i in range(num_graph_batch-1):
@@ -121,6 +143,14 @@ def masking_half(y):
     num_notes = y.shape[1]
     y = y[:,:num_notes//2,:]
     return y
+
+def mask_batched_graph(edges, num_edge_type, end_idx, margin=100):
+    edges_reshaped = edges.view(-1, num_edge_type, edges.shape[1], edges.shape[2])
+    end_batch_idx = math.ceil((end_idx - (edges.shape[1] - margin)) / (edges.shape[1] - margin * 2))
+
+    edges_reshaped
+
+    return
 
 def encode_with_net(score_input, mean_net, var_net):
     mu = mean_net(score_input)

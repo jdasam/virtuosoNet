@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net
-from .module import GatedGraph, SimpleAttention, ContextAttention
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX
 
 
 
@@ -105,6 +105,33 @@ class IsgnPerfEncoder(nn.Module):
         if return_z:
             return sample_multiple_z(perform_mu, perform_var, num_samples)
         return perform_z, perform_mu, perform_var
+
+
+class IsgnPerfEncoderX(IsgnPerfEncoder):
+    def __init__(self, net_params):
+        super(IsgnPerfEncoderX, self).__init__(net_params)
+        self.performance_graph_encoder = GatedGraphX(net_params.encoder.size, net_params.encoder.size, net_params.num_edge_types)
+        self.performance_measure_attention = ContextAttention(net_params.encoder.size, net_params.num_attention_head)
+
+        self.performance_encoder = nn.LSTM(net_params.encoder.size, net_params.encoder.size, num_layers=net_params.encoder.layer,
+                                           batch_first=True, bidirectional=True)
+
+        self.performance_final_attention = ContextAttention(net_params.encoder.size * 2, net_params.num_attention_head)
+        self.performance_encoder_mean = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
+        self.performance_encoder_var = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
+
+    def get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
+        perform_style_contracted = self.performance_contractor(perform_concat)
+        hidden = torch.zeros_like(perform_style_contracted)
+        perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, hidden, edges)
+        performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
+                                                measure_numbers, lower_is_note=True)
+        perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+        perform_style_vector = self.performance_final_attention(perform_style_encoded)
+        perform_z, perform_mu, perform_var = \
+            encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+        return perform_z, perform_mu, perform_var
+
 
 class IsgnPerfEncoderMasking(IsgnPerfEncoder):
     def __init__(self, net_params):

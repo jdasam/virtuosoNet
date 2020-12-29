@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from .utils import note_feature_to_beat_mean
-from .module import GatedGraph, SimpleAttention, ContextAttention
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX
 
 class IsgnDecoder(nn.Module):
@@ -49,7 +49,8 @@ class IsgnDecoder(nn.Module):
         return
     
     def run_final_isgn(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_out, _ = score_embedding
+        # note_out, _ = score_embedding
+        note_out = score_embedding['total_note_cat']
         num_notes = note_out.shape[1]
         beat_numbers = note_locations['beat']
 
@@ -109,7 +110,8 @@ class IsgnNoteDecoder(IsgnDecoder):
         self.measure_perf_fc = nn.Linear(net_params.encoder.size, net_params.encoder.size)
         
     def handle_perform_z(self, score_embedding, perf_embedding, edges, note_locations):
-        _, measure_out = score_embedding
+        # _, measure_out = score_embedding
+        measure_out = score_embedding['measure']
         measure_numbers = note_locations['measure']
         num_measures = measure_numbers[-1] - measure_numbers[0] + 1
         
@@ -132,12 +134,13 @@ class IsgnMeasNoteDecoder(IsgnDecoder):
         self.final_beat_hidden_idx = net_params.note.size * 2 + net_params.measure.size * 2 + net_params.encoder.size + 2
         
     def handle_perform_z(self, score_embedding, perf_embedding, edges, note_locations):
-        note_out, _ = score_embedding
+        # note_out, _ = score_embedding
         perform_z = self.style_vector_expandor(perf_embedding)
         return perform_z
 
     def get_measure_level_output(self, score_embedding, perf_embedding, res_info, note_locations):
-        _, measure_out = score_embedding
+        # _, measure_out = score_embedding
+        measure_out = score_embedding['measure']
         num_measures = measure_out.shape[1]
         measure_numbers = note_locations['measure']
         perf_emb_reshpaed = perf_embedding.unsqueeze(1)
@@ -156,7 +159,9 @@ class IsgnMeasNoteDecoder(IsgnDecoder):
         return measure_tempo_vel_broadcasted, measure_tempo_vel
         
     def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_out, measure_out = score_embedding
+        # note_out, measure_out = score_embedding
+        note_out = score_embedding['total_note_cat']
+        measure_out = score_embedding['measure']
         num_notes = note_out.shape[1]
 
         perform_z = self.handle_perform_z(score_embedding, perf_embedding, edges, note_locations)
@@ -194,7 +199,9 @@ class IsgnMeasNoteDecoderV2(IsgnDecoder):
 
         
     def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_out, measure_out = score_embedding
+        # note_out, measure_out = score_embedding
+        note_out = score_embedding['total_note_cat']
+        measure_out = score_embedding['measure']
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
 
@@ -300,102 +307,6 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
                     torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device))
 
     def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
-        note_out, (beat_out, measure_out) = score_embedding
-        beat_numbers = note_locations['beat']
-        measure_numbers = note_locations['measure']
-
-        num_notes = note_out.shape[1]
-        num_measures = measure_numbers[-1] - measure_numbers[0] + 1
-        num_beats = beat_out.shape[1]
-
-
-        perform_z = self.style_vector_expandor(perf_embedding)
-        perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1,num_measures, -1)
-        perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_out, res_info), 2)
-
-        measure_hidden = self.init_measure_hidden(measure_out.device)
-        prev_out = torch.zeros(measure_out.shape[0], 1, 2).to(perform_z.device)
-        measure_tempo_vel = torch.zeros(measure_out.shape[0], num_measures, 2).to(note_out.device)
-        for i in range(num_measures):
-            cur_input = torch.cat([perform_z_measure_cat[:,i:i+1,:], prev_out], dim=-1)
-            cur_tempo_vel, measure_hidden =  self.measure_out_lstm(cur_input, measure_hidden)
-            measure_tempo_vel[:,i:i+1,:] = self.measure_out_fc(cur_tempo_vel)
-            prev_out = measure_tempo_vel[:,i:i+1,:]
-            
-        measure_tempo_vel_broadcasted = span_beat_to_note_num(measure_tempo_vel, measure_numbers)
-        measure_tempo_vel_in_beat = note_feature_to_beat_mean(measure_tempo_vel_broadcasted, beat_numbers, use_mean=False)
-
-        beat_hidden = self.init_beat_hidden(beat_out.device)
-        perform_z_beat_spanned = perform_z.repeat(num_beats, 1).view(1,num_beats, -1)
-        perform_z_beat_cat = torch.cat((perform_z_beat_spanned, beat_out, measure_tempo_vel_in_beat), 2)
-        prev_out = torch.zeros(beat_out.shape[0], 1, 2).to(perform_z.device)
-        beat_tempo_vel = torch.zeros(beat_out.shape[0], num_beats, 2).to(beat_out.device)
-        for i in range(num_beats):
-            cur_input = torch.cat([perform_z_beat_cat[:,i:i+1,:], prev_out], dim=-1)
-            cur_tempo_vel, beat_hidden =  self.beat_out_lstm(cur_input, beat_hidden)
-            beat_tempo_vel[:,i:i+1,:] = self.beat_out_fc(cur_tempo_vel)
-            prev_out = beat_tempo_vel[:,i:i+1,:]
-        beat_tempo_vel_broadcasted = span_beat_to_note_num(beat_tempo_vel, beat_numbers)
-
-        note_out = torch.cat([note_out, measure_tempo_vel_broadcasted, beat_tempo_vel_broadcasted], dim=-1)
-        perform_z = perform_z.repeat(num_notes, 1).unsqueeze(0)
-
-        initial_output = self.initial_result_fc(note_out)
-        initial_beat_hidden = torch.zeros((note_out.size(0), num_notes, self.tempo_rnn.hidden_size * 2)).to(note_out.device)
-        initial_margin = torch.zeros((note_out.size(0), num_notes, self.final_graph_margin_size)).to(note_out.device)
-
-
-        total_iterated_output = [torch.cat([beat_tempo_vel_broadcasted[:,:,0:1], initial_output], dim=-1) ]
-
-        out_with_result = torch.cat(
-            (note_out, perform_z, initial_beat_hidden, initial_output, initial_margin), 2)
-            # (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
-
-        for i in range(self.num_sequence_iteration):
-            out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
-            initial_out = out_with_result[:, :,
-                            -self.output_size - self.final_graph_margin_size: -self.final_graph_margin_size]
-            changed_margin = out_with_result[:, :, -self.final_graph_margin_size:]
-
-            margin_in_beat = make_higher_node(changed_margin, self.final_margin_attention, beat_numbers,
-                                                        beat_numbers, lower_is_note=True)
-            out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
-                                                    beat_numbers, lower_is_note=True)
-            out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
-            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
-            out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
-
-            out_with_result = torch.cat((out_with_result[:, :, :self.final_beat_hidden_idx],
-                                            out_beat_spanned,
-                                            out_with_result[:, :, -self.output_size + 1 - self.final_graph_margin_size:]),
-                                        2)
-            other_out = self.fc(out_with_result)
-
-            # final_out = torch.cat((tempos_spanned, other_out), 2)
-            out_with_result = torch.cat((out_with_result[:, :, :-self.output_size  + 1 - self.final_graph_margin_size],
-                                            other_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
-            final_out = torch.cat((beat_tempo_vel_broadcasted[:,:,0:1], other_out), -1)
-            total_iterated_output.append(final_out)
-            # print([times[i]-times[i-1] for i in range(1, len(times))])
-        return final_out, {'iter_out': total_iterated_output, 'meas_out':measure_tempo_vel, 'beat_out':beat_tempo_vel}
-
-
-
-class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
-    def __init__(self, net_params):
-        super(IsgnBeatMeasNewDecoder, self).__init__(net_params)
-        self.fc = nn.Sequential(
-            nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.final.margin),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-            nn.Linear(net_params.final.margin, net_params.output_size-1),
-        )
-
-    def init_beat_hidden(self, device):
-        return (torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device), 
-                    torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device))
-
-    def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
         # note_out, (beat_out, measure_out) = score_embedding
         note_out = score_embedding['total_note_cat']
         beat_out = score_embedding['beat']
@@ -450,6 +361,54 @@ class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
             (note_out, perform_z, initial_beat_hidden, initial_output, initial_margin), 2)
             # (note_out, perform_z_batched, initial_beat_hidden, initial_output, initial_margin), 2)
 
+        final_out, total_iterated_output = self.run_note_level_decoder(out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output)
+        return final_out, {'iter_out': total_iterated_output, 'meas_out':measure_tempo_vel, 'beat_out':beat_tempo_vel}
+
+    def run_note_level_decoder(self, out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output):
+        for i in range(self.num_sequence_iteration):
+            out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
+            initial_out = out_with_result[:, :,
+                            -self.output_size - self.final_graph_margin_size: -self.final_graph_margin_size]
+            changed_margin = out_with_result[:, :, -self.final_graph_margin_size:]
+
+            margin_in_beat = make_higher_node(changed_margin, self.final_margin_attention, beat_numbers,
+                                                        beat_numbers, lower_is_note=True)
+            out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
+                                                    beat_numbers, lower_is_note=True)
+            out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
+            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
+
+            out_with_result = torch.cat((out_with_result[:, :, :self.final_beat_hidden_idx],
+                                            out_beat_spanned,
+                                            out_with_result[:, :, -self.output_size + 1 - self.final_graph_margin_size:]),
+                                        2)
+            other_out = self.fc(out_with_result)
+
+            # final_out = torch.cat((tempos_spanned, other_out), 2)
+            out_with_result = torch.cat((out_with_result[:, :, :-self.output_size  + 1 - self.final_graph_margin_size],
+                                            other_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
+            final_out = torch.cat((beat_tempo_vel_broadcasted[:,:,0:1], other_out), -1)
+            total_iterated_output.append(final_out)
+        return final_out, total_iterated_output
+
+
+class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
+    def __init__(self, net_params):
+        super(IsgnBeatMeasNewDecoder, self).__init__(net_params)
+        self.fc = nn.Sequential(
+            nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.final.margin),
+            nn.Dropout(net_params.drop_out),
+            nn.ReLU(),
+            nn.Linear(net_params.final.margin, net_params.output_size-1),
+        )
+
+    def init_beat_hidden(self, device):
+        return (torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device), 
+                    torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device))
+
+
+    def run_note_level_decoder(self, out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output):
         for i in range(self.num_sequence_iteration):
             out_with_result = self.final_graph(out_with_result, edges, iteration=self.num_graph_iteration)
             initial_out = out_with_result[:, :,
@@ -475,9 +434,46 @@ class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
                                             other_out, out_with_result[:, :, -self.final_graph_margin_size:]), 2)
             final_out = torch.cat((beat_tempo_vel_broadcasted[:,:,0:1], other_out), -1)
             total_iterated_output.append(final_out)
-            # print([times[i]-times[i-1] for i in range(1, len(times))])
-        return final_out, {'iter_out': total_iterated_output, 'meas_out':measure_tempo_vel, 'beat_out':beat_tempo_vel}
+        return final_out, total_iterated_output
 
+
+
+class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
+    def __init__(self, net_params):
+        
+        super(IsgnBeatMeasDecoderX, self).__init__(net_params)
+        self.final_graph = GatedGraphX(net_params.final.input - net_params.final.margin, net_params.final.margin, net_params.num_edge_types)
+        self.fc = nn.Sequential(
+            nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.final.margin),
+            nn.Dropout(net_params.drop_out),
+            nn.ReLU(),
+            nn.Linear(net_params.final.margin, net_params.output_size-1),
+        )
+
+
+    def run_note_level_decoder(self, out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output):
+        out_with_result = out_with_result[:,:,:-self.final_graph_margin_size]
+        hidden = torch.zeros(out_with_result.shape[0], out_with_result.shape[1], self.final_graph_margin_size).to(out_with_result.device)
+        for i in range(self.num_sequence_iteration):
+            hidden = self.final_graph(out_with_result, hidden, edges, iteration=self.num_graph_iteration)
+            initial_out = out_with_result[:, :,
+                            -self.output_size: ]
+            margin_in_beat = make_higher_node(hidden, self.final_margin_attention, beat_numbers,
+                                                        beat_numbers, lower_is_note=True)
+            out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
+                                                    beat_numbers, lower_is_note=True)
+            out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
+            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
+
+            other_out = self.fc(torch.cat([out_beat_spanned, hidden], dim=-1))
+
+            # final_out = torch.cat((tempos_spanned, other_out), 2)
+            out_with_result = torch.cat((out_with_result[:, :, :-self.output_size  + 1],
+                                            other_out), 2)
+            final_out = torch.cat((beat_tempo_vel_broadcasted[:,:,0:1], other_out), -1)
+            total_iterated_output.append(final_out)
+        return final_out, total_iterated_output
 
 class HanDecoder(nn.Module):
     def __init__(self, net_params):
