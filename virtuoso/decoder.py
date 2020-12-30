@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from .utils import note_feature_to_beat_mean
-from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX
 
 class IsgnDecoder(nn.Module):
@@ -439,8 +439,7 @@ class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
 
 
 class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
-    def __init__(self, net_params):
-        
+    def __init__(self, net_params):        
         super(IsgnBeatMeasDecoderX, self).__init__(net_params)
         self.final_graph = GatedGraphX(net_params.final.input - net_params.final.margin, net_params.final.margin, net_params.num_edge_types)
         self.fc = nn.Sequential(
@@ -449,7 +448,6 @@ class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
             nn.ReLU(),
             nn.Linear(net_params.final.margin, net_params.output_size-1),
         )
-
 
     def run_note_level_decoder(self, out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output):
         out_with_result = out_with_result[:,:,:-self.final_graph_margin_size]
@@ -474,6 +472,13 @@ class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
             final_out = torch.cat((beat_tempo_vel_broadcasted[:,:,0:1], other_out), -1)
             total_iterated_output.append(final_out)
         return final_out, total_iterated_output
+
+
+class IsgnBeatMeasDecoderXBias(IsgnBeatMeasDecoderX):
+    def __init__(self, net_params):        
+        super(IsgnBeatMeasDecoderXBias, self).__init__(net_params)
+        self.final_graph = GatedGraphXBias(net_params.final.input - net_params.final.margin, net_params.final.margin, net_params.num_edge_types)
+
 
 class HanDecoder(nn.Module):
     def __init__(self, net_params):

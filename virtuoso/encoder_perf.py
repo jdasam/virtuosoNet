@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net
-from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias
 
 
 
@@ -131,6 +131,13 @@ class IsgnPerfEncoderX(IsgnPerfEncoder):
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
         return perform_z, perform_mu, perform_var
+
+
+class IsgnPerfEncoderXBias(IsgnPerfEncoderX):
+    def __init__(self, net_params):
+        super(IsgnPerfEncoderXBias, self).__init__(net_params)
+        self.performance_graph_encoder = GatedGraphXBias(net_params.encoder.size, net_params.encoder.size, net_params.num_edge_types)
+
 
 
 class IsgnPerfEncoderMasking(IsgnPerfEncoder):

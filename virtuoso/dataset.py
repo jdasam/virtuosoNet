@@ -15,9 +15,12 @@ from . import graph
 
 class ScorePerformDataset:
     def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[]):
-        # type = one of ['train', 'valid', 'test']
+        # type = one of ['train', 'valid', 'test', 'entire']
         path = Path(path)
-        self.path = path / type
+        if type == 'entire':
+            self.path = path
+        else:
+            self.path = path / type
         self.stats = load_dat(path/"stat.dat")
 
         self.data_paths = self.get_data_path()
@@ -93,7 +96,7 @@ class ScorePerformDataset:
             return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
     def get_data_path(self):
-        return list(self.path.glob("*.dat"))
+        return [x for x in self.path.rglob("*.dat") if x.name != 'stat.dat']
     
     def load_data(self):
         return [load_dat(x) for x in self.data_paths]

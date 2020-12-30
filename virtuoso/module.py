@@ -130,7 +130,6 @@ class GatedGraphX(nn.Module):
 
     def forward(self, input, hidden, edge_matrix, iteration=10):
         num_graph_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
-        records = []
         for i in range(iteration):
             if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
                 # splitted edge matrix
@@ -140,18 +139,6 @@ class GatedGraphX(nn.Module):
                 # Batch dimension order: Performance Batch / Graph Batch / Graph Type
                 activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2])) + self.ba
                 activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
-            #     activation_wzrh = torch.bmm(activation_split, self.wz_wr_wh.repeat(hidden_split.shape[0],1,1))
-            #     activation_wzrh += torch.bmm(input, self.input_wzrh.repeat(input.shape[0], 1, 1))
-            #     activation_wz_split, activation_wr_split, activation_wh_split = torch.split(activation_wzrh_split, self.secondary_size, dim=-1)
-            #     input_uzr_sp = torch.bmm(hidden_split, self.uz_ur.unsqueeze(0).repeat(hidden_split.shape[0], 1,1))
-            #     input_uz_sp, input_ur_sp = torch.split(input_uzr_sp, self.secondary_size, dim=-1)
-            #     temp_z_sp = torch.sigmoid(activation_wz_split.view(input.shape[0] * num_graph_batch,num_type,hidden_split.shape[1],-1).sum(1)+input_uz_sp)
-            #     temp_r_sp = torch.sigmoid(activation_wr_split.view(input.shape[0] * num_graph_batch,num_type,hidden_split.shape[1],-1).sum(1)+input_ur_sp)
-
-            #     temp_hidden_sp = torch.tanh(
-            #         activation_wh_split.view(input.shape[0] * num_graph_batch,num_type,hidden_split.shape[1],-1).sum(1) + torch.matmul(temp_r_sp * hidden_split, self.uh))
-            #     hidden_split = (1 - temp_z_sp) * hidden_split + temp_r_sp * temp_hidden_sp
-            #     hidden = combine_splitted_graph_output(hidden_split, input)
             else:
                 activation = torch.matmul(edge_matrix.transpose(1,2), hidden) + self.ba
             activation_wzrh = torch.bmm(activation, self.wz_wr_wh)
@@ -166,13 +153,46 @@ class GatedGraphX(nn.Module):
             temp_hidden = torch.tanh(
                 activation_wh.view(input.shape[0], self.num_type, input.shape[1], -1).sum(1) + torch.matmul(temp_r * hidden, self.uh))
             hidden = (1 - temp_z) * hidden + temp_z * temp_hidden
-            # else:
-            #     temp_hidden = torch.tanh(
-            #         activation_wh.sum(0) + torch.matmul(temp_r * input[:,:,-self.secondary_size:], self.uh) )
-            #     temp_result = (1 - temp_z) * input[:,:,-self.secondary_size:] + temp_r * temp_hidden
-            #     input = torch.cat((input[:,:,:-self.secondary_size], temp_result), 2)
-            records.append(hidden)
         return hidden
+
+
+class GatedGraphXBias(GatedGraphX):
+    def  __init__(self, input_size, hidden_size, num_edge_style):
+        super(GatedGraphXBias, self).__init__(input_size, hidden_size, num_edge_style)
+
+        self.bw = torch.nn.Parameter(torch.Tensor(hidden_size * 3))
+        self.bu = torch.nn.Parameter(torch.Tensor(hidden_size * 2))
+        self.buh = torch.nn.Parameter(torch.Tensor(hidden_size))
+        nn.init.zeros_(self.bw)
+        nn.init.zeros_(self.bu)
+        nn.init.zeros_(self.buh)
+
+
+    def forward(self, input, hidden, edge_matrix, iteration=10):
+        num_graph_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
+        for i in range(iteration):
+            if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
+                # splitted edge matrix
+                hidden_split = utils.split_note_input_to_graph_batch(hidden, num_graph_batch, edge_matrix.shape[1])
+                # Batch dimension order: Performance Batch / Graph Batch / Graph Type
+                activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2])) + self.ba
+                activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
+            else:
+                activation = torch.matmul(edge_matrix.transpose(1,2), hidden) + self.ba
+            activation_wzrh = torch.bmm(activation, self.wz_wr_wh) + self.bw
+            activation_wzrh += torch.bmm(input, self.input_wzrh.repeat(input.shape[0], 1, 1))
+            activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.size, dim=-1)
+            input_uzr = torch.matmul(hidden, self.uz_ur) + self.bu
+            input_uz, input_ur = torch.split(input_uzr, self.size, dim=-1)
+            temp_z = torch.sigmoid(activation_wz.sum(0)+input_uz)
+            temp_r = torch.sigmoid(activation_wr.sum(0)+input_ur)
+
+            # if self.secondary_size == self.size:
+            temp_hidden = torch.tanh(
+                activation_wh.view(input.shape[0], self.num_type, input.shape[1], -1).sum(1) + torch.matmul(temp_r * hidden, self.uh) + self.buh)
+            hidden = (1 - temp_z) * hidden + temp_z * temp_hidden
+        return hidden
+
 
 class SimpleAttention(nn.Module):
     def __init__(self, size):
