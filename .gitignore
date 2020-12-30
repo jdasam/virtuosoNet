@@ -8,4 +8,5 @@ test_pieces/performScore_test/
 *.pyc
 **/.DS_Store
 dataset_test/
+dataset*/
 checkpoints/

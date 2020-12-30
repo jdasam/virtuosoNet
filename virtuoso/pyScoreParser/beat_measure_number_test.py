@@ -1,8 +1,8 @@
 import xml_matching
 import os
-from musicxml_parser.mxp import MusicXMLDocument
+from .musicxml_parser import MusicXMLDocument
+from .midi_utils.midi_utils import midi_utils
 import pretty_midi
-import midi_utils.midi_utils as midi_utils
 import copy
 import math
 import numpy as np

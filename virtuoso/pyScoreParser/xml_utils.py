@@ -500,7 +500,7 @@ def cal_up_trill_pitch(pitch_tuple, key, final_key, measure_accidentals):
     return up_pitch, final_pitch_string
 
 
-def xml_notes_to_midi(xml_notes):
+def xml_notes_to_midi(xml_notes, multi_instruments=False):
     """ Returns midi-transformed xml notes in pretty_midi.Note() format
 
     Args:
@@ -515,14 +515,19 @@ def xml_notes_to_midi(xml_notes):
         >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
 
     """
-    midi_notes = []
+    if multi_instruments:
+        num_instruments = max([x.voice for x in xml_notes]) // 10 + 1
+        midi_notes = [ [] for i in range(num_instruments) ]
+    else:
+        midi_notes = []
     for note in xml_notes:
-        if note.is_overlapped:  # ignore overlapped notes.
+        if note.is_overlapped and not multi_instruments:  # ignore overlapped notes.
             continue
 
         pitch = note.pitch[1]
         start = note.note_duration.time_position
         end = start + note.note_duration.seconds
+        
         if note.note_duration.seconds < 0.005:
             end = start + 0.005
         elif note.note_duration.seconds > 10:
@@ -530,7 +535,19 @@ def xml_notes_to_midi(xml_notes):
         velocity = int(min(max(note.velocity,0),127))
         midi_note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end)
 
-        midi_notes.append(midi_note)
-    midi_pedals = pedal_cleaning.predicted_pedals_to_midi_pedals(xml_notes)
+    
+        if multi_instruments:
+            instrument_idx = note.voice // 10
+            midi_notes[instrument_idx].append(midi_note)
+        else:
+            midi_notes.append(midi_note)
+    if multi_instruments:
+        midi_pedals = []
+        for i in range(num_instruments):
+            notes = [note for note in xml_notes if (note.voice//10)==i]
+            pedals = pedal_cleaning.predicted_pedals_to_midi_pedals(notes)
+            midi_pedals.append(pedals)
+    else:
+        midi_pedals = pedal_cleaning.predicted_pedals_to_midi_pedals(xml_notes)
 
     return midi_notes, midi_pedals
