@@ -160,13 +160,14 @@ class GatedGraphXBias(GatedGraphX):
     def  __init__(self, input_size, hidden_size, num_edge_style):
         super(GatedGraphXBias, self).__init__(input_size, hidden_size, num_edge_style)
 
+        self.ba = torch.nn.Parameter(torch.Tensor(num_edge_style, hidden_size))
         self.bw = torch.nn.Parameter(torch.Tensor(hidden_size * 3))
         self.bu = torch.nn.Parameter(torch.Tensor(hidden_size * 2))
         self.buh = torch.nn.Parameter(torch.Tensor(hidden_size))
+        nn.init.zeros_(self.ba)
         nn.init.zeros_(self.bw)
         nn.init.zeros_(self.bu)
         nn.init.zeros_(self.buh)
-
 
     def forward(self, input, hidden, edge_matrix, iteration=10):
         num_graph_batch = edge_matrix.shape[0]//self.wz_wr_wh.shape[0]
@@ -175,10 +176,11 @@ class GatedGraphXBias(GatedGraphX):
                 # splitted edge matrix
                 hidden_split = utils.split_note_input_to_graph_batch(hidden, num_graph_batch, edge_matrix.shape[1])
                 # Batch dimension order: Performance Batch / Graph Batch / Graph Type
-                activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2])) + self.ba
+                activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2]))
                 activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
             else:
-                activation = torch.matmul(edge_matrix.transpose(1,2), hidden) + self.ba
+                activation = torch.matmul(edge_matrix.transpose(1,2), hidden)
+            activation += self.ba.unsqueeze(1)
             activation_wzrh = torch.bmm(activation, self.wz_wr_wh) + self.bw
             activation_wzrh += torch.bmm(input, self.input_wzrh.repeat(input.shape[0], 1, 1))
             activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.size, dim=-1)
