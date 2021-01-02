@@ -4,6 +4,8 @@ import argparse
 import torch
 import copy
 from math import log
+import csv
+import pretty_midi
 
 from .constants import *
 from .pyScoreParser.data_class import ScoreData
@@ -13,6 +15,7 @@ from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
 from .pyScoreParser.xml_utils import xml_notes_to_midi
 from .pyScoreParser.performanceWorm import plot_performance_worm
 from .pyScoreParser.midi_utils.midi_utils import save_midi_notes_as_piano_midi
+from .pyScoreParser.utils import binary_index, get_item_by_xml_position
 from pathlib import Path
 from .utils import load_weight
 from . import graph
@@ -41,14 +44,37 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
-    xml_notes = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True)
+    xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
     if not save_path.parent.exists():
         save_path.parent.mkdir()
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
+    eighth_positions = score.xml_obj.get_interval_positions(interval_in_16th=2)
+    def cal_time_position_with_tempo(xml_position, tempos, divisions):
+        corresp_tempo = get_item_by_xml_position(tempos, dict(xml_position=xml_position))
+        previous_sec = corresp_tempo.time_position
+        passed_duration = xml_position - corresp_tempo.xml_position
+        passed_second = passed_duration / divisions / corresp_tempo.qpm * 60
+
+        return previous_sec + passed_second
+
+    eighth_times = []
+    for position in eighth_positions:
+        last_note = get_item_by_xml_position(xml_notes, dict(xml_position=position))
+        divisions = last_note.state_fixed.divisions
+        eighth_times.append(cal_time_position_with_tempo(position, tempos, divisions))
+    with open(f'{save_path}_beat.csv', 'w') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow([f'{el:.3f}' for el in eighth_times])
+
+    # add midi click channel
+    
+    click_notes = [pretty_midi.Note(velocity=64, pitch=64, start=el, end=el+0.01) for el in eighth_times]
+    output_midi.append(click_notes)
+
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
-                                               bool_pedal=bool_pedal, disklavier=disklavier)
+                                  bool_pedal=bool_pedal, disklavier=disklavier, multi_channel=True)
 
 
 def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda'):
