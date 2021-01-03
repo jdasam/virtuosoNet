@@ -71,10 +71,9 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     # add midi click channel
     
     click_notes = [pretty_midi.Note(velocity=64, pitch=64, start=el, end=el+0.01) for el in eighth_times]
-    output_midi.append(click_notes)
 
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
-                                  bool_pedal=bool_pedal, disklavier=disklavier, multi_channel=True)
+                                  bool_pedal=bool_pedal, disklavier=disklavier, tempo_clock=click_notes)
 
 
 def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda'):
