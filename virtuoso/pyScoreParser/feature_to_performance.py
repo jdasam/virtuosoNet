@@ -8,7 +8,7 @@ from .feature_utils import Tempo
 from . import pedal_cleaning
 
 
-def apply_tempo_perform_features(score, features, start_time=0, predicted=False):
+def apply_tempo_perform_features(score, features, start_time=0, predicted=False, return_tempo=False):
     # score: ScoreData, features: perform features in dictionary of list
     # predicted: Whether the feature is generated from model or extracted from performance. 
     #            It is for handling missing features from perform feature extraction
@@ -92,7 +92,11 @@ def apply_tempo_perform_features(score, features, start_time=0, predicted=False)
 
     xml_notes = xml_notes + ornaments
     xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
-    return xml_notes
+    
+    if return_tempo:
+        return xml_notes, tempos
+    else:
+        return xml_notes
 
 def cal_time_position_with_tempo(note, xml_dev, tempos):
     corresp_tempo = get_item_by_xml_position(tempos, note)
