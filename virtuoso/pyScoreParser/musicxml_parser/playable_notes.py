@@ -1,12 +1,12 @@
-def get_playable_notes(xml_part, melody_only=False):
+def get_playable_notes(xml_part, instruments_idx=0, melody_only=False):
     notes = []
     measure_number = 1
     for measure in xml_part.measures:
         for note in measure.notes:
             note.measure_number = measure_number
+            note.voice += instruments_idx * 10
             notes.append(note)
         measure_number += 1
-
     notes, rests = classify_notes(notes, melody_only=melody_only)
     mark_preceded_by_grace_note_to_chord_notes(notes)
     if melody_only:

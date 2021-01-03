@@ -407,7 +407,7 @@ class MusicXMLDocument(object):
     for instrument_index in range(num_parts):
       part = self.parts[instrument_index]
 
-      notes_part, rests_part = get_playable_notes(part)
+      notes_part, rests_part = get_playable_notes(part, instrument_index)
       notes.extend(notes_part)
       rests.extend(rests_part)
     notes.sort(key=lambda x: (x.note_duration.xml_position,
