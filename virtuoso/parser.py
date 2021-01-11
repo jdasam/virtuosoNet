@@ -166,6 +166,8 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
     parser.add_argument("--tempo_loss_in_note", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="calculate tempo loss in note-level instead of beat-level")
+
+    # inference options
     parser.add_argument("-dskl", "--disklavier", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
     parser.add_argument("--multi_instruments", default=True,
@@ -174,6 +176,13 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="add tempo clock track in output MIDI")
     parser.add_argument("--velocity_multiplier", type=float,
                     default=0, help="multiplier that broaden diff between mean velocity and each note's velocity")
+    parser.add_argument("-clock", "--clock_interval_in_16th", default=4,
+                        type=int, help="midi clock interval")
+
+    # random seed
+    parser.add_argument("--th_seed", default=626,
+                        type=int, help="torch random seed")
+
     return parser
 
 
