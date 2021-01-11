@@ -30,7 +30,7 @@ def inference(args, model, device):
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
 
     save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.tempo_clock, args.boolPedal, args.disklavier)
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier)
 
 def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
@@ -41,9 +41,12 @@ def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial
                               multi_instruments=multi_instruments, tempo_clock=tempo_clock, bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False):
+def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, velocity_multiplier=1, multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False):
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
+    if velocity_multiplier != 1:
+        mean_vel = np.mean(output_features['velocity'])
+        output_features['velocity'] = (output_features['velocity'] - mean_vel) * velocity_multiplier + mean_vel
 
     xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
     if not save_path.parent.exists():

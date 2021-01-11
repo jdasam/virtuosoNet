@@ -172,6 +172,8 @@ def get_parser():
                         type=lambda x: (str(x).lower() == 'true'), help="save multi instruments as separate track")
     parser.add_argument("--tempo_clock", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="add tempo clock track in output MIDI")
+    parser.add_argument("--velocity_multiplier", type=float,
+                    default=0, help="multiplier that broaden diff between mean velocity and each note's velocity")
     return parser
 
 
