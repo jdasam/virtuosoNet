@@ -31,17 +31,18 @@ def inference(args, model, device):
         # outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='rand')
     Path(args.output_path).mkdir(exist_ok=True)
     save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.boolPedal, args.disklavier, click_interval_in_16th=args.click_interval_in_16th)
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.tempo_clock, args.boolPedal, args.disklavier, clock_interval_in_16th=args.clock_interval_in_16th)
 
-def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', bool_pedal=False, disklavier=False):
+def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z=initial_z)
 
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, bool_pedal=bool_pedal, disklavier=disklavier)
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
+                              multi_instruments=multi_instruments, tempo_clock=tempo_clock, bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, bool_pedal=False, disklavier=False, click_interval_in_16th=4):
+def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False, clock_interval_in_16th=4):
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
@@ -51,30 +52,31 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
-    nth_position = score.xml_obj.get_interval_positions(interval_in_16th=click_interval_in_16th)
-    def cal_time_position_with_tempo(xml_position, tempos, divisions):
-        corresp_tempo = get_item_by_xml_position(tempos, dict(xml_position=xml_position))
-        previous_sec = corresp_tempo.time_position
-        passed_duration = xml_position - corresp_tempo.xml_position
-        passed_second = passed_duration / divisions / corresp_tempo.qpm * 60
+    if tempo_clock:
+        nth_position = score.xml_obj.get_interval_positions(interval_in_16th=clock_interval_in_16th)
+        def cal_time_position_with_tempo(xml_position, tempos, divisions):
+            corresp_tempo = get_item_by_xml_position(tempos, dict(xml_position=xml_position))
+            previous_sec = corresp_tempo.time_position
+            passed_duration = xml_position - corresp_tempo.xml_position
+            passed_second = passed_duration / divisions / corresp_tempo.qpm * 60
 
-        return previous_sec + passed_second
+            return previous_sec + passed_second
 
-    eighth_times = []
-    for position in nth_position:
-        last_note = get_item_by_xml_position(xml_notes, dict(xml_position=position))
-        divisions = last_note.state_fixed.divisions
-        eighth_times.append(cal_time_position_with_tempo(position, tempos, divisions))
-    with open(f'{save_path}_beat.csv', 'w') as f:
-        writer = csv.writer(f, delimiter=',')
-        writer.writerow([f'{el:.3f}' for el in eighth_times])
-
-    # add midi click channel
-    
-    click_notes = [pretty_midi.Note(velocity=64, pitch=64, start=el, end=el+0.01) for el in eighth_times]
+        nth_times = []
+        for position in nth_position:
+            last_note = get_item_by_xml_position(xml_notes, dict(xml_position=position))
+            divisions = last_note.state_fixed.divisions
+            nth_times.append(cal_time_position_with_tempo(position, tempos, divisions))
+        with open(f'{save_path}_beat.csv', 'w') as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerow([f'{el:.3f}' for el in nth_times])
+        # add midi clock channel
+        clock_notes = [pretty_midi.Note(velocity=64, pitch=64, start=el, end=el+0.01) for el in nth_times]
+    else:
+        clock_notes = None
 
     save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
-                                  bool_pedal=bool_pedal, disklavier=disklavier, tempo_clock=click_notes)
+                                  bool_pedal=bool_pedal, disklavier=disklavier, tempo_clock=clock_notes)
 
 
 def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda'):
@@ -121,14 +123,14 @@ def model_prediction_to_feature(prediction, output_keys):
 
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-mode", "--sessMode", type=str,
-                        default='train', help="train or test or testAll")
-    parser.add_argument("-path", "--test_path", type=str,
-                        default="./test_pieces/bps_5_1/", help="folder path of test mat")
-    parser.add_argument("-tempo", "--startTempo", type=int,
-                        default=0, help="start tempo. zero to use xml first tempo")
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("-mode", "--sessMode", type=str,
+#                         default='train', help="train or test or testAll")
+#     parser.add_argument("-path", "--test_path", type=str,
+#                         default="./test_pieces/bps_5_1/", help="folder path of test mat")
+#     parser.add_argument("-tempo", "--startTempo", type=int,
+#                         default=0, help="start tempo. zero to use xml first tempo")
 
-    model = load_model
-    load_file_and_generate_performance(args.test_path, args)
+#     model = load_model
+#     load_file_and_generate_performance(args.test_path, args)

@@ -123,6 +123,7 @@ class MusicXMLDocument(object):
     self.total_time_secs = 0
     self.total_time_duration = 0
     self._parse()
+    self._unify_divisions()
     self._recalculate_time_position()
 
   @staticmethod
@@ -285,6 +286,37 @@ class MusicXMLDocument(object):
           note.note_duration.time_position = tempos[i].time_position + (
                   note.note_duration.xml_position - tempos[i].xml_position) / current_tempo
           note.note_duration.seconds = note.note_duration.duration / current_tempo
+
+  def _unify_divisions(self):
+    if len(self.parts) == 1:
+      return
+    divisions_by_part = [set([note.state_fixed.divisions for measure in part.measures for note in measure.notes]) for part in self.parts]
+    
+    # make it sure that each part has only one divisions
+    assert sum([len(x) for x in divisions_by_part]) == len(divisions_by_part)
+    divisions_by_part = [list(x)[0] for x in divisions_by_part]
+    unified_divisions = divisions_by_part[0] * divisions_by_part[1] //  math.gcd(divisions_by_part[0], divisions_by_part[1])
+    for i in range(2, len(divisions_by_part)):
+      unified_divisions = unified_divisions * divisions_by_part[i] //  math.gcd(unified_divisions, divisions_by_part[i])
+    
+    for i, part in enumerate(self.parts):
+      multiply = unified_divisions // divisions_by_part[i]
+      for measure in part.measures:
+        for note in measure.notes:
+          note.note_duration.xml_position *= multiply
+          note.note_duration.duration *= multiply
+          note.state_fixed.divisions = unified_divisions
+        for direction in measure.directions:
+          direction.xml_position *= multiply
+        for tempo in measure.tempos:
+          tempo.xml_position *= multiply
+        measure.start_xml_position *= multiply
+        if measure.time_signature is not None:
+          measure.time_signature.xml_position *= multiply
+          measure.time_signature.state.divisions = unified_divisions
+        if measure.key_signature is not None:
+          measure.key_signature.xml_position *= multiply
+          measure.key_signature.state.divisions = unified_divisions
 
   def get_chord_symbols(self):
     """Return a list of all the chord symbols used in this score."""
@@ -480,11 +512,11 @@ class MusicXMLDocument(object):
     return cleaned_direction
 
   def get_beat_positions(self, in_measure_level=False):
+    beat_piece = []
     piano = self.parts[0]
     num_measure = len(piano.measures)
     time_signatures = self.get_time_signatures()
     time_sig_position = [time.xml_position for time in time_signatures]
-    beat_piece = []
     for i in range(num_measure):
       measure = piano.measures[i]
       measure_start = measure.start_xml_position
@@ -495,7 +527,8 @@ class MusicXMLDocument(object):
       if i < num_measure - 1:
         actual_measure_length = piano.measures[i + 1].start_xml_position - measure_start
       else:
-        actual_measure_length = full_measure_length
+        # actual_measure_length = full_measure_length
+        actual_measure_length = max([x.note_duration.xml_position + x.note_duration.duration - measure_start for x in measure.notes])
 
       # if i +1 < num_measure:
       #     measure_length = piano.measures[i+1].start_xml_position - measure_start
@@ -520,7 +553,8 @@ class MusicXMLDocument(object):
         measure.implicit = True
 
       if measure.implicit:
-        current_measure_length = piano.measures[i + 1].start_xml_position - measure_start
+        # current_measure_length = piano.measures[i + 1].start_xml_position - measure_start
+        current_measure_length = actual_measure_length
         length_ratio = current_measure_length / full_measure_length
         minimum_beat = 1 / num_beat_in_measure
         num_beat_in_measure = int(math.ceil(length_ratio / minimum_beat))
@@ -544,7 +578,7 @@ class MusicXMLDocument(object):
       # for note in measure.notes:
       #     note.on_beat = check_note_on_beat(note, measure_start, measure_length)
     return beat_piece
-
+  
   def get_interval_positions(self, interval_in_16th):
     piano = self.parts[0]
     num_measure = len(piano.measures)
