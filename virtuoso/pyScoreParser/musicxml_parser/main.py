@@ -288,7 +288,7 @@ class MusicXMLDocument(object):
           note.note_duration.seconds = note.note_duration.duration / current_tempo
 
   def _unify_divisions(self):
-    if len(self.parts) == 0:
+    if len(self.parts) == 1:
       return
     divisions_by_part = [set([note.state_fixed.divisions for measure in part.measures for note in measure.notes]) for part in self.parts]
     

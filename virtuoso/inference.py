@@ -124,14 +124,14 @@ def model_prediction_to_feature(prediction, output_keys):
 
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-mode", "--sessMode", type=str,
-                        default='train', help="train or test or testAll")
-    parser.add_argument("-path", "--test_path", type=str,
-                        default="./test_pieces/bps_5_1/", help="folder path of test mat")
-    parser.add_argument("-tempo", "--startTempo", type=int,
-                        default=0, help="start tempo. zero to use xml first tempo")
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("-mode", "--sessMode", type=str,
+#                         default='train', help="train or test or testAll")
+#     parser.add_argument("-path", "--test_path", type=str,
+#                         default="./test_pieces/bps_5_1/", help="folder path of test mat")
+#     parser.add_argument("-tempo", "--startTempo", type=int,
+#                         default=0, help="start tempo. zero to use xml first tempo")
 
-    model = load_model
-    load_file_and_generate_performance(args.test_path, args)
+#     model = load_model
+#     load_file_and_generate_performance(args.test_path, args)
