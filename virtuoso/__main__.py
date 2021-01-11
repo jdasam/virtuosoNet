@@ -19,9 +19,11 @@ from . import residual_selector as res
 
 def main():
     parser = get_parser()
-    torch.manual_seed(626)
-    # random.seed(0)
+
     args = parser.parse_args()
+    torch.manual_seed(args.th_seed)
+    # random.seed(0)
+
     if "isgn" not in args.model_code:
         args.intermediate_loss = False
     name = get_name(parser, args)  + "_" + datetime.now().strftime('%y%m%d-%H%M%S')

@@ -28,9 +28,10 @@ def inference(args, model, device):
     score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, args.qpm_primo, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
-
+        # outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='rand')
+    Path(args.output_path).mkdir(exist_ok=True)
     save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.boolPedal, args.disklavier)
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, args.multi_instruments, args.boolPedal, args.disklavier, click_interval_in_16th=args.click_interval_in_16th)
 
 def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
@@ -40,7 +41,7 @@ def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, bool_pedal=bool_pedal, disklavier=disklavier)
 
 
-def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, bool_pedal=False, disklavier=False):
+def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, multi_instruments=False, bool_pedal=False, disklavier=False, click_interval_in_16th=4):
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
 
@@ -50,7 +51,7 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments)
 
     plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'))
-    eighth_positions = score.xml_obj.get_interval_positions(interval_in_16th=2)
+    nth_position = score.xml_obj.get_interval_positions(interval_in_16th=click_interval_in_16th)
     def cal_time_position_with_tempo(xml_position, tempos, divisions):
         corresp_tempo = get_item_by_xml_position(tempos, dict(xml_position=xml_position))
         previous_sec = corresp_tempo.time_position
@@ -60,7 +61,7 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
         return previous_sec + passed_second
 
     eighth_times = []
-    for position in eighth_positions:
+    for position in nth_position:
         last_note = get_item_by_xml_position(xml_notes, dict(xml_position=position))
         divisions = last_note.state_fixed.divisions
         eighth_times.append(cal_time_position_with_tempo(position, tempos, divisions))
