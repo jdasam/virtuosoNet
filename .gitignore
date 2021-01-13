@@ -10,3 +10,6 @@ test_pieces/performScore_test/
 dataset_test/
 dataset*/
 checkpoints/
+test_result/*.mid
+test_result/*.png
+test_result/*.csv
