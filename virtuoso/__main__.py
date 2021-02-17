@@ -63,25 +63,6 @@ def main():
                                        world_size=args.world_size)
 
     
-
-    # Suggestion: 
-    # load parameter directly.
-    # save model param in checkpoint?
-    # if args.sessMode == 'train' and not args.resumeTraining:
-    #     NET_PARAM = param.initialize_model_parameters_by_code(args.modelCode)
-    #     NET_PARAM.num_edge_types = N_EDGE_TYPE
-    #     NET_PARAM.training_args = args
-    #     param.save_parameters(NET_PARAM, args.modelCode + '_param')
-    # elif args.resumeTraining:
-    #     NET_PARAM = param.load_parameters(args.modelCode + '_param')
-    # else:
-    #     NET_PARAM = param.load_parameters(args.modelCode + '_param')
-    #     TrillNET_Param = param.load_parameters(args.trillCode + '_param')
-    #     # if not hasattr(NET_PARAM, 'num_edge_types')
-    #     #     NET_PARAM.num_edge_types = 10
-    #     # if not hasattr(TrillNET_Param, 'num_edge_types'):
-    #     #     TrillNET_Param.num_edge_types = 10
-    #     TRILL_MODEL = modelzoo.TrillRNN(TrillNET_Param, device).to(device)
     model = modelzoo.VirtuosoNet()
     model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
     model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
@@ -90,16 +71,6 @@ def main():
     model.network_params = net_param
     model = model.to(device)
     
-    # if 'isgn' in args.model_code:
-    #     # model = modelzoo.ISGN(net_param, device).to(device)
-    #     model = modelzoo.IsgnVirtuosoNet(net_param).to(device)
-    # elif 'han' in args.model_code:
-    #     model = modelzoo.HanVirtuosoNet(net_param).to(device)
-    #     # model = modelzoo.HAN_Integrated(net_param, device, step_by_step).to(device)
-    # elif 'trill' in args.model_code:
-    #     model = modelzoo.TrillRNN(net_param, device).to(device)
-    # else:
-    #     print('Error: Unclassified model code')
 
     # if not (args.session_mode =="train" and args.resume_training):
     #     checkpoint = torch.load(args.checkpoint)
