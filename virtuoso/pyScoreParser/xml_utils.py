@@ -500,7 +500,7 @@ def cal_up_trill_pitch(pitch_tuple, key, final_key, measure_accidentals):
     return up_pitch, final_pitch_string
 
 
-def xml_notes_to_midi(xml_notes, multi_instruments=False):
+def xml_notes_to_midi(xml_notes, multi_instruments=False, ignore_overlapped=True):
     """ Returns midi-transformed xml notes in pretty_midi.Note() format
 
     Args:
@@ -521,7 +521,7 @@ def xml_notes_to_midi(xml_notes, multi_instruments=False):
     else:
         midi_notes = []
     for i, note in enumerate(xml_notes):
-        if note.is_overlapped and not multi_instruments:  # ignore overlapped notes.
+        if note.is_overlapped and not multi_instruments and ignore_overlapped:  # ignore overlapped notes.
             continue
 
         pitch = note.pitch[1]
@@ -537,6 +537,12 @@ def xml_notes_to_midi(xml_notes, multi_instruments=False):
         midi_note.channel = note.voice // 10
         midi_note.xml_idx = i
         
+        if hasattr(note, "cluster"):
+            midi_note.cluster = note.cluster
+        else:
+            midi_note.cluster = 0
+        if hasattr(note, "attention_weights"):
+            midi_note.attention_weights = note.attention_weights
         if multi_instruments:
             instrument_idx = note.voice // 10
             midi_notes[instrument_idx].append(midi_note)
