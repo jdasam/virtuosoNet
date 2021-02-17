@@ -2,6 +2,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
+from pathlib import Path
 
 
 def cal_tempo_and_velocity_by_beat(features, note_locations, momentum=0.8):
@@ -81,8 +83,22 @@ def cal_tempo_and_velocity_by_beat(features, note_locations, momentum=0.8):
 
 
 
-def plot_performance_worm(features, note_locations, save_name='images/performance_worm.png'):
+def plot_performance_worm(features, note_locations, save_name='images/performance_worm.png', save_csv=False, attention_weights=None):
     tempos, velocities = cal_tempo_and_velocity_by_beat(features, note_locations)
+    if save_csv:
+        if isinstance(save_name, str):
+            save_name = Path(save_name)
+        csv_path = save_name.parent / (save_name.stem + '_perf_worm.csv')
+        beat_change_idx = [0] + np.where(np.diff(note_locations)==1)[0].tolist()
+        with open(csv_path, 'w') as f:
+            writer = csv.writer(f, delimiter=',')
+            if attention_weights is not None:
+                writer.writerow(["note_idx", "tempo", "velocity", "att_0","att_1","att_2","att_3","att_4","att_5","att_6", "att_7"])
+                [writer.writerow([i, t,v] + a) for i, t, v, a in zip(beat_change_idx, tempos, velocities, attention_weights)]
+            else:
+                writer.writerow(["note_idx", "tempo", "velocity"])
+                [writer.writerow([i, t,v]) for i, t, v, a in zip(beat_change_idx, tempos, velocities)]
+
     num_beat = len(tempos)
     plt.figure(figsize=(10, 7))
     color = 'green'

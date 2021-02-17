@@ -528,6 +528,29 @@ class HanEncoder(nn.Module):
 
         return beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned
 
+    def get_attention_weights(self, x, edges, note_locations):
+        voice_numbers = note_locations['voice']
+        x = self.note_fc(x)
+        max_voice = max(voice_numbers)
+        voice_out = self.run_voice_net(x, voice_numbers, max_voice)
+        hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        hidden_out = torch.cat((hidden_out,voice_out), 2)
+        beat_hidden_out, _, _, _ = self.run_beat_and_measure(hidden_out, note_locations)
+
+
+        weights = self.beat_attention.get_attention(hidden_out).squeeze()
+        weights_mean = torch.mean(weights, axis=1).unsqueeze(1).repeat(1,weights.shape[1])
+        weights_std = torch.std(weights, axis=1).unsqueeze(1).repeat(1,weights.shape[1])
+
+        beat_weights = self.measure_attention.get_attention(beat_hidden_out).squeeze()
+        beat_weights_mean = torch.mean(beat_weights, axis=1).unsqueeze(1).repeat(1,beat_weights.shape[1])
+        beat_weights_std = torch.std(beat_weights, axis=1).unsqueeze(1).repeat(1,beat_weights.shape[1])
+
+        norm_weights =  (weights-weights_mean)/weights_std
+        norm_beat_weights = (beat_weights-beat_weights_mean)/beat_weights_std
+        return {'note':norm_weights.permute(1,0).cpu().numpy(), 'beat':norm_beat_weights.permute(1,0).cpu().numpy()}
+
+    
 
 class HanGraphEncoder(HanEncoder):
     def __init__(self, net_params):

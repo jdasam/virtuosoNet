@@ -175,10 +175,14 @@ def get_parser():
     parser.add_argument("--tempo_clock", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="add tempo clock track in output MIDI")
     parser.add_argument("--velocity_multiplier", type=float,
-                    default=0, help="multiplier that broaden diff between mean velocity and each note's velocity")
+                    default=1, help="multiplier that broaden diff between mean velocity and each note's velocity")
     parser.add_argument("-clock", "--clock_interval_in_16th", default=4,
                         type=int, help="midi clock interval")
-
+    parser.add_argument("-csv", "--save_csv", default=False,
+                        action='store_true', help="save midi note in csv")
+    parser.add_argument("-cluster", "--save_cluster", default=False,
+                        action='store_true', help="save cluster of note embedding")
+    parser.add_argument( "--mod_midi_path", default=None, type=str, help="path of modified midi path")
     # random seed
     parser.add_argument("--th_seed", default=626,
                         type=int, help="torch random seed")

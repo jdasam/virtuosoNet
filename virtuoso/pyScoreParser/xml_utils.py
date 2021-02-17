@@ -520,7 +520,7 @@ def xml_notes_to_midi(xml_notes, multi_instruments=False):
         midi_notes = [ [] for i in range(num_instruments) ]
     else:
         midi_notes = []
-    for note in xml_notes:
+    for i, note in enumerate(xml_notes):
         if note.is_overlapped and not multi_instruments:  # ignore overlapped notes.
             continue
 
@@ -534,8 +534,9 @@ def xml_notes_to_midi(xml_notes, multi_instruments=False):
             end = start + 10
         velocity = int(min(max(note.velocity,0),127))
         midi_note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end)
-
-    
+        midi_note.channel = note.voice // 10
+        midi_note.xml_idx = i
+        
         if multi_instruments:
             instrument_idx = note.voice // 10
             midi_notes[instrument_idx].append(midi_note)
