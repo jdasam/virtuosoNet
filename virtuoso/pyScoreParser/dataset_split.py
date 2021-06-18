@@ -46,3 +46,7 @@ TEST_LIST = ['Bach/Prelude/bwv_858/',
              'Liszt/Gran_Etudes_de_Paganini/6_Theme_and_Variations/',
              ]
 
+
+# emotion_valid = [
+#             'Bach.french-suite_bwv816_no5_allemande',
+# ]

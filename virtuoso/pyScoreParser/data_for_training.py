@@ -8,19 +8,24 @@ from . import dataset_split
 from pathlib import Path
 from tqdm import tqdm
 
-NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
+NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
+                    'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
-                            'pedal_refresh', 'pedal_cut', 'qpm_primo', 
+                            'pedal_refresh', 'pedal_cut', 
+                            'qpm_primo', 
                             'beat_tempo', 'beat_dynamics', 'measure_tempo', 'measure_dynamics')
 
 VNET_COPY_DATA_KEYS = ('note_location', 'align_matched', 'articulation_loss_weight')
-VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
+VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
+                'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
-                          'slur_beam_vec',  'composer_vec', 'notation', 'tempo_primo')
+                          'slur_beam_vec',  'composer_vec', 'notation', 
+                          'tempo_primo'
+                          )
 
 VNET_OUTPUT_KEYS = ('beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
