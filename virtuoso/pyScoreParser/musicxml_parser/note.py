@@ -40,6 +40,7 @@ class Note(object):
     self.followed_by_fermata_rest = False
     self.measure_number = state.measure_number
     self.accidental = None
+    self.unpitched= False
 
     self._parse()
 
@@ -81,7 +82,8 @@ class Note(object):
       elif child.tag == 'notations':
         self.note_notations.parse_notations(child)
       elif child.tag == 'unpitched':
-        raise UnpitchedNoteException('Unpitched notes are not supported')
+        self.unpitched = True
+        # raise UnpitchedNoteException('Unpitched notes are not supported')
       elif child.tag == 'grace':
         self.note_duration.parse_duration(self.is_in_chord, True, 0)
         self.state.previous_grace_notes.append(self)
