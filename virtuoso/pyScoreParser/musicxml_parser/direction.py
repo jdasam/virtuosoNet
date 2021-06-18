@@ -145,7 +145,8 @@ class Direction(object):
     if self.type['content'] is None:
       self.type = {'type': 'words', 'content': xml_words.text}
     else:
-      self.type['content'] += xml_words.text
+      if xml_words.text is not None:
+        self.type['content'] += xml_words.text
 
   def _parse_octave_shift(self, xml_shift):
     """Parse the MusicXML <octave-shift> element.

@@ -3,6 +3,8 @@ def get_playable_notes(xml_part, instruments_idx=0, melody_only=False):
     measure_number = 1
     for measure in xml_part.measures:
         for note in measure.notes:
+            if note.unpitched:
+                continue
             note.measure_number = measure_number
             note.voice += instruments_idx * 10
             notes.append(note)
@@ -14,6 +16,9 @@ def get_playable_notes(xml_part, instruments_idx=0, melody_only=False):
     notes = apply_tied_notes(notes)
     notes.sort(key=lambda x: (x.note_duration.xml_position,
                 x.note_duration.grace_order, -x.pitch[1]))
+    if len(notes) == 0:
+        return [], []
+
     notes = check_overlapped_notes(notes)
     notes = apply_rest_to_note(notes, rests)
     notes = omit_trill_notes(notes)
@@ -359,6 +364,8 @@ def binary_index(alist, item):
     first = 0
     last = len(alist)-1
     midpoint = 0
+    if len(alist) == 0:
+        return 0
 
     if(item< alist[first]):
         return 0
