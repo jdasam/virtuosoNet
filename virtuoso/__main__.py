@@ -45,10 +45,11 @@ def main():
         config = utils.read_model_setting(args.yml_path)
         net_param = config.nn_params
     else:
-        net_param = torch.load(args.checkpoint, map_location='cpu')['network_params']
-        args.yml_path = list(Path(args.checkpoint).parent.rglob('*.yml'))[0]
+        net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
+        args.yml_path = list(Path(args.checkpoint).parent.glob('*.yml'))[0]
         config = utils.read_model_setting(args.yml_path)
     args.graph_keys = net_param.graph_keys
+    args.meas_note = net_param.meas_note
     criterion = utils.make_criterion_func(config.train_params.loss_type, device)
 
 

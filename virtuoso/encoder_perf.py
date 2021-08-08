@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net
-from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 
 
 
@@ -160,7 +160,16 @@ class IsgnPerfEncoderMasking(IsgnPerfEncoder):
         return perform_z, perform_mu, perform_var
 
 
+class GcnPerfEncoderMasking(IsgnPerfEncoder):
+    def __init__(self, net_params):
+        super().__init__(net_params)
+        self.performance_graph_encoder = GraphConvStack(net_params.encoder.size, 
+                                                        net_params.encoder.size, 
+                                                        net_params.num_edge_types, 
+                                                        num_layers=net_params.encoder.layer,
+                                                        drop_out=net_params.drop_out)
 
+    
 def sample_multiple_z(perform_mu, perform_var, num=10):
     total_perform_z = []
     for i in range(num):
