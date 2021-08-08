@@ -37,7 +37,7 @@ def classify_notes(notes, melody_only=False):
         if melody_only:
             if note.voice != 1:
                 continue
-        if note.note_duration.is_grace_note:
+        if note.note_duration.is_grace_note and not note.pitch is None:
             grace_tmp.append(note)
             notes_tmp.append(note)
         elif not note.is_rest:

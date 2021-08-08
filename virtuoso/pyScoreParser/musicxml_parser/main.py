@@ -286,6 +286,7 @@ class MusicXMLDocument(object):
           note.note_duration.time_position = tempos[i].time_position + (
                   note.note_duration.xml_position - tempos[i].xml_position) / current_tempo
           note.note_duration.seconds = note.note_duration.duration / current_tempo
+          note.state_fixed.qpm = tempos[i].qpm
 
   def _unify_divisions(self):
     if len(self.parts) == 1:

@@ -470,6 +470,8 @@ def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_ped
     if isinstance(midi_notes[0], list): #multi instruments
         num_instruments = len(midi_notes)
         for i in range(num_instruments):
+            if len(midi_notes[i]) == 0:
+                continue
             piano = pretty_midi.Instrument(program=piano_program)
             for note in midi_notes[i]:
                 piano.notes.append(note)
