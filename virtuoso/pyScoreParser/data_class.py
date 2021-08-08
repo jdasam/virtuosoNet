@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 import warnings
 import copy
+import random
 from abc import abstractmethod
 from tqdm import tqdm
 import _pickle as cPickle
@@ -31,7 +32,7 @@ DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_
 DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
                             'pedal_refresh', 'pedal_cut', 'qpm_primo', 'align_matched', 'articulation_loss_weight',
-                            'beat_dynamics', 'measure_tempo', 'measure_dynamics']
+                            'beat_dynamics', 'measure_tempo', 'measure_dynamics', "section_tempo"]
 
 
 # total data class
@@ -72,10 +73,10 @@ class DataSet:
         '''return scores, score_midis, performances, composers'''
         raise NotImplementedError
 
-    def load_all_piece(self, scores, perform_midis, score_midis, composers, save):
+    def load_all_piece(self, scores, perform_midis, score_midis, composers, save, align=True):
         for n in tqdm(range(len(scores))):
             try:
-                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=save)
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=save, align=align)
                 self.pieces.append(piece)
                 for perf in piece.performances:
                     self.performances.append(perf)
@@ -89,7 +90,7 @@ class DataSet:
         for n in tqdm(range(len(scores))):
             score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
             if score_feature_path.exists():
-                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True, align=False)
                 self.pieces.append(piece)
             # try:
             #     piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
@@ -286,7 +287,7 @@ class PieceData:
         
             # TODO: move to ScoreData
             self.score_features = {}
-            self.meta._check_perf_align(align=True)
+            self.meta._check_perf_align(align=save)
 
             for perform in perform_lists:
                 perform_dat_path = Path(perform).parent / Path(perform).name.replace('.mid', '.dat')
@@ -479,6 +480,49 @@ class PerformData:
             'Number of Matched Notes: ' + str(self.num_matched_notes) + ', unmatched notes: ' + str(self.num_unmatched_notes))
 
 
+def modifier(xml_obj, p_add=0.15, p_shift=0.1, p_del = 0.1, modifier=1):
+    xml_new = copy.deepcopy(xml_obj)
+    
+    weights = [el*modifier for el in [p_add, p_shift, p_del]]
+    weights.append(1 - sum(weights))
+    n_add = 0
+    for part in xml_new.parts:
+        for n, measure in enumerate(part.measures):
+            add_notes = []
+            for note in measure.notes:
+                if not note.is_rest:
+                    action = random.choices(['add', 'shift', 'del', 'pass'], weights=weights)[0]
+                    if action == 'add':
+                        n_add += 1
+                        add_notes.extend(note_add(note))
+                    elif action == 'shift':
+                        pitch_min = max(21, note.pitch[1] - 24)
+                        pitch_max = min(108, note.pitch[1] + 24)
+                        pitches = list(range(pitch_min, note.pitch[1])) + list(range(note.pitch[1]+1, pitch_max))
+                        selected_pitch = random.sample(pitches, 1)[0]
+                        note.pitch = (note.pitch[0], selected_pitch)
+                    elif action == 'del':
+                        note.is_rest = True
+                    else:
+                        pass
+            measure.notes.extend(add_notes)
+    print(n_add)
+    return xml_new
+                    
+
+def note_add(note):
+    add_notes = []
+    n_notes = random.choices(range(1,6), weights=reversed(range(5)))[0]
+    pitch_min = max(21, note.pitch[1] - 24)
+    pitch_max = min(108, note.pitch[1] + 24)
+    pitches = list(range(pitch_min, note.pitch[1])) + list(range(note.pitch[1]+1, pitch_max))
+    selected_pitch = random.sample(pitches, n_notes)
+    for pitch in selected_pitch:
+        note_new = copy.deepcopy(note)
+        note_new.pitch = (note.pitch[0], pitch)
+        add_notes.append(note_new)
+    return add_notes
+
 class ScoreData:
     def __init__(self, xml_path, score_midi_path, composer, read_xml_only=False):
         self.xml_obj = None
@@ -505,6 +549,7 @@ class ScoreData:
 
     def _load_score_xml(self, xml_path):
         self.xml_obj = MusicXMLDocument(xml_path)
+        # self.xml_obj = modifier(self.xml_obj, modifier=1)
         self._get_direction_encoded_notes()
         self.notes_graph = score_graph.make_edge(self.xml_notes)
         self.measure_positions = self.xml_obj.get_measure_positions()

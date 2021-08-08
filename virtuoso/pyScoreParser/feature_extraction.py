@@ -197,6 +197,10 @@ class ScoreExtractor:
             piece_data.tempo_primo = [0, 0]
         return piece_data.tempo_primo
 
+    def get_section_tempo(self, piece_data):
+        piece_data.section_tempo = [math.log(x.state_fixed.qpm, 10) for x in piece_data.xml_notes]
+        return piece_data.section_tempo
+
 class PerformExtractor:
     def __init__(self, selected_feature_keys):
         self.selected_feature_keys = selected_feature_keys
