@@ -198,6 +198,20 @@ def load_and_apply_modified_perf_midi(midi_path, score_pairs, xml_notes, output_
     output_features['velocity'] = [note.velocity for note in xml_notes]
 
     return [x['midi'] for x in score_pairs if x!=[]]
+
+def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_measure):
+    note_measure_numbers = [x.measure_number for x in xml_notes]
+    start_note_index = note_measure_numbers.index(start_measure)
+    end_note_index = note_measure_numbers.index(end_measure)
+
+    mean_tempo = torch.mean(outputs[:, start_note_index:end_note_index, 0] )
+    outputs[:, start_note_index:end_note_index, 0] = mean_tempo
+    # outputs[:, start_note_index:end_note_index, 0] = mean_tempo + (outputs[:, start_note_index:end_note_index, 0] - mean_tempo) / 3
+
+    return outputs
+
+
+
 # if __name__ == '__main__':
 #     parser = argparse.ArgumentParser()
 #     parser.add_argument("-mode", "--sessMode", type=str,
