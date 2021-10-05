@@ -171,38 +171,6 @@ def make_midi_measure_seconds(pairs, measure_positions):
 #     return last
 
 
-def model_prediction_to_feature(prediction):
-    output_features = []
-    num_notes = len(prediction)
-    for i in range(num_notes):
-        pred = prediction[i]
-        # feat = {'IOI_ratio': pred[0], 'articulation': pred[1], 'loudness': pred[2], 'xml_deviation': 0,
-        feat = MusicFeature()
-        feat.qpm = pred[0]
-        feat.velocity = pred[1]
-        feat.xml_deviation = pred[2]
-        feat.articulation = pred[3]
-        feat.pedal_refresh_time = pred[4]
-        feat.pedal_cut_time = pred[5]
-        feat.pedal_at_start = pred[6]
-        feat.pedal_at_end = pred[7]
-        feat.soft_pedal = pred[8]
-        feat.pedal_refresh = pred[9]
-        feat.pedal_cut = pred[10]
-
-        feat.trill_param = pred[11:16]
-        feat.trill_param[0] = feat.trill_param[0]
-        feat.trill_param[1] = (feat.trill_param[1])
-        feat.trill_param[2] = (feat.trill_param[2])
-        feat.trill_param[3] = (feat.trill_param[3])
-        feat.trill_param[4] = round(feat.trill_param[4])
-
-        # if test_x[i][is_trill_index_score] == 1:
-        #     print(feat.trill_param)
-        output_features.append(feat)
-
-    return output_features
-
 
 def add_note_location_to_features(features, note_locations):
     for feat, loc in zip(features, note_locations):

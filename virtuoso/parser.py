@@ -46,7 +46,7 @@ def get_parser():
     # save options
     parser.add_argument("--checkpoints_dir", 
                         type=Path,
-                        default=Path('checkpoints'),
+                        default=Path('/home/svcapp/userdata/virtuosonet_checkpoints/'),
                         help='folder to store checkpoints')
     parser.add_argument("--checkpoint", 
                     type=Path,

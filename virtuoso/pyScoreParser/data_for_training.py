@@ -10,16 +10,17 @@ from tqdm import tqdm
 
 NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                     'qpm_primo',
+                    # "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
                             'pedal_refresh', 'pedal_cut', 
-                            'qpm_primo', 
                             'beat_tempo', 'beat_dynamics', 'measure_tempo', 'measure_dynamics')
 
 VNET_COPY_DATA_KEYS = ('note_location', 'align_matched', 'articulation_loss_weight')
 VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                 'qpm_primo',
+                # "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
@@ -53,6 +54,7 @@ class PairDataset:
         for piece in dataset.pieces:
             for performance in piece.performances:
                 if performance is not None \
+                        and 'align_matched' in performance.perform_features\
                         and len(performance.perform_features['align_matched']) - sum(performance.perform_features['align_matched']) < 800:
                     self.data_pairs.append(ScorePerformPairData(piece, performance))
 

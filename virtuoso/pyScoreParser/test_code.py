@@ -64,7 +64,7 @@ data_set.save_features_by_features_as_csv(features, target_features, path='note.
 '''
 
 
-data_set = data_class.DataSet('pyScoreParser/chopin_cleaned/Haydn/', 'folder')
+data_set = data_class.AsapDataset('/home/svcapp/userdata/asap-dataset/Haydn', 'folder')
 data_set.load_all_performances()
 # score_extractor = feat_ext.ScoreExtractor(['composer_vec'])
 for piece in data_set.pieces:

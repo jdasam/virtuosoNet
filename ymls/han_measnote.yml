@@ -23,6 +23,7 @@ nn_params:
     size: 128
   hierarchy_level: null
   input_size: 78
+  meas_note: true
   is_baseline: false
   is_graph: false
   is_simplified: false
