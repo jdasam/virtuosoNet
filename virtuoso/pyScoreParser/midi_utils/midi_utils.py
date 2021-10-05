@@ -554,3 +554,32 @@ def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_ped
     #         pedals.remove(pedal)
 
     piano_midi.write(output_name)
+
+def save_midi_notes_as_piano_midi_without_pedal(midi_notes, output_name):
+    """ Generate midi file by using received midi notes and midi pedals
+
+    Args:
+        midi_notes (1-D list) : list of pretty_midi.Note() of shape (num_notes, )
+        output_name (string) : output midi file name
+
+    Returns:
+        -
+
+    Example:
+        (in data_class.py -> make_score_midi()
+        >>> midi_notes, midi_pedals = xml_utils.xml_notes_to_midi(self.xml_notes)
+        >>> xml_utils.save_midi_notes_as_piano_midi(midi_notes, [], midi_file_name, bool_pedal=True)
+
+    """
+    if not isinstance(output_name, str):
+        output_name = str(output_name)
+    piano_midi = pretty_midi.PrettyMIDI()
+    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
+
+    piano = pretty_midi.Instrument(program=piano_program)
+    piano.notes = midi_notes
+    # for note in midi_notes:
+    #   piano.notes.append(note)
+
+    piano_midi.instruments.append(piano)
+    piano_midi.write(output_name)

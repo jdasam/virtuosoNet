@@ -397,18 +397,19 @@ def get_monophonic_note(xml_part, voice_idx):
     measure_number = 1
     for measure in xml_part.measures:
         for note in measure.notes:
-            if note.unpitched:
+            if not note.voice==voice_idx or note.unpitched:
                 continue
             note.measure_number = measure_number
             notes.append(note)
         measure_number += 1
-    notes = [note for note in notes if check_validity_for_monophonic(note) and note.voice==voice_idx]
-    notes = delete_chord_notes_for_melody(notes)
-    notes = apply_tied_notes(notes)
-    notes.sort(key=lambda x: (x.note_duration.xml_position, -x.pitch[1]))
-    if len(notes) == 0:
-        return [], []
-    notes = omit_trill_notes(notes)
+    notes = [note for note in notes if check_validity_for_monophonic(note)]
+    playable_notes = [note for note in notes if note.pitch]
+    rest = [note for note in notes if note.is_rest]
+    playable_notes = delete_chord_notes_for_melody(playable_notes)
+    # notes = apply_tied_notes(notes)
+    notes = playable_notes + rest
+    notes.sort(key=lambda x: x.note_duration.xml_position)
+    # notes = omit_trill_notes(notes)
     return notes
 
 def check_validity_for_monophonic(xml_note):
