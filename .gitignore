@@ -1,4 +1,3 @@
-musicxml_parser/
 .idea/
 chopin_cleaned/
 midi_utils/
@@ -13,3 +12,4 @@ checkpoints/
 test_result/*.mid
 test_result/*.png
 test_result/*.csv
+.vscode/

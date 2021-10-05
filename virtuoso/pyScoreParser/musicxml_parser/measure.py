@@ -192,7 +192,7 @@ class Measure(object):
         elif child.get('segno') is not None:
           self.segno = 'start'
       if self.state.first_ending_discontinue and child.tag=='direction-type':
-        child_list = child.getchildren()
+        child_list = list(child)
         for sub_child in child_list:
           if sub_child.tag=='bracket' and sub_child.get('type')=='stop':
             self.first_ending_stop = True

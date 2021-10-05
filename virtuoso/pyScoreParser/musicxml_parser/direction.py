@@ -29,7 +29,7 @@ class Direction(object):
   def _parse(self):
     """Parse the MusicXML <direction> element."""
     direction = self.xml_direction
-    child_list = direction.find('direction-type').getchildren()
+    child_list = list(direction.find('direction-type'))
     if len(child_list) == 0:
       return
     staff = direction.find('staff')
@@ -85,9 +85,9 @@ class Direction(object):
     Args:
       xml_dynamics: XML element with tag type 'dynamics'.
     """
-    dynamic = xml_dynamics.getchildren()[0].tag
+    dynamic = list(xml_dynamics)[0].tag
     if dynamic == 'other-dynamics':
-      content = xml_dynamics.getchildren()[0].text
+      content = list(xml_dynamics)[0].text
       if content:
         while '<sym>dynamicPiano</sym>' in content:
           content = content.replace('<sym>dynamicPiano</sym>', 'p')

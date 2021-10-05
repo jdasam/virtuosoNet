@@ -52,7 +52,7 @@ class Notations(object):
     """Parse the MusicXML <Notations> element."""
     self.xml_notations = xml_notations
     if self.xml_notations is not None:
-      notations = self.xml_notations.getchildren()
+      notations = list(self.xml_notations)
       for child in notations:
         if child.tag == 'articulations':
           self._parse_articulations(child)
@@ -78,7 +78,7 @@ class Notations(object):
     Args:
       xml_articulation: XML element with tag type 'articulation'.
     """
-    tag = xml_articulation.getchildren()[0].tag
+    tag = list(xml_articulation)[0].tag
     if tag == 'arpeggiate':
       self.is_arpeggiate = True
     elif tag == 'accent':
@@ -100,7 +100,7 @@ class Notations(object):
     Args:
       xml_ornaments: XML element with tag type 'ornaments'.
     """
-    children = xml_ornaments.getchildren()
+    children = list(xml_ornaments)
     for child in children:
       tag = child.tag
       if tag == 'trill-mark':
