@@ -24,7 +24,7 @@ from .tempo import Tempo
 from .key_signature import KeySignature
 from .score_part import ScorePart
 from .part import Part
-from .playable_notes import get_playable_notes
+from .playable_notes import get_playable_notes, get_monophonic_note
 
 DEFAULT_MIDI_PROGRAM = 0  # Default MIDI Program (0 = grand piano)
 DEFAULT_MIDI_CHANNEL = 0  # Default MIDI Channel (0 = first channel)
@@ -445,6 +445,10 @@ class MusicXMLDocument(object):
     notes.sort(key=lambda x: (x.note_duration.xml_position,
               x.note_duration.grace_order, -x.pitch[1]))
     return notes, rests
+
+  def get_monophonic_notes_by_voice(self, voice_idx, part_idx=0):
+    part = self.parts[part_idx]
+    return get_monophonic_note(part, voice_idx)
 
 
   def find(self, f, seq):
