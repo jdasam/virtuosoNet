@@ -223,6 +223,8 @@ def to_midi_zero(midi_path, midi_min=21, midi_max=108, save_midi=False, save_nam
         0-type pretty_midi.Pretty_Midi object.
     """
     pretty_midi.pretty_midi.MAX_TICK = 1e10
+    if not isinstance(midi_path, str):
+      midi_path = str(midi_path)
     if save_name is None:
         save_name = midi_path.replace('.mid', '_midi0.mid')
 
