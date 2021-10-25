@@ -4,6 +4,7 @@ This code is to forcely fit one MIDI file to certain time mark of the other MIDI
 
 from .pyScoreParser.midi_utils import midi_utils
 from .pyScoreParser import xml_midi_matching as matching
+from .pyScoreParser.utils import binary_index
 import argparse
 from pathlib import Path
 import shutil
@@ -37,13 +38,21 @@ class PerformMIDI:
     for time in fit_timemark:
       idx = np.argmin(np.abs(time_match[:,0]-time))
       corresp_time.append(time_match[idx,1])
+    corresp_time.append(max([x.time for x in self.midi_events if hasattr(x,'time')])+0.01)
+    fit_timemark = [0] + fit_timemark + [max([x.time for x in other_midi.midi_events if hasattr(x,'time')])+0.01]
 
-    fit_timemark = [0] + fit_timemark
+    for i, event in enumerate(self.midi_events):
+      if hasattr(event, 'start'):
+        idx = binary_index(corresp_time, event.start)
+        event.start = interpolation(event.start, corresp_time[idx], corresp_time[idx+1], fit_timemark[idx], fit_timemark[idx+1])
+        idx = binary_index(corresp_time, event.end)
+        event.end = interpolation(event.end, corresp_time[idx], corresp_time[idx+1], fit_timemark[idx], fit_timemark[idx+1])
+      else:
+        idx = binary_index(corresp_time, event.time)
+        event.time = interpolation(event.time, corresp_time[idx], corresp_time[idx+1], fit_timemark[idx], fit_timemark[idx+1])
 
-    new_events = deepcopy(self.midi_events)
-
-    for i in range(1, len(corresp_time)):
-      self.adjust_midi(corresp_time[i-1], corresp_time[i], fit_timemark[i-1], fit_timemark[i])
+    # for i in range(1, len(corresp_time)):
+    #   self.adjust_midi(corresp_time[i-1], corresp_time[i], fit_timemark[i-1], fit_timemark[i])
 
   def adjust_midi(self, start_time, end_time, ref_start, ref_end):
     for event in self.midi_events:
@@ -83,6 +92,7 @@ class PerformMIDI:
 
 def interpolation(a0, a1,a2, b1,b2):
   return b1+ (a0-a1)/(a2-a1)*(b2-b1)
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
