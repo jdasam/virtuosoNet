@@ -38,8 +38,8 @@ class PerformMIDI:
     for time in fit_timemark:
       idx = np.argmin(np.abs(time_match[:,0]-time))
       corresp_time.append(time_match[idx,1])
-    corresp_time.append(max([x.time for x in self.midi_events if hasattr(x,'time')])+0.01)
-    fit_timemark = [0] + fit_timemark + [max([x.time for x in other_midi.midi_events if hasattr(x,'time')])+0.01]
+    corresp_time.append(max([x.time if hasattr(x,'time') else x.end for x in self.midi_events] )+0.01)
+    fit_timemark = [0] + fit_timemark + [max([x.time if hasattr(x,'time') else x.end for x in other_midi.midi_events])+0.01]
 
     for i, event in enumerate(self.midi_events):
       if hasattr(event, 'start'):
@@ -106,7 +106,15 @@ if __name__ == '__main__':
   perf_midi = PerformMIDI(args.perf_midi)
   ref_midi = PerformMIDI(args.ref_midi)
 
-  time_marks = [330, 37363, 73891, 84528, 106693, 126726, 149099, 181000, 182500]
+  if "messiaen" in args.ref_midi.stem:
+    time_marks = [330, 37363, 73891, 84528, 106693, 126726, 149099, 181000, 182500] # messiaen
+  elif "shostakovich" in args.ref_midi.stem:
+    time_marks = [198, 65198, 119924, 162500, 190198, 246495, 277200, 278000] # shostakovich
+  elif "glass" in args.ref_midi.stem:
+    time_marks = [132, 37033, 54231, 71264,104726, 121957, 138726, 172924, 189264, 206660, 241033, 245363] # glass
+  elif "prokofiev" in args.ref_midi.stem:
+    time_marks = [20, 30759, 60132, 85099, 98066, 126858, 146000, 156429, 182165, 207825, 223429, 226891] # prokofiev
+
   time_marks = [x/1000 for x in time_marks]
 
   perf_midi.force_fit(ref_midi, args.align_program_dir, time_marks)
