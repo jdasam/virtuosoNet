@@ -132,7 +132,7 @@ def get_parser():
                         default='MSE', help='type of training loss')
     
     # environment options
-    parser.add_argument("-dev", "--device", type=int,
+    parser.add_argument("-dev", "--device", type=str,
                         default=0, help="cuda device number")
     parser.add_argument("--num_workers", type=int,
                         default=0, help="num workers for dataloader")

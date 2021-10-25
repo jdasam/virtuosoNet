@@ -26,6 +26,7 @@ from .utils import load_weight
 from . import graph
 
 
+
 def inference(args, model, device):
     model = load_weight(model, args.checkpoint)
     model.eval()
@@ -44,6 +45,29 @@ def inference(args, model, device):
                               args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier, 
                               clock_interval_in_16th=args.clock_interval_in_16th, save_csv=args.save_csv, save_cluster=args.save_cluster,
                               attention_weights=attention_weights, mod_midi_path=args.mod_midi_path)
+
+
+def inference_with_emotion(args, model, device):
+    model = load_weight(model, args.checkpoint)
+    model.eval()
+    # load score
+    score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, args.qpm_primo, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
+    with torch.no_grad():
+        outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
+        if args.save_cluster:
+            attention_weights = model.score_encoder.get_attention_weights(input, edges, note_locations)
+        else:
+            attention_weights = None
+        # outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='rand')
+    Path(args.output_path).mkdir(exist_ok=True)
+    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
+    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
+                              args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier, 
+                              clock_interval_in_16th=args.clock_interval_in_16th, save_csv=args.save_csv, save_cluster=args.save_cluster,
+                              attention_weights=attention_weights, mod_midi_path=args.mod_midi_path)
+
+
+
 
 def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z='zero', multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False):
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
@@ -132,6 +156,9 @@ def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, st
     feature_extractor = ScoreExtractor(input_keys)
     input_features = feature_extractor.extract_score_features(score)
     if qpm_primo is not None:
+        if 'section_tempo' in input_features:
+            initial_qpm_primo = input_features['section_tempo'][0]
+            input_features['section_tempo'] = [   x + log(qpm_primo, 10) - initial_qpm_primo for x in input_features['section_tempo']]
         input_features['qpm_primo'] = log(qpm_primo, 10)
     if 'note_location' not in input_features:
         input_features['note_location'] = feature_extractor.get_note_location(score)

@@ -11,7 +11,7 @@ from . import model as modelzoo
 from . import model_parameters as param
 from . import utils
 from .train import train
-from .inference import inference
+from .inference import inference, inference_with_emotion
 from . import encoder_score as encs
 from . import encoder_perf as encp
 from . import decoder as dec
@@ -92,6 +92,8 @@ def main():
         # stats= utils.load_dat(args.data_path / 'stat.dat')
         inference(args, model, device)
     
+    elif args.session_mode == "inference_with_emotion":
+        inference_with_emotion(args, model, device)
 
 if __name__ == '__main__':
     main()
