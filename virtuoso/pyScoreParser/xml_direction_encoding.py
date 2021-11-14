@@ -80,7 +80,7 @@ def extract_directions_by_keywords(directions, keywords):
 def check_direction_by_keywords(dir, keywords):
     if dir.type['type'] in keywords:
         return True
-    elif dir.type['type'] == 'words':
+    elif dir.type['type'] == 'words' and dir.type['content'] is not None:
         dir_word = word_regularization(dir.type['content'])
         # dir_word = dir.type['content'].replace(',', '').replace('.', '').replace('\n', ' ').replace('(','').replace(')','').lower()
         if dir_word in keywords:

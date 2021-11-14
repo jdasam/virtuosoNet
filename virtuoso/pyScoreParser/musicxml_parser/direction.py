@@ -85,6 +85,8 @@ class Direction(object):
     Args:
       xml_dynamics: XML element with tag type 'dynamics'.
     """
+    if len(list(xml_dynamics)) == 0:
+      return
     dynamic = list(xml_dynamics)[0].tag
     if dynamic == 'other-dynamics':
       content = list(xml_dynamics)[0].text

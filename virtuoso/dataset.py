@@ -111,7 +111,7 @@ class EmotionDataset(ScorePerformDataset):
         self.cross_valid_split = self.make_cross_validation_split()
 
     def get_data_path(self):
-        entire_list = list(self.path.glob("*.dat"))
+        entire_list = list(self.path.rglob("*.dat"))
         entire_list = [x for x in entire_list if 'mm_1-' in x.stem]
         return entire_list
 
