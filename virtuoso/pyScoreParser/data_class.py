@@ -22,7 +22,7 @@ from . import score_as_graph as score_graph, xml_midi_matching as matching
 from . import xml_utils
 from . import feature_extraction
 
-align_dir = '/home/svcapp/userdata/AlignmentTool_v190813'
+align_dir = '/Users/jeongdasaem/Documents/AlignmentTool_v190813'
 
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
@@ -37,7 +37,7 @@ DEFAULT_PERFORM_FEATURES = ['beat_tempo', 'velocity', 'onset_deviation', 'articu
 
 # total data class
 class DataSet:
-    def __init__(self, path, save=False, features_only=False):
+    def __init__(self, path, save=False, features_only=False, align=False):
         self.path = path
 
         self.pieces = []
@@ -65,7 +65,7 @@ class DataSet:
         if features_only:
             self.load_all_features(scores, perform_midis, score_midis, composers)
         else:
-            self.load_all_piece(scores, perform_midis, score_midis, composers, save=save)
+            self.load_all_piece(scores, perform_midis, score_midis, composers, save=save, align=align)
 
     @classmethod
     @abstractmethod
@@ -227,7 +227,7 @@ class DataSet:
 
 # score data class
 class PieceData:
-    def __init__(self, xml_path, perform_lists, score_midi_path=None, composer=None, save=False, features_only=False):
+    def __init__(self, xml_path, perform_lists, score_midi_path=None, composer=None, save=False, features_only=False, align=False):
         if score_midi_path == None:
             score_midi_path = os.path.dirname(xml_path) + '/' + Path(xml_path).stem + '_score.mid'
         self.meta = PieceMeta(xml_path, perform_lists=perform_lists, score_midi_path=score_midi_path, composer=composer)
@@ -287,7 +287,7 @@ class PieceData:
         
             # TODO: move to ScoreData
             self.score_features = {}
-            self.meta._check_perf_align(align=save)
+            self.meta._check_perf_align(align=align)
 
             for perform in perform_lists:
                 perform_dat_path = Path(perform).parent / Path(perform).name.replace('.mid', '.dat')
