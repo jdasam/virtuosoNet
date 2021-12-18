@@ -213,3 +213,24 @@ def note_tempo_infos_to_beat(y, beat_numbers, index=0):
     num_beats = len(beat_tempos)
     beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
     return beat_tempos
+
+def batch_to_device(batch, device):
+    if len(batch) == 6:
+        batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch
+    elif len(batch) == 8:
+        batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch
+    else:
+        print(f'Unrecognizable batch length: {len(batch)}')
+        return
+    batch_x = batch_x.to(device)
+    batch_y = batch_y.to(device)
+    align_matched = align_matched.to(device)
+    pedal_status = pedal_status.to(device)
+    if edges is not None:
+        edges = edges.to(device)
+
+    if len(batch) == 6:
+        return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
+    elif len(batch) == 8:
+        return batch_x, batch_y, beat_y.to(device), meas_y.to(device), note_locations, align_matched, pedal_status, edges
+    
