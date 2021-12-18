@@ -24,7 +24,10 @@ from .pyScoreParser.utils import get_item_by_xml_position
 from pathlib import Path
 from .utils import load_weight
 from . import graph
-
+from . import style_analysis as sty
+from .emotion import get_style_from_emotion_data
+from .dataset import EmotionDataset, FeatureCollate
+from torch.utils.data import DataLoader
 
 
 def inference(args, model, device):
@@ -50,21 +53,28 @@ def inference(args, model, device):
 def inference_with_emotion(args, model, device):
     model = load_weight(model, args.checkpoint)
     model.eval()
+    # encode_emotion
+    emotion_set = EmotionDataset(args.emotion_data_path, type="entire", len_slice=2000, len_graph_slice=2000, graph_keys= model.stats['graph_keys'])
+    emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=0, pin_memory=False, collate_fn=FeatureCollate())
+
+    total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
+    abs_mean_by_emotion, norm_mean_by_emotion = sty.get_emotion_representative_vectors(total_perform_z)
+
+
     # load score
     score, input, edges, note_locations = get_input_from_xml(args.xml_path, args.composer, args.qpm_primo, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
-    with torch.no_grad():
-        outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='zero')
-        if args.save_cluster:
-            attention_weights = model.score_encoder.get_attention_weights(input, edges, note_locations)
-        else:
-            attention_weights = None
-        # outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='rand')
     Path(args.output_path).mkdir(exist_ok=True)
-    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
-    save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
-                              args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier, 
-                              clock_interval_in_16th=args.clock_interval_in_16th, save_csv=args.save_csv, save_cluster=args.save_cluster,
-                              attention_weights=attention_weights, mod_midi_path=args.mod_midi_path)
+    with torch.no_grad():
+        for i, emotion_z in enumerate(abs_mean_by_emotion):
+          outputs, _, _, _ = model(input, None, edges, note_locations, initial_z=emotion_z)
+          save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_absE{i+1}_by_{args.model_code}.mid"
+          save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
+                                    args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier,)
+        for i, emotion_z in enumerate(norm_mean_by_emotion):
+          outputs, _, _, _ = model(input, None, edges, note_locations, initial_z=emotion_z)
+          save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_normE{i+1}_by_{args.model_code}.mid"
+          save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
+                                    args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier,)
 
 
 
@@ -102,7 +112,7 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     if mod_midi_path is not None:
         score_pairs = [{'xml':xml, 'midi':midi} for xml, midi in zip (xml_notes,output_midi)]
         output_midi = load_and_apply_modified_perf_midi(mod_midi_path, score_pairs, xml_notes, output_features, score.beat_positions)
-    output_midi.sort(key=lambda x:x.start)
+        output_midi.sort(key=lambda x:x.start)
     if attention_weights is not None:
         plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=save_csv, attention_weights=attention_weights['beat'].tolist())
     else:
