@@ -22,7 +22,7 @@ from . import score_as_graph as score_graph, xml_midi_matching as matching
 from . import xml_utils
 from . import feature_extraction
 
-align_dir = '/home/svcapp/userdata/AlignmentTool_v190813'
+align_dir = '/home/teo/userdata/AlignmentTool_v190813'
 
 DEFAULT_SCORE_FEATURES = ['midi_pitch', 'duration', 'beat_importance', 'measure_length', 'qpm_primo',
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
@@ -73,10 +73,10 @@ class DataSet:
         '''return scores, score_midis, performances, composers'''
         raise NotImplementedError
 
-    def load_all_piece(self, scores, perform_midis, score_midis, composers, save, align=True):
+    def load_all_piece(self, scores, perform_midis, score_midis, composers, save):
         for n in tqdm(range(len(scores))):
             try:
-                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=save, align=align)
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=save)
                 self.pieces.append(piece)
                 for perf in piece.performances:
                     self.performances.append(perf)
@@ -90,7 +90,7 @@ class DataSet:
         for n in tqdm(range(len(scores))):
             score_feature_path = Path(scores[n]).parent / 'score_feature.dat'
             if score_feature_path.exists():
-                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True, align=False)
+                piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
                 self.pieces.append(piece)
             # try:
             #     piece = PieceData(scores[n], perform_midis[n], score_midis[n], composers[n], save=False, features_only=True)
