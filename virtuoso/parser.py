@@ -170,7 +170,7 @@ def get_parser():
     # inference options
     parser.add_argument("-dskl", "--disklavier", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="save midi for disklavier")
-    parser.add_argument("--multi_instruments", default=True,
+    parser.add_argument("--multi_instruments", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="save multi instruments as separate track")
     parser.add_argument("--tempo_clock", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="add tempo clock track in output MIDI")
