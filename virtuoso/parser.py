@@ -9,9 +9,9 @@ def get_parser():
                         #default="isgn_param.yml",
                          help="yml file path")
     parser.add_argument("-data", "--data_path", type=Path,
-                        default=Path("dataset_beat/"), help="data dir name")
+                        default=Path("dataset_section_tempo/"), help="data dir name")
     parser.add_argument("--emotion_data_path", type=Path,
-                    default=Path("dataset_emotion_beat/"), help="data dir name")
+                    default=Path("dataset_emotion_section_tempo/"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
@@ -37,7 +37,6 @@ def get_parser():
     parser.add_argument("--num_key_augmentation", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
 
-    
     # dist parallel options
     parser.add_argument("--rank", default=0, type=int)
     parser.add_argument("--world_size", default=1, type=int)
@@ -46,7 +45,7 @@ def get_parser():
     # save options
     parser.add_argument("--checkpoints_dir", 
                         type=Path,
-                        default=Path('/home/svcapp/userdata/virtuosonet_checkpoints/'),
+                        default=Path('/home/teo/userdata/virtuosonet_checkpoints/'),
                         help='folder to store checkpoints')
     parser.add_argument("--checkpoint", 
                     type=Path,
@@ -133,7 +132,7 @@ def get_parser():
     
     # environment options
     parser.add_argument("-dev", "--device", type=str,
-                        default=0, help="cuda device number")
+                        default='cuda:0', help="cuda device number")
     parser.add_argument("--num_workers", type=int,
                         default=0, help="num workers for dataloader")
     parser.add_argument("--pin_memory", default=True,
