@@ -137,7 +137,7 @@ class GatedGraph(nn.Module):
         return input
 
 class GatedGraphX(nn.Module):
-    def  __init__(self, input_size, hidden_size, num_edge_style):
+    def  __init__(self, input_size, hidden_size, num_edge_style, num_layers=1):
         super(GatedGraphX, self).__init__()
         self.size = hidden_size
         self.input_size = input_size
@@ -170,7 +170,7 @@ class GatedGraphX(nn.Module):
                 activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
             else:
                 activation = torch.matmul(edge_matrix.transpose(1,2), hidden)
-            activation += self.ba.unsqueeze(1)
+            activation += self.ba
             activation_wzrh = torch.bmm(activation, self.wz_wr_wh)
             activation_wzrh += torch.bmm(input, self.input_wzrh.repeat(input.shape[0], 1, 1))
             activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.size, dim=-1)

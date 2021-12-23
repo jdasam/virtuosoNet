@@ -351,11 +351,6 @@ class IsgnBeatMeasNewEncoderX(nn.Module):
             nn.ReLU(),
         )
         self.graph_1st = GatedGraphX(net_params.note.size + (net_params.measure.size + net_params.beat.size)* 2, net_params.note.size, self.num_edge_types)
-        self.graph_between = nn.Sequential(
-            nn.Linear(net_params.note.size, net_params.note.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU()
-        )
         self.graph_2nd = GatedGraphX(net_params.note.size, net_params.note.size, self.num_edge_types)
         
         self.beat_attention = ContextAttention(net_params.note.size, self.num_attention_head)
@@ -374,8 +369,7 @@ class IsgnBeatMeasNewEncoderX(nn.Module):
 
         for i in range(self.num_sequence_iteration):
             notes_hidden = self.graph_1st(notes_input, notes_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
-            notes_between = self.graph_between(notes_hidden)
-            notes_hidden_second = self.graph_2nd(notes_between, notes_hidden_second, adjacency_matrix, iteration=self.num_graph_iteration)
+            notes_hidden_second = self.graph_2nd(notes_hidden, notes_hidden_second, adjacency_matrix, iteration=self.num_graph_iteration)
             beat_nodes = make_higher_node(notes_hidden_second, self.beat_attention, beat_numbers, beat_numbers,
                                                 lower_is_note=True)
             beat_hidden, _ = self.beat_lstm(beat_nodes)
