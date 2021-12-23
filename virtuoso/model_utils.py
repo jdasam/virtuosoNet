@@ -13,20 +13,34 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
 
     similarity = attention_weights.get_attention(lower_out)
     if lower_is_note:
-        boundaries = [0] + (torch.where(higher_indices[1:] - higher_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices)]
-        
+        diff_boundary = torch.nonzero(higher_indices[:,1:] - higher_indices[:,:-1] == 1).cpu()
+        boundaries = [ [0] + diff_boundary[diff_boundary[:,0]==i][:,1].tolist() + [torch.max(torch.nonzero(higher_indices[i])).item()+1] for i in range(len(lower_out)) ]
+        # boundaries = [0] + (torch.nonzero(higher_indices[:,1:] - higher_indices[:,:-1] == 1) + 1).cpu().tolist() + [len(higher_indices[0])]
+        # boundaries = [0] + (torch.where(higher_indices[0,1:] - higher_indices[0,:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices[0])]
     else:
         higher_boundaries = [0] + (torch.where(higher_indices[1:] - higher_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices)]
         boundaries = [int(lower_indices[x]-lower_indices[0]) for x in higher_boundaries[:-1]] + [lower_out.shape[-2]]
-    softmax_similarity = torch.cat([torch.softmax(similarity[:,boundaries[i-1]:boundaries[i],:].permute(0,1,2), dim=1) for i in range(1, len(boundaries))], dim=1)
+    softmax_similarity = torch.nn.utils.rnn.pad_sequence([
+        torch.cat([torch.softmax(similarity[i,boundaries[i][j-1]:boundaries[i][j],: ], dim=0) for j in range(1, len(boundaries[i]))], dim=0) \
+          for i in range(len(lower_out))
+      ], batch_first=True
+    )
+    # softmax_similarity = torch.cat([torch.softmax(similarity[:,boundaries[i-1]:boundaries[i],:], dim=1) for i in range(1, len(boundaries))], dim=1)
     if hasattr(attention_weights, 'head_size'):
-        x_split = torch.cat(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=0)
+        x_split = torch.stack(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=2)
+        weighted_x = x_split * softmax_similarity.unsqueeze(-1).repeat(1,1,1,64)
+        weighted_x = x_split.view(x_split.shape[0], x_split.shape[1], lower_out.shape[-1])
+        higher_nodes = torch.nn.utils.rnn.pad_sequence([
+          torch.cat([torch.sum(weighted_x[i:i+1,boundaries[i][j-1]:boundaries[i][j],: ], dim=1) for j in range(1, len(boundaries[i]))], dim=0) \
+          for i in range(len(lower_out))
+        ], batch_first=True
+        )
         # higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
         #                     softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
         #                     for i in range(1, len(boundaries))]).unsqueeze(0)
-        higher_nodes = torch.stack([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
-                            softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
-                            for i in range(1, len(boundaries))]).permute(1,0,2)
+        # higher_nodes = torch.stack([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
+        #                     softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
+        #                     for i in range(1, len(boundaries))]).permute(1,0,2)
     else:
         weighted_sum = softmax_similarity * lower_out
         higher_nodes = torch.cat([torch.sum(weighted_sum[:,boundaries[i-1]:boundaries[i],:], dim=1) 

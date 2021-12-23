@@ -314,8 +314,10 @@ class ContextAttention(nn.Module):
     def get_attention(self, x):
         attention = self.attention_net(x)
         attention_tanh = torch.tanh(attention)
-        attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
-        similarity = torch.bmm(attention_split, self.context_vector.repeat(1, x.shape[0], 1).view(-1, self.head_size ,1))
+        # attention_split = torch.cat(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
+        attention_split = torch.stack(attention_tanh.split(split_size=self.head_size, dim=2), dim=0)
+        similarity = torch.bmm(attention_split.view(self.num_head, -1, self.head_size), self.context_vector)
+        similarity = similarity.view(self.num_head, x.shape[0], -1).permute(1,2,0)
         return similarity
 
     def forward(self, x):
