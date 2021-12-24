@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from torch.nn.modules.dropout import Dropout
 from .model_utils import make_higher_node, span_beat_to_note_num
 from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
@@ -513,15 +513,14 @@ class HanEncoder(nn.Module):
     
     def forward(self, x, edges, note_locations):
         voice_numbers = note_locations['voice']
-
-        # hidden = self.init_hidden(self.num_layers, 2, x.size(0), self.hidden_size)
-        # beat_hidden = self.init_hidden(self.num_beat_layers, 2, x.size(0), self.beat_hidden_size)
-        # measure_hidden = self.init_hidden(self.num_measure_layers, 2, x.size(0), self.measure_hidden_size)
-
         x = self.note_fc(x)
+
+        x = nn.utils.rnn.pack_padded_sequence(x, x.shape[1] - (voice_numbers==0).sum(dim=1), True, False )
+
         max_voice = torch.max(voice_numbers)
         voice_out = self.run_voice_net(x, voice_numbers, max_voice)
         hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
+        hidden_out, _ = pad_packed_sequence(hidden_out, True)
         hidden_out = torch.cat((hidden_out,voice_out), 2)
 
         beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
@@ -530,39 +529,37 @@ class HanEncoder(nn.Module):
                 'total_note_cat': torch.cat([hidden_out, beat_out_spanned, measure_out_spanned], dim=-1) }
 
     def run_voice_net(self, batch_x, voice_numbers, max_voice):
+        if isinstance(batch_x, torch.nn.utils.rnn.PackedSequence):
+          batch_x, _ = nn.utils.rnn.pad_packed_sequence(batch_x, True)
         num_notes = batch_x.size(1)
         output = torch.zeros(batch_x.shape[0], batch_x.shape[1], self.voice_net.hidden_size * 2).to(batch_x.device)
         # voice_numbers = torch.Tensor(voice_numbers)
         for i in range(1,max_voice+1):
-            voice_x_bool = voice_numbers == i
-            num_voice_notes = torch.sum(voice_x_bool)
-            num_batch_voice_notes = torch.sum(voice_x_bool, dim=1)
+          voice_x_bool = voice_numbers == i
+          num_voice_notes = torch.sum(voice_x_bool)
+          num_batch_voice_notes = torch.sum(voice_x_bool, dim=1)
 
-            if num_voice_notes > 0:
-                # span_mat = torch.zeros(num_notes, num_voice_notes)
-                # note_index_in_voice = 0
-                # for j in range(num_notes):
-                #     if voice_x_bool[j] ==1:
-                #         span_mat[j, note_index_in_voice] = 1
-                #         note_index_in_voice += 1
-                # span_mat = span_mat.view(1,num_notes,-1).repeat(batch_x.shape[0],1,1).to(batch_x.device)
-                # voice_x = batch_x[:,voice_x_bool,:]
-                voice_x = torch.nn.utils.rnn.pad_sequence([batch_x[i, voice_x_bool[i]] for i in range(len(batch_x)) ], True)
-                ith_voice_out, _ = self.voice_net(voice_x)
+          if num_voice_notes > 0:
+            voice_notes = [batch_x[i, voice_x_bool[i]] if torch.sum(voice_x_bool[i])>0 else torch.zeros(1,batch_x.shape[-1]).to(batch_x.device) for i in range(len(batch_x)) ]
+            voice_x = pad_sequence(voice_notes, True)
+            pack_voice_x = pack_padded_sequence(voice_x, [len(x) for x in voice_notes], True, False)
+            ith_voice_out, _ = self.voice_net(pack_voice_x)
+            ith_voice_out, _ = pad_packed_sequence(ith_voice_out, True)
+            
+            span_mat = torch.zeros(batch_x.shape[0], num_notes, voice_x.shape[1])
+            voice_where = torch.nonzero(voice_x_bool)
+            span_mat[voice_where[:,0], voice_where[:,1], torch.cat([torch.arange(num_batch_voice_notes[i]) for i in range(len(batch_x))])] = 1
 
-                span_mat = torch.zeros(batch_x.shape[0], num_notes, voice_x.shape[1])
-                voice_where = torch.nonzero(voice_x_bool==1)
-                span_mat[voice_where[:,0], voice_where[:,1], torch.cat([torch.arange(num_batch_voice_notes[i]) for i in range(len(batch_x))])] = 1
-
-                output += torch.bmm(span_mat, ith_voice_out)
+            output += torch.bmm(span_mat, ith_voice_out)
         return output
 
     def run_beat_and_measure(self, hidden_out, note_locations):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
-
         beat_nodes = make_higher_node(hidden_out, self.beat_attention, beat_numbers, beat_numbers, lower_is_note=True)
+        beat_nodes = pack_padded_sequence(beat_nodes, beat_nodes.shape[1] - (beat_nodes.sum(-1)==0).sum(dim=1), True, False )
         beat_hidden_out, _ = self.beat_rnn(beat_nodes)
+        beat_hidden_out, _ = pad_packed_sequence(beat_hidden_out, True)
         measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
         measure_hidden_out, _ = self.measure_rnn(measure_nodes)
 
@@ -579,7 +576,6 @@ class HanEncoder(nn.Module):
         hidden_out,_ = self.lstm(x)  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         hidden_out = torch.cat((hidden_out,voice_out), 2)
         beat_hidden_out, _, _, _ = self.run_beat_and_measure(hidden_out, note_locations)
-
 
         weights = self.beat_attention.get_attention(hidden_out).squeeze()
         weights_mean = torch.mean(weights, axis=1).unsqueeze(1).repeat(1,weights.shape[1])
