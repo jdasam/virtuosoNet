@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net, cal_length_from_padded_beat_numbers
 from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 
 
@@ -51,7 +52,10 @@ class HanPerfEncoder(nn.Module):
 
         perform_measure = make_higher_node(perform_note_encoded, self.performance_measure_attention,
                                                 beat_numbers, measure_numbers, lower_is_note=True)
+        perform_measure = pack_padded_sequence(perform_measure, perform_measure.shape[1] - (perform_measure.sum(-1)==0).sum(dim=1), True, False )
+
         perform_style_encoded, _ = self.performance_encoder(perform_measure)
+        perform_style_encoded, _ = pad_packed_sequence(perform_style_encoded, True)
         perform_style_vector = self.performance_final_attention(perform_style_encoded)
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)

@@ -546,7 +546,7 @@ class HanEncoder(nn.Module):
             ith_voice_out, _ = self.voice_net(pack_voice_x)
             ith_voice_out, _ = pad_packed_sequence(ith_voice_out, True)
             
-            span_mat = torch.zeros(batch_x.shape[0], num_notes, voice_x.shape[1])
+            span_mat = torch.zeros(batch_x.shape[0], num_notes, voice_x.shape[1]).to(batch_x.device)
             voice_where = torch.nonzero(voice_x_bool)
             span_mat[voice_where[:,0], voice_where[:,1], torch.cat([torch.arange(num_batch_voice_notes[i]) for i in range(len(batch_x))])] = 1
 
@@ -561,8 +561,10 @@ class HanEncoder(nn.Module):
         beat_hidden_out, _ = self.beat_rnn(beat_nodes)
         beat_hidden_out, _ = pad_packed_sequence(beat_hidden_out, True)
         measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
-        measure_hidden_out, _ = self.measure_rnn(measure_nodes)
+        measure_nodes = pack_padded_sequence(measure_nodes, measure_nodes.shape[1] - (measure_nodes.sum(-1)==0).sum(dim=1), True, False )
 
+        measure_hidden_out, _ = self.measure_rnn(measure_nodes)
+        measure_hidden_out, _ = pad_packed_sequence(measure_hidden_out, True)
         beat_out_spanned = span_beat_to_note_num(beat_hidden_out, beat_numbers)
         measure_out_spanned = span_beat_to_note_num(measure_hidden_out, measure_numbers)
 

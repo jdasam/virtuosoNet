@@ -53,7 +53,7 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     if hasattr(attention_weights, 'head_size'):
         x_split = torch.stack(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=2)
         weighted_x = x_split * softmax_similarity.unsqueeze(-1).repeat(1,1,1, x_split.shape[-1])
-        weighted_x = x_split.view(x_split.shape[0], x_split.shape[1], lower_out.shape[-1])
+        weighted_x = weighted_x.view(x_split.shape[0], x_split.shape[1], lower_out.shape[-1])
         higher_nodes = torch.nn.utils.rnn.pad_sequence([
           torch.cat([torch.sum(weighted_x[i:i+1,boundaries[i][j-1]:boundaries[i][j],: ], dim=1) for j in range(1, len(boundaries[i]))], dim=0) \
           for i in range(len(lower_out))
@@ -92,14 +92,22 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     # higher_nodes = torch.stack(higher_nodes).view(1, -1, lower_hidden_size)
     return higher_nodes
 
+def cal_length_from_padded_beat_numbers(beat_numbers):
+  '''
+  beat_numbers (torch.Tensor): N x T, zero padded note_location_number
+  '''
+  len_note = torch.min(torch.diff(beat_numbers,dim=1), dim=1)[1] + 1
+  len_note[len_note==1] = beat_numbers.shape[1]
+
+  return len_note
+
 def span_beat_to_note_num(beat_out, beat_number):
   '''
   beat_out (torch.Tensor): N x T_beat x C
   beat_number (torch.Tensor): N x T_note x C
   '''
   zero_shifted_beat_number = beat_number - beat_number[:,0:1]
-  len_note = torch.min(torch.diff(beat_number,dim=1), dim=1)[1] + 1
-  len_note[len_note==1] = beat_number.shape[1]
+  len_note = cal_length_from_padded_beat_numbers(beat_number)
 
   batch_indices = torch.cat([torch.ones(length)*i for i, length in enumerate(len_note)]).long()
   note_indices = torch.cat([torch.arange(length) for length in len_note])
