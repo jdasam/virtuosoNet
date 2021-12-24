@@ -37,7 +37,8 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     else:
         higher_boundaries = [find_boundaries(diff_boundary, higher_indices, i) for i in range(len(lower_out))]
         zero_shifted_lower_indices = lower_indices - lower_indices[:,0:1]
-        boundaries = [zero_shifted_lower_indices[i, higher_boundaries[i]-1] for i in range(len(lower_out))]
+        len_lower_out = (lower_out.shape[1] - (lower_out.sum(-1)==0).sum(1)).tolist()
+        boundaries = [zero_shifted_lower_indices[i, higher_boundaries[i][:-1]].tolist() + [len_lower_out[i]] for i in range(len(lower_out))]
 
 
         # higher_boundaries = [0] + (torch.where(higher_indices[1:] - higher_indices[:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices)]
@@ -51,7 +52,7 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     # softmax_similarity = torch.cat([torch.softmax(similarity[:,boundaries[i-1]:boundaries[i],:], dim=1) for i in range(1, len(boundaries))], dim=1)
     if hasattr(attention_weights, 'head_size'):
         x_split = torch.stack(lower_out.split(split_size=attention_weights.head_size, dim=2), dim=2)
-        weighted_x = x_split * softmax_similarity.unsqueeze(-1).repeat(1,1,1,64)
+        weighted_x = x_split * softmax_similarity.unsqueeze(-1).repeat(1,1,1, x_split.shape[-1])
         weighted_x = x_split.view(x_split.shape[0], x_split.shape[1], lower_out.shape[-1])
         higher_nodes = torch.nn.utils.rnn.pad_sequence([
           torch.cat([torch.sum(weighted_x[i:i+1,boundaries[i][j-1]:boundaries[i][j],: ], dim=1) for j in range(1, len(boundaries[i]))], dim=0) \
@@ -92,21 +93,22 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     return higher_nodes
 
 def span_beat_to_note_num(beat_out, beat_number):
-    start_beat = beat_number[0]
-    num_beat = beat_out.shape[1]
-    num_notes = beat_number.shape[0]
-    span_mat = torch.zeros(beat_out.shape[0], num_notes, num_beat)
-    beat_indices = torch.Tensor(list(enumerate(beat_number - start_beat))).to(torch.long)
-    span_mat[:, beat_indices[:,0], beat_indices[:,1]] = 1
-    # for i in range(num_notes):
-    #     beat_index = beat_number[i] - start_beat
-    #     if beat_index >= num_beat:
-    #         beat_index = num_beat-1
-    #     span_mat[0,i,beat_index] = 1
-    span_mat = span_mat.to(beat_out.device)
+  '''
+  beat_out (torch.Tensor): N x T_beat x C
+  beat_number (torch.Tensor): N x T_note x C
+  '''
+  zero_shifted_beat_number = beat_number - beat_number[:,0:1]
+  len_note = torch.min(torch.diff(beat_number,dim=1), dim=1)[1] + 1
+  len_note[len_note==1] = beat_number.shape[1]
 
-    spanned_beat = torch.bmm(span_mat, beat_out)
-    return spanned_beat
+  batch_indices = torch.cat([torch.ones(length)*i for i, length in enumerate(len_note)]).long()
+  note_indices = torch.cat([torch.arange(length) for length in len_note])
+  beat_indices = torch.cat([zero_shifted_beat_number[i,:length] for i, length in enumerate(len_note)]).long()
+
+  span_mat = torch.zeros(beat_number.shape[0], beat_number.shape[1], beat_out.shape[1]).to(beat_out.device)
+  span_mat[batch_indices, note_indices, beat_indices] = 1
+  spanned_beat = torch.bmm(span_mat, beat_out)
+  return spanned_beat
 
 def reparameterize(mu, logvar):
     std = torch.exp(0.5*logvar)
