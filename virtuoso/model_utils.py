@@ -175,13 +175,31 @@ def get_beat_corresp_out(note_out, beat_numbers, batch_ids, current_note_idx):
   '''
 
   # find note indices of previous beat
+  note_indices = find_note_indices_of_given_beat(beat_numbers, batch_ids, current_note_idx)
+  
+  out = torch.nn.utils.rnn.pad_sequence(
+    [note_out[idx, note_indices[i]] for i, idx in enumerate(batch_ids)]
+  , True)
 
-  return
+  return out 
 
-def find_note_indices_of_given_beat(beat_numbers, current_note_idx):
+def find_note_indices_of_given_beat(beat_numbers, batch_ids, current_note_idx):
+  '''
+  beat_numbers (torch.LongTensor): N x T. Beat (or measure) ids for each note
+  current_note_idx (int): Currently decoding note index among T
+
+  out: List of tensor indices
   '''
   
-  '''
-  
+  # select by batch_ids
+  selected_beat_numbers = beat_numbers[batch_ids]
 
-  return
+  # get current beat ids
+  current_beat = selected_beat_numbers[:, current_note_idx]
+
+  # get prev_beat
+  prev_beat = current_beat - 1
+
+  # find indices of note indices that belong to prev_beat
+  note_indices = [torch.where(selected_beat_numbers[i,:current_note_idx]==prev_beat[i])[0] for i in range(len(batch_ids))]
+  return note_indices

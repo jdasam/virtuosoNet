@@ -334,9 +334,7 @@ class ContextAttention(nn.Module):
             weighted_x = x_split * softmax_weight.unsqueeze(-1).repeat(1,1,1, x_split.shape[-1])
             attention = weighted_x.view(x_split.shape[0], x_split.shape[1], x.shape[-1])
             
-
             # weighted_mul = torch.bmm(softmax_weight.transpose(1,2), x_split)
-
             # restore_size = int(weighted_mul.size(0) / self.num_head)
             # attention = torch.cat(weighted_mul.split(split_size=restore_size, dim=0), dim=2)
         else:

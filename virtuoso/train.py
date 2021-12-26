@@ -11,7 +11,6 @@ import torch as th
 import pickle
 import wandb
 
-wandb.init(project="VirtuosoNet", entity="dasaem")
 
 from torch.utils.data import DataLoader
 from .parser import get_parser
@@ -61,8 +60,8 @@ def prepare_dataloader(args):
     emotion_set = EmotionDataset(args.emotion_data_path, type="train", len_slice=args.len_valid_slice * 2, len_graph_slice=args.len_valid_slice * 2, graph_keys=args.graph_keys,)
     multi_perf_set = MultiplePerformSet(args.data_path, type="train", len_slice=args.len_slice, len_graph_slice=args.len_graph_slice, graph_keys=args.graph_keys, hier_type=curr_type)
 
-    train_loader = DataLoader(train_set, 1, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
-    valid_loader = DataLoader(valid_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
+    train_loader = DataLoader(train_set, args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
+    valid_loader = DataLoader(valid_set, args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     emotion_loader = DataLoader(emotion_set, 5, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=FeatureCollate())
     multi_perf_loader = DataLoader(multi_perf_set, 1, shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_memory, collate_fn=multi_collate)
     # emotion_loader = None
@@ -108,8 +107,11 @@ def train(args,
           criterion,
           exp_name,
           ):
-    wandb.config = args
-    wandb.watch(model)
+
+    if args.make_log:
+      wandb.init(project="VirtuosoNet", entity="dasaem")
+      wandb.config = args
+      wandb.watch(model)
     train_loader, valid_loader, emotion_loader, multi_perf_loader = prepare_dataloader(args)
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name, args.make_log)
