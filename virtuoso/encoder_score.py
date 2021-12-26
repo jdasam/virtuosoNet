@@ -557,11 +557,13 @@ class HanEncoder(nn.Module):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
         beat_nodes = make_higher_node(hidden_out, self.beat_attention, beat_numbers, beat_numbers, lower_is_note=True)
-        beat_nodes = pack_padded_sequence(beat_nodes, beat_nodes.shape[1] - (beat_nodes.sum(-1)==0).sum(dim=1), True, False )
+        batch_beat_length = beat_nodes.shape[1] - (beat_nodes.sum(-1)==0).sum(dim=1)
+        beat_nodes = pack_padded_sequence(beat_nodes, batch_beat_length.cpu(), True, False )
         beat_hidden_out, _ = self.beat_rnn(beat_nodes)
         beat_hidden_out, _ = pad_packed_sequence(beat_hidden_out, True)
         measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
-        measure_nodes = pack_padded_sequence(measure_nodes, measure_nodes.shape[1] - (measure_nodes.sum(-1)==0).sum(dim=1), True, False )
+        batch_measure_length = measure_nodes.shape[1] - (measure_nodes.sum(-1)==0).sum(dim=1)
+        measure_nodes = pack_padded_sequence(measure_nodes, batch_measure_length.cpu(), True, False )
 
         measure_hidden_out, _ = self.measure_rnn(measure_nodes)
         measure_hidden_out, _ = pad_packed_sequence(measure_hidden_out, True)

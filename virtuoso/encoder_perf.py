@@ -52,7 +52,8 @@ class HanPerfEncoder(nn.Module):
 
         perform_measure = make_higher_node(perform_note_encoded, self.performance_measure_attention,
                                                 beat_numbers, measure_numbers, lower_is_note=True)
-        perform_measure = pack_padded_sequence(perform_measure, perform_measure.shape[1] - (perform_measure.sum(-1)==0).sum(dim=1), True, False )
+        batch_measure_length = perform_measure.shape[1] - (perform_measure.sum(-1)==0).sum(dim=1)
+        perform_measure = pack_padded_sequence(perform_measure, batch_measure_length.cpu(), True, False )
 
         perform_style_encoded, _ = self.performance_encoder(perform_measure)
         perform_style_encoded, _ = pad_packed_sequence(perform_style_encoded, True)
