@@ -178,6 +178,34 @@ def categorize_value_to_vector(y, bins):
 
     return y_categorized
 
+def find_boundaries(diff_boundary, higher_indices, i):
+  '''
+  diff_boundary (torch.Tensor): N x T
+  beat_numbers (torch.Tensor): zero_padded N x T
+  i (int): batch index
+  '''
+  out = [0] + (diff_boundary[diff_boundary[:,0]==i][:,1]+1 ).tolist() + [torch.max(torch.nonzero(higher_indices[i])).item()+1]
+  if out[1] == 0:
+    out.pop(0)
+  return out
+
+def find_boundaries_batch(beat_numbers):
+  '''
+  beat_numbers (torch.Tensor): zero_padded N x T
+  '''
+  diff_boundary = torch.nonzero(beat_numbers[:,1:] - beat_numbers[:,:-1] == 1).cpu()
+  return [find_boundaries(diff_boundary, beat_numbers, i) for i in range(len(beat_numbers))]
+
+def get_softmax_by_boundary(similarity, boundaries, fn=torch.softmax):
+  '''
+  similarity = similarity of a single sequence of data (T x C)
+  boundaries = list of a boundary index (T)
+  '''
+  return  [fn(similarity[boundaries[i-1]:boundaries[i],: ], dim=0)  \
+              for i in range(1, len(boundaries))
+                if boundaries[i-1] < boundaries[i] # sometimes, boundaries can start like [0, 0, ...]
+          ]
+
 
 def note_feature_to_beat_mean(feature, beat_numbers, use_mean=True):
     '''
@@ -186,14 +214,17 @@ def note_feature_to_beat_mean(feature, beat_numbers, use_mean=True):
            use_mean = use mean to get the representative. Otherwise, sample first one as the representative
     Output: Tensor (Batch X Num Beats X Feature dimension)
     '''
-    boundaries = [0] + (torch.where(beat_numbers[1:] - beat_numbers[:-1] == 1)[0] + 1).cpu().tolist() + [len(beat_numbers)]
+    boundaries = find_boundaries_batch(beat_numbers)
     if use_mean:
-        beat_features = torch.stack([torch.mean(feature[:,boundaries[i-1]:boundaries[i],:], dim=1)
-                                for i in range(1, len(boundaries))]).permute(1,0,2)
+        beat_features = torch.nn.utils.rnn.pad_sequence(
+          [torch.stack(get_softmax_by_boundary(feature[i], boundaries[i], fn=torch.mean)) for i in range(len(feature))]
+        ,True)
     else:
-        beat_features = torch.stack([feature[:,boundaries[i],:]
-                                for i in range(0, len(boundaries)-1)]).permute(1,0,2)
-
+        beat_features = torch.nn.utils.rnn.pad_sequence(
+          [torch.stack( [
+            feature[i, j] for j in range(0, len(boundaries[i])-1)]
+          ) for i in range(len(feature))]
+        ,True)
     return beat_features
 
 def note_tempo_infos_to_beat(y, beat_numbers, index=0):

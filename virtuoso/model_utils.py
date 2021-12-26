@@ -1,6 +1,7 @@
 from numpy import diff
 import torch
 import math
+from .utils import find_boundaries_batch, get_softmax_by_boundary
 
 def sum_with_boundary(x_split, attention_split, num_head):
     weighted_mul = torch.bmm(attention_split.transpose(1,2), x_split)
@@ -9,21 +10,7 @@ def sum_with_boundary(x_split, attention_split, num_head):
     sum_attention = torch.sum(attention, dim=1)
     return sum_attention
 
-def get_softmax_by_boundary(similarity, boundaries):
-  '''
-  similarity = similarity of a single sequence of data (T x C)
-  boundaries = list of a boundary index
-  '''
-  return  [torch.softmax(similarity[boundaries[i-1]:boundaries[i],: ], dim=0)  \
-              for i in range(1, len(boundaries))
-                if boundaries[i-1] < boundaries[i] # sometimes, boundaries can start like [0, 0, ...]
-          ]
 
-def find_boundaries(diff_boundary, higher_indices, i):
-  out = [0] + (diff_boundary[diff_boundary[:,0]==i][:,1]+1 ).tolist() + [torch.max(torch.nonzero(higher_indices[i])).item()+1]
-  if out[1] == 0:
-    out.pop(0)
-  return out
 
 def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices, lower_is_note=False):
     # higher_nodes = []
@@ -31,11 +18,9 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     similarity = attention_weights.get_attention(lower_out)
     diff_boundary = torch.nonzero(higher_indices[:,1:] - higher_indices[:,:-1] == 1).cpu()
     if lower_is_note:
-        boundaries = [find_boundaries(diff_boundary, higher_indices, i) for i in range(len(lower_out))]
-        # boundaries = [0] + (torch.nonzero(higher_indices[:,1:] - higher_indices[:,:-1] == 1) + 1).cpu().tolist() + [len(higher_indices[0])]
-        # boundaries = [0] + (torch.where(higher_indices[0,1:] - higher_indices[0,:-1] == 1)[0] + 1).cpu().tolist() + [len(higher_indices[0])]
+        boundaries = find_boundaries_batch(higher_indices)
     else:
-        higher_boundaries = [find_boundaries(diff_boundary, higher_indices, i) for i in range(len(lower_out))]
+        higher_boundaries = find_boundaries_batch(higher_indices)
         zero_shifted_lower_indices = lower_indices - lower_indices[:,0:1]
         len_lower_out = (lower_out.shape[1] - (lower_out.sum(-1)==0).sum(1)).tolist()
         boundaries = [zero_shifted_lower_indices[i, higher_boundaries[i][:-1]].tolist() + [len_lower_out[i]] for i in range(len(lower_out))]
@@ -59,37 +44,10 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
           for i in range(len(lower_out))
         ], batch_first=True
         )
-        # higher_nodes = torch.cat([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
-        #                     softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
-        #                     for i in range(1, len(boundaries))]).unsqueeze(0)
-        # higher_nodes = torch.stack([sum_with_boundary(x_split[:,boundaries[i-1]:boundaries[i],:], 
-        #                     softmax_similarity[:,boundaries[i-1]:boundaries[i],:], attention_weights.num_head)
-        #                     for i in range(1, len(boundaries))]).permute(1,0,2)
     else:
         weighted_sum = softmax_similarity * lower_out
         higher_nodes = torch.cat([torch.sum(weighted_sum[:,boundaries[i-1]:boundaries[i],:], dim=1) 
                                 for i in range(1, len(boundaries))]).unsqueeze(0)
-    # for low_index in range(num_lower_nodes):
-    #     if lower_is_note:
-    #         current_note_index = low_index
-    #     else:
-    #         absolute_low_index = start_lower_index + low_index
-    #         current_note_index = lower_indices.index(absolute_low_index)
-    #     if higher_indices[current_note_index] > prev_higher_index:
-    #         # new beat start
-    #         lower_node_end = low_index
-    #         corresp_lower_out = lower_out[:, lower_node_start:lower_node_end, :]
-    #         higher = attention_weights(corresp_lower_out)
-    #         higher_nodes.append(higher)
-
-    #         lower_node_start = low_index
-    #         prev_higher_index = higher_indices[current_note_index]
-
-    # corresp_lower_out = lower_out[:, lower_node_start:, :]
-    # higher = attention_weights(corresp_lower_out)
-    # higher_nodes.append(higher)
-
-    # higher_nodes = torch.stack(higher_nodes).view(1, -1, lower_hidden_size)
     return higher_nodes
 
 def cal_length_from_padded_beat_numbers(beat_numbers):
@@ -205,3 +163,25 @@ def encode_with_net(score_input, mean_net, var_net):
 
     z = reparameterize(mu, var)
     return z, mu, var
+
+def get_beat_corresp_out(note_out, beat_numbers, batch_ids, current_note_idx):
+  '''
+  note_out (torch.Tensor): N x T x C. Note-level output
+  beat_numbers (torch.LongTensor): N x T. Beat (or measure) ids for each note
+  batch_ids (torch.LongTensor): n. 
+  current_note_idx (int): Currently decoding note index among T
+
+  out (torch.Tensor): zero-padded output of corresponding notes from the previous beat 
+  '''
+
+  # find note indices of previous beat
+
+  return
+
+def find_note_indices_of_given_beat(beat_numbers, current_note_idx):
+  '''
+  
+  '''
+  
+
+  return
