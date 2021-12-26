@@ -228,22 +228,32 @@ def note_feature_to_beat_mean(feature, beat_numbers, use_mean=True):
     return beat_features
 
 def note_tempo_infos_to_beat(y, beat_numbers, index=0):
-    beat_tempos = []
-    num_notes = y.size(1)
-    prev_beat = -1
-    for i in range(num_notes):
-        cur_beat = beat_numbers[i]
-        if cur_beat > prev_beat:
-            if index is None:
-                beat_tempos.append(y[0,i,:])
-            if index == TEMPO_IDX:
-                beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
-            else:
-                beat_tempos.append(y[0,i,index])
-            prev_beat = cur_beat
-    num_beats = len(beat_tempos)
-    beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
-    return beat_tempos
+    '''
+    Can be merged with note_feature_to_beat_mean?
+    '''
+    if index is None:
+      target_y = y
+    elif index == TEMPO_IDX:
+      target_y = y[..., TEMPO_IDX:TEMPO_IDX+5]
+    else:
+      target_y = y[..., index:index+1]
+    return note_feature_to_beat_mean(target_y, beat_numbers)
+    # beat_tempos = []
+    # num_notes = y.size(1)
+    # prev_beat = -1
+    # for i in range(num_notes):
+    #     cur_beat = beat_numbers[i]
+    #     if cur_beat > prev_beat:
+    #         if index is None:
+    #             beat_tempos.append(y[0,i,:])
+    #         if index == TEMPO_IDX:
+    #             beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
+    #         else:
+    #             beat_tempos.append(y[0,i,index])
+    #         prev_beat = cur_beat
+    # num_beats = len(beat_tempos)
+    # beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
+    # return beat_tempos
 
 def batch_to_device(batch, device):
     if len(batch) == 6:
