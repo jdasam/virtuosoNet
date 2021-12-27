@@ -67,6 +67,10 @@ def get_parser():
                     type=int,
                     default=100
                     )
+    parser.add_argument("--batch_size",
+                    type=int,
+                    default=32
+                    )
     parser.add_argument("--iters_per_checkpoint",
                     type=int,
                     default=5000
@@ -132,7 +136,7 @@ def get_parser():
     
     # environment options
     parser.add_argument("-dev", "--device", type=str,
-                        default='cuda:0', help="cuda device number")
+                        default='cpu', help="cuda device number")
     parser.add_argument("--num_workers", type=int,
                         default=0, help="num workers for dataloader")
     parser.add_argument("--pin_memory", default=True,

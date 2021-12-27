@@ -8,6 +8,7 @@ import math
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from collections import Counter, OrderedDict
 from .utils import load_dat
 from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number, key_augmentation
@@ -256,11 +257,32 @@ class FeatureCollate:
                         pedal_status.view(1,-1,1), 
                         edges
                 )
+        elif len(batch) == 5: # Emotion Loader
+          for sample in batch:
+            sample[0] = sample[0].unsqueeze(0)
+            sample[1] = sample[1].unsqueeze(0)
+            sample[3] = sample[3].view(1,-1,1)
+            sample[4] = sample[4].view(1,-1,1)
+          return batch
         else:
-            for sample in batch:
-                sample[0] = sample[0].unsqueeze(0)
-                sample[1] = sample[1].unsqueeze(0)
-                sample[3] = sample[3].view(1,-1,1)
-                sample[4] = sample[4].view(1,-1,1)
-            return batch
-
+          batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
+          batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
+          beat_y = pad_sequence([sample[2] for sample in batch], batch_first=True)
+          meas_y = pad_sequence([sample[3] for sample in batch], batch_first=True)
+          note_locations = {'beat': pad_sequence([sample[4]['beat'] for sample in batch], True).long(),
+                            'measure': pad_sequence([sample[4]['measure'] for sample in batch], True).long(),
+                            'section': pad_sequence([sample[4]['section'] for sample in batch], True).long(),
+                            'voice': pad_sequence([sample[4]['voice'] for sample in batch], True).long()
+                           }
+          align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
+          pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
+          edges = None # TODO:
+          return (batch_x,
+                  batch_y,
+                  beat_y, 
+                  meas_y,
+                  note_locations, 
+                  align_matched.unsqueeze(-1), 
+                  pedal_status.unsqueeze(-1), 
+                  edges
+                ) 

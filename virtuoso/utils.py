@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 import yaml
 import _pickle as pickle
 from pathlib import Path
+from torch.nn.utils.rnn import pad_sequence
 
 
 def read_model_setting(yml_path):
@@ -206,6 +207,26 @@ def get_softmax_by_boundary(similarity, boundaries, fn=torch.softmax):
                 if boundaries[i-1] < boundaries[i] # sometimes, boundaries can start like [0, 0, ...]
           ]
 
+def cal_length_from_padded_beat_numbers(beat_numbers):
+  '''
+  beat_numbers (torch.Tensor): N x T, zero padded note_location_number
+
+  output (torch.Tensor): N
+  '''
+  len_note = torch.min(torch.diff(beat_numbers,dim=1), dim=1)[1] + 1
+  len_note[len_note==1] = beat_numbers.shape[1]
+
+  return len_note
+
+def note_location_numbers_to_padding_bool(beat_numbers):
+  '''
+  beat_numbers (torch.Tensor): zero_padded N x T
+
+  output (torch.Tensor):  N x T x 1.  0 if the position is padded element, else 1
+  '''
+  batch_num_beats = torch.diff(beat_numbers).clamp_min(0).sum(1) + 1
+  output = pad_sequence([torch.ones(num_beat) for num_beat in batch_num_beats], True)
+  return output.unsqueeze(-1)
 
 def note_feature_to_beat_mean(feature, beat_numbers, use_mean=True):
     '''
@@ -238,22 +259,6 @@ def note_tempo_infos_to_beat(y, beat_numbers, index=0):
     else:
       target_y = y[..., index:index+1]
     return note_feature_to_beat_mean(target_y, beat_numbers)
-    # beat_tempos = []
-    # num_notes = y.size(1)
-    # prev_beat = -1
-    # for i in range(num_notes):
-    #     cur_beat = beat_numbers[i]
-    #     if cur_beat > prev_beat:
-    #         if index is None:
-    #             beat_tempos.append(y[0,i,:])
-    #         if index == TEMPO_IDX:
-    #             beat_tempos.append(y[0,i,TEMPO_IDX:TEMPO_IDX+5])
-    #         else:
-    #             beat_tempos.append(y[0,i,index])
-    #         prev_beat = cur_beat
-    # num_beats = len(beat_tempos)
-    # beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
-    # return beat_tempos
 
 def batch_to_device(batch, device):
     if len(batch) == 6:

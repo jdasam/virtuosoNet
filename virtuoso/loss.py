@@ -1,5 +1,5 @@
 import torch
-from .utils import note_tempo_infos_to_beat, note_feature_to_beat_mean
+from .utils import note_tempo_infos_to_beat, note_feature_to_beat_mean, note_location_numbers_to_padding_bool
 from .model_utils import span_beat_to_note_num
 from . import model_constants as const
 from .pyScoreParser.feature_utils import make_index_continuous
@@ -61,10 +61,10 @@ class LossCalculator:
                      }
         return total_loss, loss_dict
          
-    def cal_delta_loss(self, pred, target):
+    def cal_delta_loss(self, pred, target, valid_beat_state=1):
         prediction_delta = pred[:, 1:] - pred[:, :-1]
         target_delta = target[:, 1:] - target[:, :-1]
-        delta_loss = self.criterion(prediction_delta, target_delta)
+        delta_loss = self.criterion(prediction_delta, target_delta, valid_beat_state)
         return delta_loss
     
     def add_delta_loss_with_weight(self, loss, delta_loss):
@@ -76,8 +76,8 @@ class LossCalculator:
             use_mean = True
         pred_beat_tempo = note_feature_to_beat_mean(pred_x[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
         true_beat_tempo = note_feature_to_beat_mean(target[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
-
-        tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo)
+        valid_beat_state = note_location_numbers_to_padding_bool(beat_indices).to(pred_x.device)
+        tempo_loss = self.criterion(pred_beat_tempo, true_beat_tempo, valid_beat_state)
         if self.delta and pred_beat_tempo.shape[1] > 1:
             delta_loss = self.cal_delta_loss(pred_beat_tempo, true_beat_tempo)
         else:
@@ -87,17 +87,19 @@ class LossCalculator:
     def cal_measure_loss(self, meas_out, target, note_locations, loss_dict, hier_type='measure'):
         measure_target = target[hier_type]
         measure_numbers = note_locations[hier_type]
+
+        valid_beat_state = note_location_numbers_to_padding_bool(measure_numbers).to(meas_out.device)
         tempo_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 0)
-        meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy)
+        meas_tempo_loss = self.criterion(meas_out[:, :, 0:1], tempo_in_hierarchy, valid_beat_state)
         loss_dict[f'{hier_type[:4]}_tempo'] = meas_tempo_loss.item()
 
         dynamics_in_hierarchy = note_tempo_infos_to_beat(measure_target, measure_numbers, 1)
-        meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+        meas_vel_loss = self.criterion(meas_out[:, :, 1:2], dynamics_in_hierarchy, valid_beat_state)
         loss_dict[f'{hier_type[:4]}_vel'] = meas_vel_loss.item()
 
         if self.delta and meas_out.shape[1] > 1:
-            tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy)
-            vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 1:2], dynamics_in_hierarchy)
+            tempo_delta_loss = self.cal_delta_loss(meas_out[:, :, 0:1], tempo_in_hierarchy, valid_beat_state)
+            vel_delta_loss = self.cal_delta_loss(meas_out[:, :, 1:2], dynamics_in_hierarchy, valid_beat_state)
             loss_dict[f'{hier_type[:4]}_tempo_delta'] = tempo_delta_loss.item()
             loss_dict[f'{hier_type[:4]}_vel_delta'] = vel_delta_loss.item()
         else:

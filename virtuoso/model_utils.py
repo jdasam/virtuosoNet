@@ -1,7 +1,7 @@
 from numpy import diff
 import torch
 import math
-from .utils import find_boundaries_batch, get_softmax_by_boundary
+from .utils import find_boundaries_batch, get_softmax_by_boundary, cal_length_from_padded_beat_numbers
 
 def sum_with_boundary(x_split, attention_split, num_head):
     weighted_mul = torch.bmm(attention_split.transpose(1,2), x_split)
@@ -16,7 +16,6 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     # higher_nodes = []
 
     similarity = attention_weights.get_attention(lower_out)
-    diff_boundary = torch.nonzero(higher_indices[:,1:] - higher_indices[:,:-1] == 1).cpu()
     if lower_is_note:
         boundaries = find_boundaries_batch(higher_indices)
     else:
@@ -50,14 +49,6 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
                                 for i in range(1, len(boundaries))]).unsqueeze(0)
     return higher_nodes
 
-def cal_length_from_padded_beat_numbers(beat_numbers):
-  '''
-  beat_numbers (torch.Tensor): N x T, zero padded note_location_number
-  '''
-  len_note = torch.min(torch.diff(beat_numbers,dim=1), dim=1)[1] + 1
-  len_note[len_note==1] = beat_numbers.shape[1]
-
-  return len_note
 
 def span_beat_to_note_num(beat_out, beat_number):
   '''
