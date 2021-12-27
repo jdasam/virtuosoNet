@@ -152,7 +152,7 @@ def train(args,
 
             kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
             perform_kld = -0.5 * \
-                th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
+                th.mean(th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp(), dim=-1))
             total_loss += perform_kld * kld_weight
             optimizer.zero_grad()
             total_loss.backward()
