@@ -163,6 +163,8 @@ def train(args,
             loss_dict["kld"] = perform_kld
             loss_dict["kld_weight"] = kld_weight
             if args.make_log:
+                loss_dict['computing duration'] = duration
+                loss_dict['total_loss'] = total_loss.item()
                 wandb.log(loss_dict)
                 logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
             iteration += 1
