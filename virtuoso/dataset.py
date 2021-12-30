@@ -221,16 +221,23 @@ def filter_performs_by_num_perf_by_piece(perform_dat_paths, min_perf=5):
 
 
 def split_graph_to_batch(graphs, len_slice, len_margin):
-    if graphs.shape[1] < len_slice:
-        return graphs
-    num_types = graphs.shape[0]
-    num_batch = 1 + math.ceil( (graphs.shape[1] - len_slice) / (len_slice - len_margin*2) )
-    input_split = torch.zeros((num_batch * num_types, len_slice, len_slice)).to(graphs.device)
-    hop_size = len_slice - len_margin * 2
-    for i in range(num_batch-1):
-        input_split[i*num_types:(i+1)*num_types] = graphs[:, hop_size*i:hop_size*i+len_slice, hop_size*i:hop_size*i+len_slice]
-    input_split[-num_types:] = graphs[:,-len_slice:, -len_slice:]
-    return input_split
+  '''
+  graphs (torch.Tensor): Adjacency matrix (Edge x T x T)
+  len_slice (int): Number of Notes per sliced adjacency matrix 
+
+  graph_split (torch.Tensor): Adjacency matrix in (N x E x T x T)
+  '''
+  if graphs.shape[1] < len_slice:
+    return graphs
+  num_types = graphs.shape[0]
+  num_slice = 1 + math.ceil( (graphs.shape[1] - len_slice) / (len_slice - len_margin*2) )
+  hop_size = len_slice - len_margin * 2
+
+  graph_split = torch.zeros((num_slice, num_types, len_slice, len_slice)).to(graphs.device)
+  for i in range(num_slice-1):
+    graph_split[i] = graphs[:, hop_size*i:hop_size*i+len_slice, hop_size*i:hop_size*i+len_slice]
+  graph_split[-1] = graphs[:,-len_slice:, -len_slice:]
+  return graph_split
 
 class FeatureCollate:
     # def __init__(self, device='cuda'):
@@ -276,7 +283,7 @@ class FeatureCollate:
                            }
           align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
           pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
-          edges = None # TODO:
+          edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:
           return (batch_x,
                   batch_y,
                   beat_y, 
