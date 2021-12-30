@@ -279,4 +279,13 @@ def batch_to_device(batch, device):
         return batch_x, batch_y, note_locations, align_matched, pedal_status, edges
     elif len(batch) == 8:
         return batch_x, batch_y, beat_y.to(device), meas_y.to(device), note_locations, align_matched, pedal_status, edges
-    
+
+
+def get_is_padded_for_sequence(sequence):
+  '''
+  sequence (torch.Tensor): N x T x C
+
+  out (torch.BoolTensor): N x T
+  '''
+  assert sequence.dim() == 3
+  return sequence.sum(2) == 0

@@ -2,6 +2,7 @@ from numpy import diff
 import torch
 import math
 from .utils import find_boundaries_batch, get_softmax_by_boundary, cal_length_from_padded_beat_numbers
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 def sum_with_boundary(x_split, attention_split, num_head):
     weighted_mul = torch.bmm(attention_split.transpose(1,2), x_split)
@@ -82,10 +83,10 @@ def sum_with_attention(hidden, attention_net):
 
 def combine_splitted_graph_output(temp_output, orig_input, margin=100):
     '''
-    Input:
+    Input
         temp_output: Temporary output of GGNN  [ number of edge batch X notes per edge X vector dimension]
         edges: Batch of splitted graph [ (Number of Edge type X number of edge batch) X notes per edge X vector dimension]
-        orig_input: original input before GGNN update [ 1 x num notes x vector dimension]
+        orig_input: original input before GGNN update [ 1 x num notes x C]
     Output:
         updated_input
     '''
@@ -105,35 +106,84 @@ def combine_splitted_graph_output(temp_output, orig_input, margin=100):
 def combine_splitted_graph_output_with_several_edges(temp_output, orig_input, num_edge_type, margin=100):
     '''
     Input:
-        temp_output: Temporary output of GGNN  [ (number of edge type x number of edge batch)  X notes per edge X vector dimension]
+        temp_output: Temporary output of GGNN  [ N (num_batch) x S(num_slice) x E (num_edge_type) X L (num_notes_per_slice) X C]
         edges: Batch of splitted graph [ (Number of Edge type X number of edge batch) X notes per edge X vector dimension]
-        orig_input: original input before GGNN update [ 1 x num notes x vector dimension]
+        orig_input: original input before GGNN update [ N x T(num notes) x C]
+        margin (int): HAS TO BE SAME WITH GRAPH SPLIT SETTING
     Output:
-        updated_input
+        combined_output (torch.Tensor): N x E x T x C
     '''
-    updated_input = torch.zeros_like(orig_input.repeat(num_edge_type, 1, 1))
-    temp_output = temp_output.view(updated_input.shape[0], -1, temp_output.shape[1], temp_output.shape[2])
-    updated_input[:, 0:temp_output.shape[2] - margin,:] = temp_output[:, 0, :-margin, :]
-    cur_idx = temp_output.shape[2] - margin
-    end_idx = cur_idx + temp_output.shape[2] - margin * 2
-    for i in range(1, temp_output.shape[1]-1):
-        updated_input[:, cur_idx:end_idx, :] = temp_output[:, i, margin:-margin, :]
-        cur_idx = end_idx
-        end_idx = cur_idx + temp_output.shape[2] - margin * 2
-    updated_input[:, cur_idx:, :] = temp_output[:, -1, -(orig_input.shape[1]-cur_idx):, :]
-    return updated_input
+    n_batch = temp_output.shape[0]
+    n_edge = temp_output.shape[2]
+    l_slice = temp_output.shape[3]
+    n_notes = orig_input.shape[1]
+    n_features = orig_input.shape[-1]
+    batch_is_padded = temp_output.sum([2,3,4]) == 0
+    valid_slice_length = temp_output.shape[1] - batch_is_padded.sum(1)
+    valid_note_length = orig_input.shape[1] - (orig_input.sum(-1) == 0).sum(1)
+    valid_note_length.clamp_min_(l_slice) # TODO: ad-hoc solution to prevent error
+    combined_output = torch.zeros(n_batch, n_edge, n_notes, n_features).to(orig_input.device)
 
-def split_note_input_to_graph_batch(orig_input, num_graph_batch, num_notes_per_batch, overlap=200):
-    input_split = torch.zeros((orig_input.shape[0], num_graph_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
-    for i in range(num_graph_batch-1):
-        input_split[:, i] = orig_input[:, overlap*i:overlap*i+num_notes_per_batch, :]
-    input_split[:, -1] = orig_input[:,-num_notes_per_batch:, :]
-    return input_split.view(-1, num_notes_per_batch, orig_input.shape[-1])
-    # input_split = torch.zeros((num_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
-    # for i in range(num_batch-1):
-    #     input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
-    # input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
-    # return input_split
+    # Handle 0th slice
+    combined_output[:, :, 0:l_slice-margin] = temp_output[:, 0,:, :-margin]
+    cur_idx = l_slice - margin
+    end_idx = cur_idx + l_slice - margin * 2
+    for i in range(1, temp_output.shape[1]-1):
+      combined_output[~batch_is_padded[:,i], :, cur_idx:end_idx, :] = temp_output[~batch_is_padded[:,i], i, :, margin:-margin, :]
+      cur_idx = end_idx
+      end_idx = cur_idx + l_slice - margin * 2
+    for b_id in range(n_batch):
+      combined_output[b_id, : , valid_note_length[b_id] -(l_slice-margin):valid_note_length[b_id] ] = temp_output[b_id, valid_slice_length[b_id]-1, :, margin:]
+    return combined_output
+    # updated_input = torch.zeros_like(orig_input.repeat(num_edge_type, 1, 1))
+    # temp_output = temp_output.view(updated_input.shape[0], -1, temp_output.shape[1], temp_output.shape[2])
+    # updated_input[:, 0:temp_output.shape[2] - margin,:] = temp_output[:, 0, :-margin, :]
+    # cur_idx = temp_output.shape[2] - margin
+    # end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    # for i in range(1, temp_output.shape[1]-1):
+    #     updated_input[:, cur_idx:end_idx, :] = temp_output[:, i, margin:-margin, :]
+    #     cur_idx = end_idx
+    #     end_idx = cur_idx + temp_output.shape[2] - margin * 2
+    # updated_input[:, cur_idx:, :] = temp_output[:, -1, -(orig_input.shape[1]-cur_idx):, :]
+    # return updated_input
+
+def split_note_input_to_graph_batch(orig_input, batch_edges, overlap=200):
+  '''
+  orig_input (torch.Tensor): N x T x C
+  batch_edges (torch.Tensor): N x S(NumSlice) x EdgeType x L(LenSlice) x L
+  '''
+  num_graph_slice = batch_edges.shape[1]
+  num_notes_per_slice = batch_edges.shape[-1]
+  input_split = torch.zeros((orig_input.shape[0], 
+                            num_graph_slice, 
+                            num_notes_per_slice, 
+                            orig_input.shape[2])).to(orig_input.device) # N x S X L x C
+  batch_is_padded = batch_edges.sum([2,3,4]) == 0
+  valid_batch_length = batch_edges.shape[1] - batch_is_padded.sum(1)
+
+  for i in range(num_graph_slice-1):
+    input_split[:, i] = orig_input[:, overlap*i:overlap*i+num_notes_per_slice, :]
+  last_slice = get_last_k_notes_from_padded_batch(orig_input, num_notes_per_slice)
+  input_split[torch.arange(input_split.shape[0]), valid_batch_length-1] = last_slice
+  input_split[batch_is_padded] = 0 # mask out the padded one
+  return input_split
+  # input_split = torch.zeros((num_batch, num_notes_per_batch, orig_input.shape[2])).to(orig_input.device)
+  # for i in range(num_batch-1):
+  #     input_split[i] = orig_input[0, overlap*i:overlap*i+num_notes_per_batch, :]
+  # input_split[-1] = orig_input[0,-num_notes_per_batch:, :]
+  # return input_split
+
+def get_last_k_notes_from_padded_batch(batch_note, k):
+  '''
+  batch_note(torch.Tensor): zero-padded N x T x C
+  '''
+  len_batch = batch_note.shape[1] - (batch_note.sum(-1)==0).sum(1)
+  len_batch.clamp_min_(k) # TODO: temporal code to prevent error
+  output = torch.stack(
+    [batch_note[i,len_batch[i]-k:len_batch[i]] for i in range(len(batch_note))]
+  , dim=0)
+  return output
+
 
 def masking_half(y):
     num_notes = y.shape[1]
@@ -194,3 +244,16 @@ def find_note_indices_of_given_beat(beat_numbers, batch_ids, current_note_idx):
   # find indices of note indices that belong to prev_beat
   note_indices = [torch.where(selected_beat_numbers[i,:current_note_idx]==prev_beat[i])[0] for i in range(len(batch_ids))]
   return note_indices
+
+
+def run_hierarchy_lstm_with_pack(sequence, lstm):
+  '''
+  sequence (torch.Tensor): zero-padded sequece of N x T x C
+  lstm (torch.LSTM): LSTM layer
+  '''
+  batch_note_length = sequence.shape[1] - (sequence.sum(-1)==0).sum(dim=1)
+  packed_sequence = pack_padded_sequence(sequence, batch_note_length.cpu(), True, False )
+  hidden_out, _ = lstm(packed_sequence)
+  hidden_out, _ = pad_packed_sequence(hidden_out, True)
+
+  return hidden_out

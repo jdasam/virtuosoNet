@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num, get_beat_corresp_out
-from .utils import note_feature_to_beat_mean
+from .utils import note_feature_to_beat_mean, get_is_padded_for_sequence
 from .module import GatedGraph, GraphConv, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX
 
@@ -250,9 +250,9 @@ class IsgnMeasNoteDecoderV3(IsgnMeasNoteDecoderV2):
         self.measure_out_lstm = nn.LSTM(net_params.measure.size * 2 + net_params.encoder.size + 2 + 8, net_params.measure.size, num_layers=net_params.measure.layer, batch_first=True)
         self.measure_out_fc = nn.Linear(net_params.measure.size, 2)
 
-    def init_measure_hidden(self, device):
-        return (torch.zeros(self.measure_out_lstm.num_layers, 1, self.measure_out_lstm.hidden_size).to(device), 
-                    torch.zeros(self.measure_out_lstm.num_layers, 1, self.measure_out_lstm.hidden_size).to(device))
+    def init_measure_hidden(self, batch_size,  device):
+        return (torch.zeros(self.measure_out_lstm.num_layers, batch_size, self.measure_out_lstm.hidden_size).to(device), 
+                    torch.zeros(self.measure_out_lstm.num_layers, batch_size, self.measure_out_lstm.hidden_size).to(device))
 
 
 
@@ -275,9 +275,9 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
         )
 
 
-    def init_beat_hidden(self, device):
-        return (torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device), 
-                    torch.zeros(self.beat_out_lstm.num_layers, 1, self.beat_out_lstm.hidden_size).to(device))
+    def init_beat_hidden(self, batch_size, device):
+        return (torch.zeros(self.beat_out_lstm.num_layers, batch_size, self.beat_out_lstm.hidden_size).to(device), 
+                    torch.zeros(self.beat_out_lstm.num_layers, batch_size, self.beat_out_lstm.hidden_size).to(device))
 
     def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
         # note_out, (beat_out, measure_out) = score_embedding
@@ -287,16 +287,21 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
 
+        n_batch = note_out.shape[0]
         num_notes = note_out.shape[1]
-        num_measures = measure_numbers[-1] - measure_numbers[0] + 1
+        # num_measures = measure_numbers[-1] - measure_numbers[0] + 1
+        num_measures = measure_out.shape[1]
         num_beats = beat_out.shape[1]
+
+        is_padded_measure = get_is_padded_for_sequence(measure_out)
+        is_padded_beat = get_is_padded_for_sequence(beat_out)
 
 
         perform_z = self.style_vector_expandor(perf_embedding)
-        perform_z_measure_spanned = perform_z.repeat(num_measures, 1).view(1,num_measures, -1)
+        perform_z_measure_spanned = perform_z.unsqueeze(1).repeat(1,num_measures, 1)
         perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_out, res_info), 2)
 
-        measure_hidden = self.init_measure_hidden(measure_out.device)
+        measure_hidden = self.init_measure_hidden(n_batch, measure_out.device)
         prev_out = torch.zeros(measure_out.shape[0], 1, 2).to(perform_z.device)
         measure_tempo_vel = torch.zeros(measure_out.shape[0], num_measures, 2).to(note_out.device)
         for i in range(num_measures):
@@ -304,12 +309,13 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
             cur_tempo_vel, measure_hidden =  self.measure_out_lstm(cur_input, measure_hidden)
             measure_tempo_vel[:,i:i+1,:] = self.measure_out_fc(cur_tempo_vel)
             prev_out = measure_tempo_vel[:,i:i+1,:]
-            
+        measure_tempo_vel[is_padded_measure] = 0
+
         measure_tempo_vel_broadcasted = span_beat_to_note_num(measure_tempo_vel, measure_numbers)
         measure_tempo_vel_in_beat = note_feature_to_beat_mean(measure_tempo_vel_broadcasted, beat_numbers, use_mean=False)
 
-        beat_hidden = self.init_beat_hidden(beat_out.device)
-        perform_z_beat_spanned = perform_z.repeat(num_beats, 1).view(1,num_beats, -1)
+        beat_hidden = self.init_beat_hidden(n_batch, beat_out.device)
+        perform_z_beat_spanned = perform_z.unsqueeze(1).repeat(1,num_beats, 1)
         perform_z_beat_cat = torch.cat((perform_z_beat_spanned, beat_out, measure_tempo_vel_in_beat), 2)
         prev_out = torch.zeros(beat_out.shape[0], 1, 2).to(perform_z.device)
         beat_tempo_vel = torch.zeros(beat_out.shape[0], num_beats, 2).to(beat_out.device)
@@ -318,10 +324,11 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
             cur_tempo_vel, beat_hidden =  self.beat_out_lstm(cur_input, beat_hidden)
             beat_tempo_vel[:,i:i+1,:] = self.beat_out_fc(cur_tempo_vel)
             prev_out = beat_tempo_vel[:,i:i+1,:]
+        beat_tempo_vel[is_padded_beat] = 0
         beat_tempo_vel_broadcasted = span_beat_to_note_num(beat_tempo_vel, beat_numbers)
 
         note_out = torch.cat([note_out, measure_tempo_vel_broadcasted, beat_tempo_vel_broadcasted], dim=-1)
-        perform_z = perform_z.repeat(num_notes, 1).unsqueeze(0)
+        perform_z = perform_z.unsqueeze(1).repeat(1, num_notes, 1)
 
         initial_output = self.initial_result_fc(note_out)
         initial_beat_hidden = torch.zeros((note_out.size(0), num_notes, self.tempo_rnn.hidden_size * 2)).to(note_out.device)

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net, cal_length_from_padded_beat_numbers
+from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net, run_hierarchy_lstm_with_pack
 from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 
 
@@ -105,7 +105,7 @@ class IsgnPerfEncoder(nn.Module):
 
         expanded_y = self.performance_embedding_layer(y)
 
-        perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
+        perform_concat = torch.cat((note_out, expanded_y), 2)
         perform_z, perform_mu, perform_var = self.get_perform_style_from_input(perform_concat, edges, measure_numbers)
         if return_z:
             return sample_multiple_z(perform_mu, perform_var, num_samples)
@@ -131,7 +131,8 @@ class IsgnPerfEncoderX(IsgnPerfEncoder):
         perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, hidden, edges)
         performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
                                                 measure_numbers, lower_is_note=True)
-        perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+        perform_style_encoded = run_hierarchy_lstm_with_pack(performance_measure_nodes, self.performance_encoder)
+        # perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
         perform_style_vector = self.performance_final_attention(perform_style_encoded)
         perform_z, perform_mu, perform_var = \
             encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)

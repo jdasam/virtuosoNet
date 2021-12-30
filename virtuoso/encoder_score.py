@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from torch.nn.modules.dropout import Dropout
-from .model_utils import make_higher_node, span_beat_to_note_num
-from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
+from .model_utils import make_higher_node, span_beat_to_note_num, run_hierarchy_lstm_with_pack
+from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack, LinearForZeroPadded
 
 
 class IsgnEncoder(nn.Module):
@@ -346,11 +346,8 @@ class IsgnBeatMeasNewEncoderX(nn.Module):
         self.num_attention_head = net_params.num_attention_head
         self.note_hidden_size = net_params.note.size
 
-        self.note_fc = nn.Sequential(
-            nn.Linear(net_params.input_size, net_params.note.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-        )
+        self.note_fc = LinearForZeroPadded(net_params.input_size, net_params.note.size)
+
         self.graph_1st = GatedGraphX(net_params.note.size + (net_params.measure.size + net_params.beat.size)* 2, net_params.note.size, self.num_edge_types)
         self.graph_2nd = GatedGraphX(net_params.note.size, net_params.note.size, self.num_edge_types)
         
@@ -373,10 +370,10 @@ class IsgnBeatMeasNewEncoderX(nn.Module):
             notes_hidden_second = self.graph_2nd(notes_hidden, notes_hidden_second, adjacency_matrix, iteration=self.num_graph_iteration)
             beat_nodes = make_higher_node(notes_hidden_second, self.beat_attention, beat_numbers, beat_numbers,
                                                 lower_is_note=True)
-            beat_hidden, _ = self.beat_lstm(beat_nodes)
+            beat_hidden = run_hierarchy_lstm_with_pack(beat_nodes, self.beat_lstm)
             measure_nodes = make_higher_node(beat_hidden, self.measure_attention, beat_numbers, measure_numbers,
                                                 lower_is_note=False)
-            measure_hidden, _ = self.measure_lstm(measure_nodes)
+            measure_hidden = run_hierarchy_lstm_with_pack(measure_nodes, self.measure_lstm)
             beat_hidden_spanned = span_beat_to_note_num(beat_hidden, beat_numbers)
             measure_hidden_spanned = span_beat_to_note_num(measure_hidden, measure_numbers)
             notes_input = torch.cat((initial_input, beat_hidden_spanned, measure_hidden_spanned),-1)
@@ -557,16 +554,9 @@ class HanEncoder(nn.Module):
         beat_numbers = note_locations['beat']
         measure_numbers = note_locations['measure']
         beat_nodes = make_higher_node(hidden_out, self.beat_attention, beat_numbers, beat_numbers, lower_is_note=True)
-        batch_beat_length = beat_nodes.shape[1] - (beat_nodes.sum(-1)==0).sum(dim=1)
-        beat_nodes = pack_padded_sequence(beat_nodes, batch_beat_length.cpu(), True, False )
-        beat_hidden_out, _ = self.beat_rnn(beat_nodes)
-        beat_hidden_out, _ = pad_packed_sequence(beat_hidden_out, True)
+        beat_hidden_out = run_hierarchy_lstm_with_pack(beat_nodes, self.beat_rnn)
         measure_nodes = make_higher_node(beat_hidden_out, self.measure_attention, beat_numbers, measure_numbers)
-        batch_measure_length = measure_nodes.shape[1] - (measure_nodes.sum(-1)==0).sum(dim=1)
-        measure_nodes = pack_padded_sequence(measure_nodes, batch_measure_length.cpu(), True, False )
-
-        measure_hidden_out, _ = self.measure_rnn(measure_nodes)
-        measure_hidden_out, _ = pad_packed_sequence(measure_hidden_out, True)
+        measure_hidden_out = run_hierarchy_lstm_with_pack(measure_nodes, self.measure_rnn)
         beat_out_spanned = span_beat_to_note_num(beat_hidden_out, beat_numbers)
         measure_out_spanned = span_beat_to_note_num(measure_hidden_out, measure_numbers)
 

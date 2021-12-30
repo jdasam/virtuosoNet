@@ -135,7 +135,7 @@ def train(args,
 
     # load data
     print('Loading the training data...')
-
+    model.train()
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
@@ -230,8 +230,6 @@ def train(args,
                     logger.log_style_analysis(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy, iteration)
                 if not args.is_hier:
                     validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device)
-                
-
                 model.train()
 
                 
