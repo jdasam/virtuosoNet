@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num, get_beat_corresp_out
+from .model_utils import make_higher_node, reparameterize, run_hierarchy_lstm_with_pack, span_beat_to_note_num, get_beat_corresp_out
 from .utils import note_feature_to_beat_mean, get_is_padded_for_sequence
 from .module import GatedGraph, GraphConv, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX
@@ -355,7 +355,8 @@ class IsgnBeatMeasDecoder(IsgnMeasNoteDecoderV3):
             out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
                                                     beat_numbers, lower_is_note=True)
             out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
-            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            out_beat_rnn_result = run_hierarchy_lstm_with_pack(out_beat_cat, self.tempo_rnn)
+            # out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
             out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
 
             out_with_result = torch.cat((out_with_result[:, :, :self.final_beat_hidden_idx],
@@ -399,7 +400,8 @@ class IsgnBeatMeasNewDecoder(IsgnBeatMeasDecoder):
             out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
                                                     beat_numbers, lower_is_note=True)
             out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
-            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            out_beat_rnn_result = run_hierarchy_lstm_with_pack(out_beat_cat, self.tempo_rnn)
+            # out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
             out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
 
             out_with_result = torch.cat((out_with_result[:, :, :self.final_beat_hidden_idx],
@@ -440,7 +442,8 @@ class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
             out_in_beat = make_higher_node(initial_out, self.final_beat_attention, beat_numbers,
                                                     beat_numbers, lower_is_note=True)
             out_beat_cat = torch.cat((out_in_beat, margin_in_beat), 2)
-            out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            # out_beat_rnn_result, _ = self.tempo_rnn(out_beat_cat)
+            out_beat_rnn_result = run_hierarchy_lstm_with_pack(out_beat_cat, self.tempo_rnn)
             out_beat_spanned = span_beat_to_note_num(out_beat_rnn_result, beat_numbers)
 
             other_out = self.fc(torch.cat([out_beat_spanned, hidden], dim=-1))

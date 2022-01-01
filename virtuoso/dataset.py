@@ -113,6 +113,7 @@ class EmotionDataset(ScorePerformDataset):
 
     def get_data_path(self):
         entire_list = list(self.path.rglob("*.dat"))
+        entire_list.sort()
         entire_list = [x for x in entire_list if 'mm_1-' in x.stem]
         return entire_list
 
@@ -228,7 +229,7 @@ def split_graph_to_batch(graphs, len_slice, len_margin):
   graph_split (torch.Tensor): Adjacency matrix in (N x E x T x T)
   '''
   if graphs.shape[1] < len_slice:
-    return graphs
+    return graphs.unsqueeze(0)
   num_types = graphs.shape[0]
   num_slice = 1 + math.ceil( (graphs.shape[1] - len_slice) / (len_slice - len_margin*2) )
   hop_size = len_slice - len_margin * 2
@@ -240,37 +241,25 @@ def split_graph_to_batch(graphs, len_slice, len_margin):
   return graph_split
 
 class FeatureCollate:
-    # def __init__(self, device='cuda'):
-    #     self.device= device
     def __call__(self, batch):
-        if len(batch) == 1:
-            if len(batch[0]) == 6:
-                batch_x, batch_y, note_locations, align_matched, pedal_status, edges = batch[0]
-                return (batch_x.unsqueeze(0), 
-                        batch_y.unsqueeze(0), 
-                        note_locations, 
-                        align_matched.view(1,-1,1), 
-                        pedal_status.view(1,-1,1), 
-                        edges
-                )
-            else:
-                batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = batch[0]
-                return (batch_x.unsqueeze(0), 
-                        batch_y.unsqueeze(0),
-                        beat_y.unsqueeze(0), 
-                        meas_y.unsqueeze(0),
-                        note_locations, 
-                        align_matched.view(1,-1,1), 
-                        pedal_status.view(1,-1,1), 
-                        edges
-                )
-        elif len(batch) == 5: # Emotion Loader
-          for sample in batch:
-            sample[0] = sample[0].unsqueeze(0)
-            sample[1] = sample[1].unsqueeze(0)
-            sample[3] = sample[3].view(1,-1,1)
-            sample[4] = sample[4].view(1,-1,1)
-          return batch
+        batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
+        batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
+        if len(batch[0]) == 6:
+          note_locations = {'beat': pad_sequence([sample[2]['beat'] for sample in batch], True).long(),
+                            'measure': pad_sequence([sample[2]['measure'] for sample in batch], True).long(),
+                            'section': pad_sequence([sample[2]['section'] for sample in batch], True).long(),
+                            'voice': pad_sequence([sample[2]['voice'] for sample in batch], True).long()
+                            }
+          align_matched = pad_sequence([sample[3] for sample in batch], batch_first=True)
+          pedal_status = pad_sequence([sample[4] for sample in batch], batch_first=True)
+          edges = pad_sequence([sample[5] for sample in batch], batch_first=True) # TODO:
+          return (batch_x,
+                  batch_y,
+                  note_locations, 
+                  align_matched.unsqueeze(-1), 
+                  pedal_status.unsqueeze(-1), 
+                  edges
+                ) 
         else:
           batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
           batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
@@ -280,7 +269,7 @@ class FeatureCollate:
                             'measure': pad_sequence([sample[4]['measure'] for sample in batch], True).long(),
                             'section': pad_sequence([sample[4]['section'] for sample in batch], True).long(),
                             'voice': pad_sequence([sample[4]['voice'] for sample in batch], True).long()
-                           }
+                            }
           align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
           pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
           edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:

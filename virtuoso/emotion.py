@@ -4,17 +4,23 @@ from . import style_analysis as sty
 
 
 def get_style_from_emotion_data(model, emotion_loader, device):
-    total_perform_z = []
-    with th.no_grad():
-        for i, batch in enumerate(emotion_loader):
-            origin_data = emotion_loader.dataset.data[i*5]
-            perform_z_set = {'score_path':origin_data['score_path'], 'perform_path':origin_data['perform_path']}
-            for j, perform in enumerate(batch):
-                batch_x, batch_y, note_locations, _, _, edges = batch_to_device(perform, device)
-                perform_z_list = model.encode_style(batch_x, batch_y, edges, note_locations)
-                perform_z_set[f'E{j+1}'] = [x.detach().cpu().numpy()[0] for x in perform_z_list]
-            total_perform_z.append(perform_z_set)
-    return total_perform_z
+  total_perform_z = []
+  with th.no_grad():
+    for i, batch in enumerate(emotion_loader):
+      origin_data = emotion_loader.dataset.data[i*5]
+      perform_z_set = {'score_path':origin_data['score_path'], 'perform_path':origin_data['perform_path']}
+      batch_x, batch_y, note_locations, _, _, edges = batch_to_device(batch, device)
+      perform_z_tensor = model.encode_style(batch_x, batch_y, edges, note_locations)
+      perform_z_np_array = perform_z_tensor.detach().cpu().numpy()
+      for j in range(5):
+        perform_z_set[f'E{j+1}'] = perform_z_np_array[j]
+      total_perform_z.append(perform_z_set)
+      # for j, perform in enumerate(batch):
+      #     batch_x, batch_y, note_locations, _, _, edges = batch_to_device(perform, device)
+      #     perform_z_list = model.encode_style(batch_x, batch_y, edges, note_locations)
+      #     perform_z_set[f'E{j+1}'] = [x.detach().cpu().numpy()[0] for x in perform_z_list]
+      # total_perform_z.append(perform_z_set)
+  return total_perform_z
 
 
 def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration):
