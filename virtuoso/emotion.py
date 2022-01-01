@@ -1,7 +1,10 @@
 import torch as th
 from .utils import batch_to_device
 from . import style_analysis as sty
-
+import wandb
+import numpy as np
+import pandas as pd
+import plotly.express as px
 
 def get_style_from_emotion_data(model, emotion_loader, device):
   total_perform_z = []
@@ -23,15 +26,24 @@ def get_style_from_emotion_data(model, emotion_loader, device):
   return total_perform_z
 
 
-def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration):
+def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, send_wandb_log=True):
     total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
     abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = sty.get_classification_error_with_svm(total_perform_z, emotion_loader.dataset.cross_valid_split)
     
-    tsne_z, tsne_normalized_z = sty.embedd_tsne_of_emotion_dataset(total_perform_z)
-
-    save_name = out_dir / f"emotion_tsne_it{iteration}.png"
-    sty.draw_tsne_for_emotion_data(tsne_z, save_name)
-    save_name = out_dir / f"emotion_tsne_norm_it{iteration}.png"
-    sty.draw_tsne_for_emotion_data(tsne_normalized_z, save_name)
+    for dim_reduc_type in ("pca", "umap"):
+      embedded_z, embedded_normalized_z = sty.embedd_dim_reduction_of_emotion_dataset(total_perform_z, dim_reduction_type=dim_reduc_type)
+      save_name = out_dir / f"emotion_{dim_reduc_type}_it{iteration}.png"
+      sty.draw_tsne_for_emotion_data(embedded_z, save_name)
+      save_name = out_dir / f"emotion_{dim_reduc_type}_norm_it{iteration}.png"
+      sty.draw_tsne_for_emotion_data(embedded_normalized_z, save_name)
+      if send_wandb_log:
+        type_names = ["abs", "norm"]
+        for i, selected_embedding in enumerate([embedded_z, embedded_normalized_z]):
+          z_for_df = selected_embedding.transpose(0,2,1,3).reshape(embedded_z.shape[0]*embedded_z.shape[2]*5,2)
+          df = pd.DataFrame(z_for_df)
+          emotion_index = np.tile(np.asarray([1,2,3,4,5]), embedded_z.shape[0]*embedded_z.shape[2])
+          df['emotion_id'] = emotion_index
+          fig = px.scatter(df, x=0, y=1, color="emotion_id")
+          wandb.log({f"emotion_embedding_{dim_reduc_type}_{type_names[i]}":fig}, step=iteration)
 
     return total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy
