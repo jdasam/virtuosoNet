@@ -26,7 +26,7 @@ from .utils import load_weight
 from . import graph
 from . import style_analysis as sty
 from .emotion import get_style_from_emotion_data
-from .dataset import EmotionDataset, FeatureCollate
+from .dataset import EmotionDataset, FeatureCollate, split_graph_to_batch
 from torch.utils.data import DataLoader
 
 
@@ -83,7 +83,6 @@ def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial
     score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
     with torch.no_grad():
         outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z=initial_z)
-
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
                               multi_instruments=multi_instruments, tempo_clock=tempo_clock, bool_pedal=bool_pedal, disklavier=disklavier)
 
@@ -116,7 +115,7 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     if attention_weights is not None:
         plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=save_csv, attention_weights=attention_weights['beat'].tolist())
     else:
-        plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=save_csv)
+        plot_performance_worm(output_features, note_locations['beat'][0], save_path.with_suffix('.png'), save_csv=save_csv)
     if tempo_clock:
         nth_position = score.xml_obj.get_interval_positions(interval_in_16th=clock_interval_in_16th)
         def cal_time_position_with_tempo(xml_position, tempos, divisions):
@@ -161,7 +160,7 @@ def note_info_to_tuple(note):
     info_list += attention
     return info_list
 
-def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda'):
+def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda', len_graph_slice=400, graph_slice_margin=100,):
     score = ScoreData(xml_path, None, composer, read_xml_only=True)
     feature_extractor = ScoreExtractor(input_keys)
     input_features = feature_extractor.extract_score_features(score)
@@ -175,14 +174,15 @@ def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, st
     input, _, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, input_keys=input_keys, output_keys=[], meas_keys=[], beat_keys=[])
     input = torch.Tensor(input).unsqueeze(0).to(device)
     if graph_keys and len(graph_keys) > 0:
-        edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys).to(device)
+        edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys)
+        edges = split_graph_to_batch(edges, len_graph_slice ,graph_slice_margin).unsqueeze(0).to(device)
     else:
         edges = None
     note_locations = {
-            'beat': torch.Tensor(input_features['note_location']['beat']).type(torch.int32),
-            'measure': torch.Tensor(input_features['note_location']['measure']).type(torch.int32),
-            'section': torch.Tensor(input_features['note_location']['section']).type(torch.int32),
-            'voice': torch.Tensor(input_features['note_location']['voice']).type(torch.int32),
+            'beat': torch.Tensor(input_features['note_location']['beat']).type(torch.int32).unsqueeze(0),
+            'measure': torch.Tensor(input_features['note_location']['measure']).type(torch.int32).unsqueeze(0),
+            'section': torch.Tensor(input_features['note_location']['section']).type(torch.int32).unsqueeze(0),
+            'voice': torch.Tensor(input_features['note_location']['voice']).type(torch.int32).unsqueeze(0),
     }
     return score, input, edges, note_locations
 

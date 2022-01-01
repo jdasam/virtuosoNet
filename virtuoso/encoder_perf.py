@@ -177,8 +177,9 @@ class GcnPerfEncoderMasking(IsgnPerfEncoder):
 
     
 def sample_multiple_z(perform_mu, perform_var, num=10):
+    assert perform_mu.dim() == 2
     total_perform_z = []
     for i in range(num):
-        temp_z = reparameterize(perform_mu, perform_var)
-        total_perform_z.append(temp_z)
-    return total_perform_z
+      temp_z = reparameterize(perform_mu, perform_var)
+      total_perform_z.append(temp_z)
+    return torch.stack(total_perform_z, dim=1)

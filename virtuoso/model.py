@@ -42,20 +42,26 @@ class VirtuosoNet(nn.Module):
 
         return perform_mu, perform_var
 
+    def sample_style_vector_from_normal_distribution(self, batch_size):
+      zero_mean = torch.zeros(batch_size, self.performance_encoder.performance_encoder_mean.out_features)
+      one_std = torch.zeros_like(zero_mean) # log std 0
+      performance_embedding = reparameterize(zero_mean, one_std).to(next(self.parameters()).device)
+      return performance_embedding
+
     def forward(self, x, y, edges, note_locations, initial_z=None):
         score_embedding = self.score_encoder(x, edges, note_locations)
         if initial_z is None:
             performance_embedding, perform_mu, perform_var = self.performance_encoder(score_embedding, y, edges, note_locations, return_z=False)
         else: 
-            perform_mu, perform_var = 0, 0
             if type(initial_z) is str and initial_z == 'zero':
-                zero_mean = torch.zeros(self.performance_encoder.performance_encoder_mean.out_features)
+                zero_mean = torch.zeros(x.shape[0], self.performance_encoder.performance_encoder_mean.out_features)
                 one_std = torch.zeros_like(zero_mean) # log std 0
                 performance_embedding = reparameterize(zero_mean, one_std).to(x.device)
             elif isinstance(initial_z, torch.Tensor) and not initial_z.is_cuda:
-                performance_embedding = torch.Tensor(initial_z).to(x.device).view(1,-1)
+                performance_embedding = torch.Tensor(initial_z).to(x.device).view(x.shape[0],initial_z.shape[-1])
             else:
-                performance_embedding = initial_z
+                performance_embedding = initial_z.view(x.shape[0],initial_z.shape[-1])
+            perform_mu, perform_var = 0, 0
         residual_info = self.residual_info_selector(x, note_locations)
         output, alter_out = self.performance_decoder(score_embedding, performance_embedding, residual_info, edges, note_locations)
         return output, perform_mu, perform_var, alter_out

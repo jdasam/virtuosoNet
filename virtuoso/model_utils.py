@@ -153,6 +153,8 @@ def split_note_input_to_graph_batch(orig_input, batch_edges, overlap=200):
   batch_edges (torch.Tensor): N x S(NumSlice) x EdgeType x L(LenSlice) x L
   '''
   num_graph_slice = batch_edges.shape[1]
+  if num_graph_slice == 1:
+    return orig_input
   num_notes_per_slice = batch_edges.shape[-1]
   input_split = torch.zeros((orig_input.shape[0], 
                             num_graph_slice, 

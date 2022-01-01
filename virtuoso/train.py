@@ -22,7 +22,7 @@ from .loss import LossCalculator, cal_multiple_perf_style_loss
 from .model_utils import make_higher_node
 from .model import SimpleAttention
 from . import utils
-from .inference import generate_midi_from_xml
+from .inference import generate_midi_from_xml, get_input_from_xml, save_model_output_as_midi
 from .model_constants import valid_piece_list
 from .emotion import validate_style_with_emotion_data
 from . import style_analysis as sty
@@ -91,27 +91,39 @@ def prepare_directories_and_logger(output_dir, log_dir, exp_name, make_log=True)
     else:
         return None, out_dir
 
-
-
 def generate_midi_for_validation(model, valid_data, args):
     input = th.Tensor(valid_data['input_data'])
 
-
-
-
-def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device):
+def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, dataset_dir):
     abs_mean_by_emotion, norm_mean_by_emotion = sty.get_emotion_representative_vectors(total_perform_z)
+    style_names = ['zero'] + [f"absE{i}" for i in range(1,len(abs_mean_by_emotion)+1)] \
+                           + [f"normE{i}" for i in range(1,len(norm_mean_by_emotion)+1)] 
+    if isinstance(dataset_dir, str):
+      dataset_dir = Path(dataset_dir)
     for piece in valid_piece_list:
-        xml_path = Path(f'/home/svcapp/userdata/chopin_cleaned/{piece[0]}') / 'musicxml_cleaned.musicxml'
+        xml_path = dataset_dir / piece[0] / 'musicxml_cleaned.musicxml'
         composer = piece[1]
         save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_zero_iter_{iteration}.mid"
-        generate_midi_from_xml(model, xml_path, composer, save_path, device)
-        for i, emotion_z in enumerate(abs_mean_by_emotion):
-            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_absE{i+1}_iter_{iteration}.mid"
-            generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
-        for i, emotion_z in enumerate(norm_mean_by_emotion):
-            save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_normE{i+1}_iter_{iteration}.mid"
-            generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
+        score, input, edges, note_locations = get_input_from_xml(xml_path, composer, None, model.stats['input_keys'], model.stats['graph_keys'], model.stats['stats'], device)
+        random_z = model.sample_style_vector_from_normal_distribution(batch_size=1)
+        perform_z_batch = th.cat([random_z, abs_mean_by_emotion.to(random_z.device), norm_mean_by_emotion.to(random_z.device)], dim=0)
+        input = input.repeat(perform_z_batch.shape[0],1,1)
+        edges = edges.repeat(perform_z_batch.shape[0],1,1,1,1)
+        for key in note_locations:
+          note_locations[key] = note_locations[key].repeat(perform_z_batch.shape[0],1)
+        with th.no_grad():
+          outputs, _, _, _ = model(input, None, edges, note_locations, initial_z=perform_z_batch)
+        for i in range(len(perform_z_batch)):
+          save_path = save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_{style_names[i]}_iter_{iteration}.mid"
+          save_model_output_as_midi(outputs[i:i+1], save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations)
+
+        # generate_midi_from_xml(model, xml_path, composer, save_path, device)
+        # for i, emotion_z in enumerate(abs_mean_by_emotion):
+        #     save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_absE{i+1}_iter_{iteration}.mid"
+        #     generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
+        # for i, emotion_z in enumerate(norm_mean_by_emotion):
+        #     save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_normE{i+1}_iter_{iteration}.mid"
+        #     generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
     
 
 def get_batch_result(model, batch, loss_calculator, device, meas_note=True):
@@ -184,7 +196,8 @@ def train(args,
     print('Loading the training data...')
     model.train()
 
-    # total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration)
+    # total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, args.make_log)
+    # validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, args.valid_xml_dir)
 
     for epoch in range(start_epoch, num_epochs):
         print('current training step is ', iteration)
@@ -254,13 +267,13 @@ def train(args,
                     'network_params': model.network_params,
                     'model_code': args.model_code
                 }, is_best)
-                total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration)
+                total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, args.make_log)
                 if args.make_log:
                   logger.log_style_analysis(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy, iteration)
                   emotion_val_dict = pack_emotion_log(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy)
                   wandb.log(emotion_val_dict, step=iteration)
                 if not args.is_hier:
-                  validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device)
+                  validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, args.valid_xml_dir)
                 model.train()
 
                 
