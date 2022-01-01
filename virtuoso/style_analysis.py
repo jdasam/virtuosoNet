@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
+from umap import UMAP
 from sklearn.svm import SVC
 
 import pickle
@@ -18,7 +19,7 @@ def get_emotion_representative_vectors(total_perform_z):
     total_perform_z: List of dictionary {'E1': List of style vector z in 1D numpy array }
     Out: [style_vectors for Emotion in (E1, E2, E3, E4, E5)]
     '''
-    total_z_flattened = torch.Tensor([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
+    total_z_flattened = torch.Tensor(np.asarray([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]]))
     num_pieces = len(total_perform_z)
     num_emotions = 5
     num_sample_per_performances = len(total_perform_z[0]['E1'])
@@ -35,14 +36,22 @@ def get_emotion_representative_vectors(total_perform_z):
     
 
 
-def embedd_tsne_of_emotion_dataset(total_perform_z):
+def embedd_dim_reduction_of_emotion_dataset(total_perform_z, dim_reduction_type='pca'):
     '''
     total_perform_z: List of dictionary {'E1': List of style vector z in 1D numpy array }
+    dim_reduction_type (str): string among ['pca', 'umap', 'tsne']
     Out: TSNE embeddings with shape of [Performances X Emotions (5) X Num_Z_Sample_Per_Performance X 2 (t-SNE dimension)]
     '''
     selected_z = np.asarray([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
     num_sample_per_performances = len(total_perform_z[0]['E1'])
-    z_embedded = TSNE(n_components=2).fit_transform(selected_z)
+    if dim_reduction_type=='pca':
+      z_embedded = PCA(n_components=2).fit_transform(selected_z)
+    elif dim_reduction_type=='umap':
+      z_embedded = UMAP(n_components=2).fit_transform(selected_z)
+    elif dim_reduction_type=='tsne':
+      z_embedded = TSNE(n_components=2).fit_transform(selected_z)
+    else:
+      raise Exception(f"Unknown dimension reduction type: {dim_reduction_type}")
     z_embedded = z_embedded.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
 
     z_reshaped = selected_z.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
