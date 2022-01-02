@@ -108,7 +108,8 @@ def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_
         random_z = model.sample_style_vector_from_normal_distribution(batch_size=1)
         perform_z_batch = th.cat([random_z, abs_mean_by_emotion.to(random_z.device), norm_mean_by_emotion.to(random_z.device)], dim=0)
         input = input.repeat(perform_z_batch.shape[0],1,1)
-        edges = edges.repeat(perform_z_batch.shape[0],1,1,1,1)
+        if edges is not None:
+          edges = edges.repeat(perform_z_batch.shape[0],1,1,1,1)
         for key in note_locations:
           note_locations[key] = note_locations[key].repeat(perform_z_batch.shape[0],1)
         with th.no_grad():
@@ -116,24 +117,20 @@ def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_
         for i in range(len(perform_z_batch)):
           save_path = save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_{style_names[i]}_iter_{iteration}.mid"
           save_model_output_as_midi(outputs[i:i+1], save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations)
-
-        # generate_midi_from_xml(model, xml_path, composer, save_path, device)
-        # for i, emotion_z in enumerate(abs_mean_by_emotion):
-        #     save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_absE{i+1}_iter_{iteration}.mid"
-        #     generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
-        # for i, emotion_z in enumerate(norm_mean_by_emotion):
-        #     save_path = out_dir / f"{'_'.join(piece[0].split('/'))}_normE{i+1}_iter_{iteration}.mid"
-        #     generate_midi_from_xml(model, xml_path, composer, save_path, device, initial_z=emotion_z)
     
 
-def get_batch_result(model, batch, loss_calculator, device, meas_note=True):
+def get_batch_result(model, batch, loss_calculator, device, meas_note=True, is_valid=False):
   if meas_note:
     batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
     outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+    if is_valid:
+      total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
     total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'beat':beat_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
   else:
     batch_x, batch_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
     outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+    if is_valid:
+      total_out_list = total_out_list[-1:] 
     total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
   return total_loss, loss_dict, perform_mu, perform_var
@@ -158,6 +155,21 @@ def train_step(model, batch, optimizer, scheduler, loss_calculator, logger, devi
     logger.log_training(total_loss.item(),loss_dict, grad_norm, optimizer.param_groups[0]['lr'], duration, iteration)
     loss_dict = pack_train_log(loss_dict, total_loss.item(), optimizer.param_groups[0]['lr'], duration)
     wandb.log(loss_dict, step=iteration)
+
+def get_validation_loss(model, valid_loader, loss_calculator, device, is_meas_note):
+  valid_loss = []
+  valid_loss_dict = []
+  with th.no_grad():
+    for _, valid_batch in enumerate(valid_loader):
+      total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, valid_batch, loss_calculator, device, meas_note=is_meas_note, is_valid=True)
+      perform_kld = -0.5 * \
+          th.mean(th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp(), dim=-1))
+      loss_dict['kld'] = perform_kld
+      valid_loss.append(total_loss.item()*len(perform_mu))
+      valid_loss_dict.append(loss_dict)
+  valid_loss = sum(valid_loss) / len(valid_loader.dataset)
+  print('Valid loss: {}'.format(valid_loss))
+  
 
 def train(args,
           model,
@@ -203,81 +215,57 @@ def train(args,
         print('current training step is ', iteration)
         train_loader.dataset.update_slice_info()
         for _, batch in enumerate(train_loader):
-            train_step(model, batch, optimizer, scheduler, loss_calculator, logger, device, args, iteration)
-            iteration += 1
+          train_step(model, batch, optimizer, scheduler, loss_calculator, logger, device, args, iteration)
+          iteration += 1
+          if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
+            batch = next(iter(multi_perf_loader))
+            batch_x, batch_y, note_locations, edges  = batch
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            if edges is not None:
+                edges = edges.to(device)
+            perform_mu, perform_var = model.encode_style_distribution(batch_x, batch_y, edges, note_locations)
+            loss, loss_dict = cal_multiple_perf_style_loss(perform_mu, perform_var, args.multi_perf_dist_loss_margin)
+            optimizer.zero_grad()
+            loss.backward()
+            grad_norm = th.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+            optimizer.step()
+            multi_perf_iter += 1
+            if multi_perf_iter == len(multi_perf_loader):
+                multi_perf_loader.dataset.update_slice_info()
+                multi_perf_iter = 0
+            if args.make_log:
+                logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
 
-            if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
-                batch = next(iter(multi_perf_loader))
-                batch_x, batch_y, note_locations, edges  = batch
-                batch_x = batch_x.to(device)
-                batch_y = batch_y.to(device)
-                if edges is not None:
-                    edges = edges.to(device)
-                perform_mu, perform_var = model.encode_style_distribution(batch_x, batch_y, edges, note_locations)
-                loss, loss_dict = cal_multiple_perf_style_loss(perform_mu, perform_var, args.multi_perf_dist_loss_margin)
-                optimizer.zero_grad()
-                loss.backward()
-                grad_norm = th.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-                optimizer.step()
-                multi_perf_iter += 1
-                if multi_perf_iter == len(multi_perf_loader):
-                    multi_perf_loader.dataset.update_slice_info()
-                    multi_perf_iter = 0
-                if args.make_log:
-                    logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
+          if iteration % args.iters_per_checkpoint == 0:
+            model.eval()
+            valid_loss, valid_loss_dict = get_validation_loss(model, valid_loader, loss_calculator, device, args.meas_note)
 
-                
-            if iteration % args.iters_per_checkpoint == 0:
-                valid_loss = []
-                valid_loss_dict = []
-                model.eval()
-                with th.no_grad():
-                  for _, batch in enumerate(valid_loader):
-                    if args.meas_note:
-                        batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
-                        outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-                        total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
-                        total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'measure':meas_y, 'beat':beat_y}, total_out_list, note_locations, align_matched, pedal_status)
-                    else:
-                        batch_x, batch_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
-                        outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-                        total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list[-1:], note_locations, align_matched, pedal_status)
+            if args.make_log:
+              logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
+              valid_loss_dict = pack_validation_log(valid_loss_dict, valid_loss)
+              wandb.log(valid_loss_dict, step=iteration)
 
-                    perform_kld = -0.5 * th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp())
-                    loss_dict['kld'] = perform_kld
-                    valid_loss.append(total_loss.item())
-                    valid_loss_dict.append(loss_dict)
-                  valid_loss = sum(valid_loss) / len(valid_loss)
-                  print('Valid loss: {}'.format(valid_loss))     
-
-                if args.make_log:
-                  logger.log_validation(valid_loss, valid_loss_dict, model, iteration)
-                  valid_loss_dict = pack_validation_log(valid_loss_dict, valid_loss)
-                  wandb.log(valid_loss_dict, step=iteration)
-                  print("Check Wandb Log!")
-                is_best = valid_loss < best_valid_loss
-                best_valid_loss = min(best_valid_loss, valid_loss)
-                utils.save_checkpoint(args.checkpoints_dir / exp_name, 
-                    {'epoch': epoch + 1,
-                    'state_dict': model.state_dict(),
-                    'best_valid_loss': best_valid_loss,
-                    'optimizer': optimizer.state_dict(),
-                    'training_step': iteration,
-                    'stats': model.stats,
-                    'network_params': model.network_params,
-                    'model_code': args.model_code
-                }, is_best)
-                total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, args.make_log)
-                if args.make_log:
-                  logger.log_style_analysis(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy, iteration)
-                  emotion_val_dict = pack_emotion_log(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy)
-                  wandb.log(emotion_val_dict, step=iteration)
-                if not args.is_hier:
-                  validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, args.valid_xml_dir)
-                model.train()
-
-                
-
+            is_best = valid_loss < best_valid_loss
+            best_valid_loss = min(best_valid_loss, valid_loss)
+            utils.save_checkpoint(args.checkpoints_dir / exp_name, 
+                {'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'best_valid_loss': best_valid_loss,
+                'optimizer': optimizer.state_dict(),
+                'training_step': iteration,
+                'stats': model.stats,
+                'network_params': model.network_params,
+                'model_code': args.model_code
+            }, is_best)
+            total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, args.make_log)
+            if args.make_log:
+              logger.log_style_analysis(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy, iteration)
+              emotion_val_dict = pack_emotion_log(abs_confusion, abs_accuracy, norm_confusion, norm_accuracy)
+              wandb.log(emotion_val_dict, step=iteration)
+            if not args.is_hier:
+              validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, args.valid_xml_dir)
+            model.train()
 
     #end of epoch
 
