@@ -44,24 +44,26 @@ def embedd_dim_reduction_of_emotion_dataset(total_perform_z, dim_reduction_type=
     '''
     selected_z = np.asarray([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
     num_sample_per_performances = len(total_perform_z[0]['E1'])
-    if dim_reduction_type=='pca':
-      z_embedded = PCA(n_components=2).fit_transform(selected_z)
-    elif dim_reduction_type=='umap':
-      z_embedded = UMAP(n_components=2).fit_transform(selected_z)
-    elif dim_reduction_type=='tsne':
-      z_embedded = TSNE(n_components=2).fit_transform(selected_z)
-    else:
-      raise Exception(f"Unknown dimension reduction type: {dim_reduction_type}")
-    z_embedded = z_embedded.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
-
     z_reshaped = selected_z.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
     mean_z = np.mean(z_reshaped[:,0,:,:], axis=1)
     normalized_z = z_reshaped - mean_z.reshape(len(total_perform_z), 1, 1, -1)
     normalized_z = normalized_z.reshape(len(total_perform_z) * 5 * num_sample_per_performances, -1)
-    tsne_normalized = TSNE(n_components=2).fit_transform(normalized_z)
-    tsne_normalized = tsne_normalized.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
+  
+    if dim_reduction_type=='pca':
+      z_embedded = PCA(n_components=2).fit_transform(selected_z)
+      z_normalized = UMAP(n_components=2).fit_transform(selected_z)
+    elif dim_reduction_type=='umap':
+      z_embedded = UMAP(n_components=2).fit_transform(selected_z)
+      z_normalized = UMAP(n_components=2).fit_transform(normalized_z)
+    elif dim_reduction_type=='tsne':
+      z_embedded = TSNE(n_components=2).fit_transform(selected_z)
+      z_normalized = TSNE(n_components=2).fit_transform(normalized_z)
+    else:
+      raise Exception(f"Unknown dimension reduction type: {dim_reduction_type}")
+    z_embedded = z_embedded.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
+    z_normalized = z_normalized.reshape(len(total_perform_z), 5, num_sample_per_performances, -1)
 
-    return z_embedded, tsne_normalized
+    return z_embedded, z_normalized
 
 def total_perform_z_to_abs_and_norm(total_perform_z):
     selected_z = np.asarray([z for x in total_perform_z for y in ['E1', 'E2', 'E3', 'E4', 'E5'] for z in x[y]])
