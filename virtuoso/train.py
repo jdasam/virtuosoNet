@@ -169,7 +169,7 @@ def get_validation_loss(model, valid_loader, loss_calculator, device, is_meas_no
       valid_loss_dict.append(loss_dict)
   valid_loss = sum(valid_loss) / len(valid_loader.dataset)
   print('Valid loss: {}'.format(valid_loss))
-  
+  return valid_loss, valid_loss_dict
 
 def train(args,
           model,
