@@ -252,7 +252,10 @@ class FeatureCollate:
                             }
           align_matched = pad_sequence([sample[3] for sample in batch], batch_first=True)
           pedal_status = pad_sequence([sample[4] for sample in batch], batch_first=True)
-          edges = pad_sequence([sample[5] for sample in batch], batch_first=True) # TODO:
+          if batch[0][5] is not None:
+            edges = pad_sequence([sample[5] for sample in batch], batch_first=True) # TODO:
+          else:
+            edges = None
           return (batch_x,
                   batch_y,
                   note_locations, 
@@ -272,7 +275,10 @@ class FeatureCollate:
                             }
           align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
           pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
-          edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:
+          if batch[0][7] is not None:
+            edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:
+          else:
+            edges = None
           return (batch_x,
                   batch_y,
                   beat_y, 
