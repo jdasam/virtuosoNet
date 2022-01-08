@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
-from umap import UMAP
 from sklearn.svm import SVC
 
 import pickle
@@ -51,8 +50,9 @@ def embedd_dim_reduction_of_emotion_dataset(total_perform_z, dim_reduction_type=
   
     if dim_reduction_type=='pca':
       z_embedded = PCA(n_components=2).fit_transform(selected_z)
-      z_normalized = UMAP(n_components=2).fit_transform(selected_z)
+      z_normalized = PCA(n_components=2).fit_transform(normalized_z)
     elif dim_reduction_type=='umap':
+      from umap import UMAP
       z_embedded = UMAP(n_components=2).fit_transform(selected_z)
       z_normalized = UMAP(n_components=2).fit_transform(normalized_z)
     elif dim_reduction_type=='tsne':
