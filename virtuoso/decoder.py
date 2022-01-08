@@ -554,7 +554,7 @@ class HanDecoder(nn.Module):
 
     def init_hidden(self, num_layer, num_direction, batch_size, hidden_size, device):
         h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(device)
-        return (h0, h0)
+        return (h0, h0.clone())
 
     def run_beat_and_note_regressive_decoding(self, score_embedding, perf_emb, res_info, note_locations):
         # note_emb, beat_emb, measure_emb, _, _ = score_embedding
@@ -581,13 +581,13 @@ class HanDecoder(nn.Module):
         zero_shifted_measure_numbers.clamp_min_(0)
 
         diff_beat_numbers = torch.diff(beat_numbers)
+        import time
         for i in range(num_notes):
           if i > 0:
             beat_changed = diff_beat_numbers[:,i-1]
           else:
             beat_changed = diff_beat_numbers[:,0].clone()
             beat_changed[:] = 1
-
           if torch.sum(beat_changed) > 0: # at least one sample's beat has changed
             selected_batch_ids = torch.where(beat_changed)[0]
             if i ==0:
@@ -601,18 +601,17 @@ class HanDecoder(nn.Module):
             selected_batch_ids = torch.where(beat_changed)[0]
             beat_results[selected_batch_ids, current_beat[selected_batch_ids]] = result_node
             beat_tempo_cat = self.concat_beat_rnn_input(selected_batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_out[:, QPM_INDEX:QPM_INDEX+1], beat_results, i, current_beat, current_measure)
-
             selected_batch_tempo_hidden = (tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids])
             beat_forward, temp_tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, selected_batch_tempo_hidden)
             tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids] = temp_tempo_hidden
             tmp_tempos = self.beat_tempo_fc(beat_forward)
             prev_out[selected_batch_ids, QPM_INDEX:QPM_INDEX+1] = tmp_tempos[:,0]
-
           out_combined = self.concat_final_rnn_input(note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, i, current_beat, current_measure)
           out, final_hidden = self.output_lstm(out_combined, final_hidden)
           out = self.fc(out)[:,0]
           prev_out[:, QPM_INDEX+1:] = out
           out_total[:, i] = prev_out
+
         out_total[note_emb.sum(-1)==0] = 0
         return out_total
 
