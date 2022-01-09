@@ -17,3 +17,4 @@ wandb/
 *.ipynb_checkpoints
 pretrained_weights/
 test_pieces/_ConcertCustomization
+.vscode
