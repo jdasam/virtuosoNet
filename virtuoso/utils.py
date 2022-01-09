@@ -48,7 +48,7 @@ def make_criterion_func(loss_type, device):
     if loss_type == 'MSE':
         def criterion(pred, target, aligned_status=1):
             if isinstance(aligned_status, int):
-                data_size = pred.shape[-2] * pred.shape[-1]
+                data_size = pred.shape[0] * pred.shape[1]
             else:
                 data_size = torch.sum(aligned_status).item() * pred.shape[-1]
                 if data_size == 0:
@@ -213,7 +213,16 @@ def cal_length_from_padded_beat_numbers(beat_numbers):
 
   output (torch.Tensor): N
   '''
-  len_note = torch.min(torch.diff(beat_numbers,dim=1), dim=1)[1] + 1
+  try:
+    len_note = torch.min(torch.diff(beat_numbers,dim=1), dim=1)[1] + 1
+  except:
+    print("Error in cal_length_from_padded_beat_numbers:")
+    print(beat_numbers)
+    print(beat_numbers.shape)
+    [print(beat_n) for beat_n in beat_numbers]
+    print(torch.diff(beat_numbers,dim=1))
+    print(torch.diff(beat_numbers,dim=1).shape)
+    len_note = torch.LongTensor([beat_numbers.shape[1] * len(beat_numbers)]).to(beat_numbers.device)
   len_note[len_note==1] = beat_numbers.shape[1]
 
   return len_note
