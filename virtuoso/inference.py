@@ -111,6 +111,8 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     if mod_midi_path is not None:
         score_pairs = [{'xml':xml, 'midi':midi} for xml, midi in zip (xml_notes,output_midi)]
         output_midi = load_and_apply_modified_perf_midi(mod_midi_path, score_pairs, xml_notes, output_features, score.beat_positions)
+        xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
+        output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments, ignore_overlapped=(mod_midi_path is None))
         output_midi.sort(key=lambda x:x.start)
     if attention_weights is not None:
         plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=save_csv, attention_weights=attention_weights['beat'].tolist())
@@ -179,10 +181,10 @@ def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, st
     else:
         edges = None
     note_locations = {
-            'beat': torch.Tensor(input_features['note_location']['beat']).type(torch.int32).unsqueeze(0),
-            'measure': torch.Tensor(input_features['note_location']['measure']).type(torch.int32).unsqueeze(0),
-            'section': torch.Tensor(input_features['note_location']['section']).type(torch.int32).unsqueeze(0),
-            'voice': torch.Tensor(input_features['note_location']['voice']).type(torch.int32).unsqueeze(0),
+            'beat': torch.LongTensor(input_features['note_location']['beat']).unsqueeze(0),
+            'measure': torch.LongTensor(input_features['note_location']['measure']).unsqueeze(0),
+            'section': torch.LongTensor(input_features['note_location']['section']).unsqueeze(0),
+            'voice': torch.LongTensor(input_features['note_location']['voice']).unsqueeze(0),
     }
     return score, input, edges, note_locations
 
