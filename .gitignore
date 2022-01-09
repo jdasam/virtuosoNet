@@ -13,3 +13,5 @@ test_result/*.mid
 test_result/*.png
 test_result/*.csv
 .vscode/
+wandb/
+*.ipynb_checkpoints
