@@ -16,7 +16,7 @@ class HanPerfEncoder(nn.Module):
         self.encoder_layer_num = net_params.encoder.layer
         self.num_attention_head = net_params.num_attention_head
 
-        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True)
+        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
         if self.encoder_size % self.num_attention_head == 0:
             self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
         else:
