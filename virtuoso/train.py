@@ -138,7 +138,6 @@ def get_batch_result(model, batch, loss_calculator, device, meas_note=True, is_v
 def train_step(model, batch, optimizer, scheduler, loss_calculator, logger, device, args, iteration):
   start =time.perf_counter()
   total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, batch, loss_calculator, device, args.meas_note)
-
   kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
   perform_kld = -0.5 * \
       th.mean(th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp(), dim=-1))

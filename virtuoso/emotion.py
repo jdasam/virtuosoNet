@@ -29,8 +29,8 @@ def get_style_from_emotion_data(model, emotion_loader, device):
 def validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, send_wandb_log=True):
     total_perform_z = get_style_from_emotion_data(model, emotion_loader, device)
     abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = sty.get_classification_error_with_svm(total_perform_z, emotion_loader.dataset.cross_valid_split)
-    
-    for dim_reduc_type in ("pca", "umap"):
+    # for dim_reduc_type in ("pca", "umap"):
+    for dim_reduc_type in ["pca"]:
       embedded_z, embedded_normalized_z = sty.embedd_dim_reduction_of_emotion_dataset(total_perform_z, dim_reduction_type=dim_reduc_type)
       save_name = out_dir / f"emotion_{dim_reduc_type}_it{iteration}.png"
       sty.draw_tsne_for_emotion_data(embedded_z, save_name)
