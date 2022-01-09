@@ -220,6 +220,9 @@ class DataSet:
                     if tag in perform.midi_path:
                         self.performs_by_tag[tag].append(perform)
                         break
+    
+    def __len__(self):
+      return len(self.scores)
 
     def __str__(self):
         return str(self.__dict__)

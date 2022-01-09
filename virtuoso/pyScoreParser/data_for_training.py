@@ -57,6 +57,12 @@ class PairDataset:
                         and 'align_matched' in performance.perform_features\
                         and len(performance.perform_features['align_matched']) - sum(performance.perform_features['align_matched']) < 800:
                     self.data_pairs.append(ScorePerformPairData(piece, performance))
+    
+    def __len__(self):
+      return len(self.data_pairs)
+
+    def __getitem__(self, idx):
+      return self.data_pairs[idx]
 
     def get_squeezed_features(self, target_feat_keys):
         squeezed_values = dict()
