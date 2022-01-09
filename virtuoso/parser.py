@@ -3,7 +3,7 @@ from pathlib import Path
 
 def get_parser():
     parser = argparse.ArgumentParser("virtuosonet")
-    parser.add_argument("-sess", "--session_mode", type=str,
+    parser.add_argument("-mode", "--session_mode", type=str,
                         default="train", help="train or inference")
     parser.add_argument("-yml", "--yml_path", type=str,
                         #default="isgn_param.yml",
@@ -18,6 +18,8 @@ def get_parser():
                         default=Path('/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml'))
     parser.add_argument("--output_path", type=Path,
                         default=Path('test_result/'))
+    parser.add_argument("--valid_xml_dir", type=Path,
+                        default=Path('/home/teo/userdata/datasets/chopin_cleaned/'))
     # model model options
     parser.add_argument("-trill", "--is_trill", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="train trill")
@@ -73,7 +75,7 @@ def get_parser():
                     )
     parser.add_argument("--iters_per_checkpoint",
                     type=int,
-                    default=5000
+                    default=200
                     )
     parser.add_argument("--iters_per_multi_perf",
                     type=int,
@@ -93,7 +95,7 @@ def get_parser():
                         )
     parser.add_argument("--len_valid_slice",
                         type=int,
-                        default=10000
+                        default=3000
                         )
     parser.add_argument("--weight_decay",
                         type=float,
@@ -101,7 +103,7 @@ def get_parser():
                         )
     parser.add_argument("--lr_decay_step",
                         type=float,
-                        default=5000
+                        default=3000
                         )
     parser.add_argument("--lr_decay_rate",
                         type=float,
@@ -129,7 +131,7 @@ def get_parser():
                         ) 
     parser.add_argument("--kld_sig",
                         type=float,
-                        default=15e4
+                        default=15e3
                         ) 
     parser.add_argument("-loss", "--trainingLoss", type=str,
                         default='MSE', help='type of training loss')
