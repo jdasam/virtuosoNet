@@ -22,7 +22,8 @@ def make_higher_node(lower_out, attention_weights, lower_indices, higher_indices
     else:
         higher_boundaries = find_boundaries_batch(higher_indices)
         zero_shifted_lower_indices = lower_indices - lower_indices[:,0:1]
-        len_lower_out = (lower_out.shape[1] - (lower_out.sum(-1)==0).sum(1)).tolist()
+        num_zero_padded_element_by_batch = ((lower_out!=0).sum(-1)==0).sum(1)
+        len_lower_out = (lower_out.shape[1] - num_zero_padded_element_by_batch).tolist()
         boundaries = [zero_shifted_lower_indices[i, higher_boundaries[i][:-1]].tolist() + [len_lower_out[i]] for i in range(len(lower_out))]
 
 
