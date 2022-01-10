@@ -1,20 +1,17 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import time
 from torch.autograd import Variable
-import random
-import numpy
-import math
-
-from torch.nn.modules import dropout
 
 from . import model_constants as cons
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from . import model_utils as utils
-from .utils import note_tempo_infos_to_beat
-from .module import GatedGraph, SimpleAttention, ContextAttention
+from .module import GatedGraph
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX, TEMPO_IDX, PITCH_IDX
+
+from . import encoder_score as encs
+from . import encoder_perf as encp
+from . import decoder as dec
+from . import residual_selector as res
 
 # VOICE_IDX = 11
 # PITCH_IDX = 13
@@ -24,6 +21,14 @@ LEN_DYNAMICS_VEC = 4
 TEMPO_PRIMO_IDX = -2
 NUM_VOICE_FEED_PARAM = 2
 
+def make_model(net_param):
+  model = VirtuosoNet()
+  model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
+  model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
+  model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)()
+  model.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
+  model.network_params = net_param
+  return model
 
 
 class VirtuosoNet(nn.Module):

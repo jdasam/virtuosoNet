@@ -7,15 +7,10 @@ from torch.nn.parallel.distributed import DistributedDataParallel
 import torch
 
 from .parser import get_parser, get_name
-from . import model as modelzoo
-from . import model_parameters as param
 from . import utils
 from .train import train
+from .model import make_model
 from .inference import inference, inference_with_emotion
-from . import encoder_score as encs
-from . import encoder_perf as encp
-from . import decoder as dec
-from . import residual_selector as res
 
 def main():
     parser = get_parser()
@@ -24,33 +19,12 @@ def main():
     torch.manual_seed(args.th_seed)
     # random.seed(0)
 
-    if "isgn" not in args.model_code:
-        args.intermediate_loss = False
+    args, net_param, config = utils.handle_args(args)
     name = get_name(parser, args)  + "_" + datetime.now().strftime('%y%m%d-%H%M%S')
     print(f"Experiment {name}")
-    # eval_folder = args.evals / name
-    # eval_folder.mkdir(exist_ok=True, parents=True)
-    # metrics_path = args.logs / f"{name}.txt"
-    # eval_folder.mkdir(exist_ok=True, parents=True)
-    # args.models.mkdir(exist_ok=True, parents=True)
 
-    if args.device is None:
-        device = "cpu"
-        if torch.cuda.is_available():
-            device = "cuda"
-    else:
-        device = args.device
-
-    if args.yml_path is not None:
-        config = utils.read_model_setting(args.yml_path)
-        net_param = config.nn_params
-    else:
-        net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
-        args.yml_path = list(Path(args.checkpoint).parent.glob('*.yml'))[0]
-        config = utils.read_model_setting(args.yml_path)
-    args.graph_keys = net_param.graph_keys
-    args.meas_note = net_param.meas_note
-    criterion = utils.make_criterion_func(config.train_params.loss_type, device)
+    device = utils.get_device(args)
+    criterion = utils.make_criterion_func(config.train_params.loss_type)
 
 
     if args.world_size > 1:
@@ -63,15 +37,8 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
-    
-    model = modelzoo.VirtuosoNet()
-    model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
-    model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
-    model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)()
-    model.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
-    model.network_params = net_param
+    model = make_model(net_param)
     model = model.to(device)
-    
 
     # if not (args.session_mode =="train" and args.resume_training):
     #     checkpoint = torch.load(args.checkpoint)

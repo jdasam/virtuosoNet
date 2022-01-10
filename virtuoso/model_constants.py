@@ -45,6 +45,7 @@ valid_piece_list = [
                   ('Bach/Prelude/bwv_874/', 'Bach'),
                   ('Bach/Fugue/bwv_865/', 'Bach'),
                   ('Bach/Fugue/bwv_874/', 'Bach'),
+                  ('Test_Pieces/Volodos/', 'Liszt')
 ]
 
 

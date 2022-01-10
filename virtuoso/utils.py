@@ -10,6 +10,30 @@ from pathlib import Path
 from torch.nn.utils.rnn import pad_sequence
 
 
+def handle_args(args):
+  if "isgn" not in args.model_code:
+    args.intermediate_loss = False
+
+  if args.yml_path is not None:
+    config = read_model_setting(args.yml_path)
+    net_param = config.nn_params
+  else:
+    net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
+    args.yml_path = list(Path(args.checkpoint).parent.glob('*.yml'))[0]
+    config = read_model_setting(args.yml_path)
+  args.graph_keys = net_param.graph_keys
+  args.meas_note = net_param.meas_note
+  return args, net_param, config
+
+def get_device(args):
+  if args.device is None:
+    device = "cpu"
+    if torch.cuda.is_available():
+      device = "cuda"
+  else:
+    device = args.device
+  return device
+
 def read_model_setting(yml_path):
     with open(yml_path, 'r') as f:
         yaml_obj = yaml.load(f, Loader=yaml.FullLoader)
@@ -44,7 +68,7 @@ def load_weight(model, checkpoint_path):
 #     beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
 #     return beat_tempos
 
-def make_criterion_func(loss_type, device):
+def make_criterion_func(loss_type):
     if loss_type == 'MSE':
         def criterion(pred, target, aligned_status=1):
             if isinstance(aligned_status, int):
@@ -56,7 +80,7 @@ def make_criterion_func(loss_type, device):
             if target.shape != pred.shape:
                 print('Error: The shape of the target and prediction for the loss calculation is different')
                 print(target.shape, pred.shape)
-                return torch.zeros(1).to(device)
+                return torch.zeros(1).to(pred.device)
             return torch.sum(((target - pred) ** 2) * aligned_status) / data_size
     elif loss_type == 'CE':
         # criterion = nn.CrossEntropyLoss()
@@ -186,7 +210,7 @@ def find_boundaries(diff_boundary, higher_indices, i):
   i (int): batch index
   '''
   out = [0] + (diff_boundary[diff_boundary[:,0]==i][:,1]+1 ).tolist() + [torch.max(torch.nonzero(higher_indices[i])).item()+1]
-  if out[1] == 0:
+  if out[1] == 0: # if the first boundary occurs in 0, it will be duplicated
     out.pop(0)
   return out
 

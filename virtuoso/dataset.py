@@ -1,14 +1,10 @@
-from virtuoso.model_utils import make_higher_node
-from virtuoso.pyScoreParser.data_class import DataSet
-import numpy as np
 import torch
-import pickle
 import random
 import math
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+from torch.nn.utils.rnn import pad_sequence
 from collections import Counter, OrderedDict
 from .utils import load_dat
 from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number, key_augmentation
