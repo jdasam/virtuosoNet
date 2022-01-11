@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                     'qpm_primo',
-                    # "section_tempo",
+                    "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
@@ -20,7 +20,7 @@ NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length',
 VNET_COPY_DATA_KEYS = ('note_location', 'align_matched', 'articulation_loss_weight')
 VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                 'qpm_primo',
-                # "section_tempo",
+                "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',
@@ -37,111 +37,128 @@ VNET_MEAS_KEYS = ('measure_tempo', 'measure_dynamics')
 
 
 class ScorePerformPairData:
-    def __init__(self, piece, perform):
-        self.piece_path = piece.meta.xml_path
-        self.perform_path = perform.midi_path
-        self.graph_edges = piece.notes_graph
-        self.features = {**piece.score_features, **perform.perform_features}
-        self.split_type = None
-        self.features['num_notes'] = piece.num_notes
+  def __init__(self, piece, perform, exclude_long_graces=False):
+    self.piece_path = piece.meta.xml_path
+    self.perform_path = perform.midi_path
+    self.graph_edges = piece.notes_graph
+    self.features = {**piece.score_features, **perform.perform_features}
+    self.split_type = None
+    self.features['num_notes'] = piece.num_notes
+    if exclude_long_graces:
+      self.exclude_long_graces()
+
+  def exclude_long_graces(self, max_grace_order=5):
+    for i, order in enumerate(self.features['grace_order']):
+      if order < -max_grace_order:
+        self.features['align_matched'][i] = 0
+        self.features['onset_deviation'][i] = 0.0
 
 
 class PairDataset:
-    def __init__(self, dataset):
-        self.dataset_path = dataset.path
-        self.data_pairs = []
-        self.feature_stats = None
-        for piece in dataset.pieces:
-            for performance in piece.performances:
-                if performance is not None \
-                        and 'align_matched' in performance.perform_features\
-                        and len(performance.perform_features['align_matched']) - sum(performance.perform_features['align_matched']) < 800:
-                    self.data_pairs.append(ScorePerformPairData(piece, performance))
-    
-    def __len__(self):
-      return len(self.data_pairs)
-
-    def __getitem__(self, idx):
-      return self.data_pairs[idx]
-
-    def get_squeezed_features(self, target_feat_keys):
-        squeezed_values = dict()
-        for feat_type in target_feat_keys:
-            squeezed_values[feat_type] = []
-        for pair in self.data_pairs:
-            for feat_type in target_feat_keys:
-                if isinstance(pair.features[feat_type], list):
-                    squeezed_values[feat_type] += pair.features[feat_type]
-                else:
-                    squeezed_values[feat_type].append(pair.features[feat_type])
-        return squeezed_values
-
-    def update_mean_stds_of_entire_dataset(self, target_feat_keys=NORM_FEAT_KEYS):
-        squeezed_values = self.get_squeezed_features(target_feat_keys)
-        self.feature_stats = cal_mean_stds(squeezed_values, target_feat_keys)
-
-    def update_dataset_split_type(self, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
-        for pair in self.data_pairs:
-            path = pair.piece_path
-            for valid_name in valid_set_list:
-                if valid_name in path:
-                    pair.split_type = 'valid'
-                    break
-            else:
-                for test_name in test_set_list:
-                    if test_name in path:
-                        pair.split_type = 'test'
-                        break
-
-            if pair.split_type is None:
-                pair.split_type = 'train'
-
-    def shuffle_data(self):
-        random.shuffle(self.data_pairs)
-
-    def save_features_for_virtuosoNet(self, save_folder, update_stats=True, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
-        '''
-        Convert features into format of VirtuosoNet training data
-        :return: None (save file)
-        '''
-        def _flatten_path(file_path):
-            return '_'.join(file_path.parts)
-
-        save_folder = Path(save_folder)
-        split_types = ['train', 'valid', 'test']
-
-        if not save_folder.is_dir():
-            save_folder.mkdir()
-            for split in split_types:
-                if not (save_folder / split).is_dir():
-                    (save_folder / split).mkdir()
-    
-        if update_stats:
-            self.update_mean_stds_of_entire_dataset()
-        self.update_dataset_split_type(valid_set_list=valid_set_list, test_set_list=test_set_list)
-        
-        for pair_data in tqdm(self.data_pairs):
-            formatted_data = dict()
-            formatted_data['input_data'], formatted_data['output_data'], formatted_data['meas_level_data'], formatted_data['beat_level_data'] = \
-                 convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
-            for key in VNET_COPY_DATA_KEYS:
-                formatted_data[key] = pair_data.features[key]
-            formatted_data['graph'] = pair_data.graph_edges
-            formatted_data['score_path'] = pair_data.piece_path
-            formatted_data['perform_path'] = pair_data.perform_path
-
-            save_name = _flatten_path(
-                Path(pair_data.perform_path).relative_to(Path(self.dataset_path))) + '.dat'
-
-            with open(save_folder / pair_data.split_type / save_name, "wb") as f:
-                pickle.dump(formatted_data, f, protocol=2)
+  def __init__(self, dataset, exclude_long_graces=False):
+    self.dataset_path = dataset.path
+    self.data_pairs = []
+    self.feature_stats = None
+    for piece in dataset.pieces:
+      for performance in piece.performances:
+        if performance is None:
+          continue
+        if 'align_matched' not in performance.perform_features:
+          continue
+        len_notes =  len(performance.perform_features['align_matched'])
+        num_aligned_notes = sum(performance.perform_features['align_matched'])
+        if len_notes - num_aligned_notes > 800:
+          continue
+        if len_notes > num_aligned_notes * 1.5:
+          continue
+        self.data_pairs.append(ScorePerformPairData(piece, performance, exclude_long_graces))
+        # if performance is not None \
+        #         and 'align_matched' in performance.perform_features\
+        #         and len(performance.perform_features['align_matched']) - sum(performance.perform_features['align_matched']) < 800:
+        #     self.data_pairs.append(ScorePerformPairData(piece, performance, exclude_long_graces))
   
-        with open(save_folder / "stat.dat", "wb") as f:
-            pickle.dump({'stats': self.feature_stats, 
-                         'input_keys': VNET_INPUT_KEYS, 
-                         'output_keys': VNET_OUTPUT_KEYS, 
-                         'measure_keys': VNET_MEAS_KEYS}, f, protocol=2)
-        
+  def __len__(self):
+    return len(self.data_pairs)
+
+  def __getitem__(self, idx):
+    return self.data_pairs[idx]
+
+  def get_squeezed_features(self, target_feat_keys):
+      squeezed_values = dict()
+      for feat_type in target_feat_keys:
+          squeezed_values[feat_type] = []
+      for pair in self.data_pairs:
+          for feat_type in target_feat_keys:
+              if isinstance(pair.features[feat_type], list):
+                  squeezed_values[feat_type] += pair.features[feat_type]
+              else:
+                  squeezed_values[feat_type].append(pair.features[feat_type])
+      return squeezed_values
+
+  def update_mean_stds_of_entire_dataset(self, target_feat_keys=NORM_FEAT_KEYS):
+      squeezed_values = self.get_squeezed_features(target_feat_keys)
+      self.feature_stats = cal_mean_stds(squeezed_values, target_feat_keys)
+
+  def update_dataset_split_type(self, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
+      for pair in self.data_pairs:
+          path = pair.piece_path
+          for valid_name in valid_set_list:
+              if valid_name in path:
+                  pair.split_type = 'valid'
+                  break
+          else:
+              for test_name in test_set_list:
+                  if test_name in path:
+                      pair.split_type = 'test'
+                      break
+
+          if pair.split_type is None:
+              pair.split_type = 'train'
+
+  def shuffle_data(self):
+      random.shuffle(self.data_pairs)
+
+  def save_features_for_virtuosoNet(self, save_folder, update_stats=True, valid_set_list=dataset_split.VALID_LIST, test_set_list=dataset_split.TEST_LIST):
+      '''
+      Convert features into format of VirtuosoNet training data
+      :return: None (save file)
+      '''
+      def _flatten_path(file_path):
+          return '_'.join(file_path.parts)
+
+      save_folder = Path(save_folder)
+      split_types = ['train', 'valid', 'test']
+
+      save_folder.mkdir(parents=True, exist_ok=True)
+      for split in split_types:
+        (save_folder / split).mkdir(exist_ok=True)
+  
+      if update_stats:
+          self.update_mean_stds_of_entire_dataset()
+      self.update_dataset_split_type(valid_set_list=valid_set_list, test_set_list=test_set_list)
+      
+      for pair_data in tqdm(self.data_pairs):
+          formatted_data = dict()
+          formatted_data['input_data'], formatted_data['output_data'], formatted_data['meas_level_data'], formatted_data['beat_level_data'] = \
+                convert_feature_to_VirtuosoNet_format(pair_data.features, self.feature_stats)
+          for key in VNET_COPY_DATA_KEYS:
+              formatted_data[key] = pair_data.features[key]
+          formatted_data['graph'] = pair_data.graph_edges
+          formatted_data['score_path'] = pair_data.piece_path
+          formatted_data['perform_path'] = pair_data.perform_path
+
+          save_name = _flatten_path(
+              Path(pair_data.perform_path).relative_to(Path(self.dataset_path))) + '.dat'
+
+          with open(save_folder / pair_data.split_type / save_name, "wb") as f:
+              pickle.dump(formatted_data, f, protocol=2)
+
+      with open(save_folder / "stat.dat", "wb") as f:
+          pickle.dump({'stats': self.feature_stats, 
+                        'input_keys': VNET_INPUT_KEYS, 
+                        'output_keys': VNET_OUTPUT_KEYS, 
+                        'measure_keys': VNET_MEAS_KEYS}, f, protocol=2)
+      
 
 def get_feature_from_entire_dataset(dataset, target_score_features, target_perform_features):
     # e.g. feature_type = ['score', 'duration'] or ['perform', 'beat_tempo']

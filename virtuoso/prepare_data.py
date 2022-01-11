@@ -30,25 +30,29 @@ def make_parser():
                       type=str,
                       default='datasets/main_dataset')
   parser.add_argument("--emotion_output_dir_path",
-                      help="dir path to score/perform dataset", 
+                      help="dir path to emotion dataset", 
                       type=str,
                       default='datasets/emotion_dataset')
+  parser.add_argument("--exclude_long_graces", 
+                    help='exclude long graces notes (cadenza-like) during the feature saving',
+                    type=lambda x: (str(x).lower() == 'true'), 
+                    default=False)
   return parser
 
 
 if __name__ == "__main__":
-  parser = make_parser
+  parser = make_parser()
   args = parser.parse_args()
 
-  dataset = data_class.YamahaDataset(args.dataset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
   emotion_dataset = data_class.EmotionDataset(args.emotionset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
+  dataset = data_class.YamahaDataset(args.dataset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
 
   if not args.load_feature_only:
     dataset.extract_all_features(save=True)
     emotion_dataset.extract_all_features(save=True)
 
-  pair_set = dft.PairDataset(dataset)
+  pair_set = dft.PairDataset(dataset, args.exclude_long_graces)
   pair_set.save_features_for_virtuosoNet(args.output_dir_path)
-  emotion_pair_set = dft.PairDataset(emotion_dataset)
+  emotion_pair_set = dft.PairDataset(emotion_dataset, args.exclude_long_graces)
   emotion_pair_set.feature_stats = load_dat(Path(args.output_dir_path)/'stat.dat')['stats']
   emotion_pair_set.save_features_for_virtuosoNet(args.emotion_output_dir_path, update_stats=False)

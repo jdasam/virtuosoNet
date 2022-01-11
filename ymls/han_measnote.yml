@@ -22,7 +22,7 @@ nn_params:
   performance:
     size: 128
   hierarchy_level: null
-  input_size: 78
+  input_size: 79
   meas_note: true
   is_baseline: false
   is_graph: false

@@ -9,9 +9,9 @@ def get_parser():
                         #default="isgn_param.yml",
                          help="yml file path")
     parser.add_argument("-data", "--data_path", type=Path,
-                        default=Path("dataset_section_tempo/"), help="data dir name")
+                        default=Path("datasets/main_dataset"), help="data dir name")
     parser.add_argument("--emotion_data_path", type=Path,
-                    default=Path("dataset_emotion_section_tempo/"), help="data dir name")
+                    default=Path("datasets/emotion_dataset"), help="data dir name")
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,

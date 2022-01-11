@@ -65,7 +65,7 @@ class DataSet:
         if features_only:
             self.load_all_features(scores, perform_midis, score_midis, composers)
         else:
-            self.load_all_piece(scores, perform_midis, score_midis, composers, save=save, align=align)
+            self.load_all_piece(scores, perform_midis, score_midis, composers, save=save)
 
     @classmethod
     @abstractmethod
