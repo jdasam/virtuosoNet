@@ -52,6 +52,10 @@ class ScorePerformPairData:
       if order < -max_grace_order:
         self.features['align_matched'][i] = 0
         self.features['onset_deviation'][i] = 0.0
+    for i, dev in enumerate(self.features['onset_deviation']):
+      if abs(dev) > 4:
+        self.features['align_matched'][i] = 0
+        self.features['onset_deviation'][i] = 0.0
 
 
 class PairDataset:

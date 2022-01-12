@@ -43,9 +43,9 @@ def make_parser():
 if __name__ == "__main__":
   parser = make_parser()
   args = parser.parse_args()
-
-  emotion_dataset = data_class.EmotionDataset(args.emotionset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
+  
   dataset = data_class.YamahaDataset(args.dataset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
+  emotion_dataset = data_class.EmotionDataset(args.emotionset_path, save=args.save_from_beginning, features_only=args.load_feature_only)
 
   if not args.load_feature_only:
     dataset.extract_all_features(save=True)
