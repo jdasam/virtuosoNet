@@ -581,7 +581,7 @@ class HanDecoder(nn.Module):
         zero_shifted_measure_numbers.clamp_min_(0)
 
         diff_beat_numbers = torch.diff(beat_numbers)
-        import time
+
         for i in range(num_notes):
           if i > 0:
             beat_changed = diff_beat_numbers[:,i-1]
@@ -693,21 +693,23 @@ class HanDecoderSingleZ(HanDecoder):
 
     def handle_style_vector(self, perf_emb, score_emb, note_locations):
         perform_z = self.style_vector_expandor(perf_emb)
-        perform_z = perform_z.view(-1)
-
         return perform_z
 
-    def concat_beat_rnn_input(self, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
-        return torch.cat((beat_emb[0, beat_index, :],
-                                            measure_emb[0, measure_index, :], prev_tempo, res_info[0, beat_index, :],
-                                            beat_results[beat_index, :],
-                                            perf_emb)).view(1, 1, -1)
+    def concat_beat_rnn_input(self, batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
+        return torch.cat((beat_emb[batch_ids, beat_index[batch_ids], :],
+                          measure_emb[batch_ids, measure_index[batch_ids], :], 
+                          prev_tempo[batch_ids], 
+                          res_info[batch_ids, beat_index[batch_ids], :],
+                          beat_results[batch_ids, beat_index[batch_ids]],
+                          perf_emb[batch_ids]), dim=-1).unsqueeze(1)
 
     def concat_final_rnn_input(self, note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, note_index, beat_index, measure_index):
-        return torch.cat(
-                (note_emb[0, note_index, :], beat_emb[0, beat_index, :],
-                    measure_emb[0, measure_index, :],
-                    prev_out, perf_emb)).view(1, 1, -1)
+      return torch.cat([note_emb[:, note_index],
+                        beat_emb[torch.arange(len(beat_index)), beat_index],
+                        measure_emb[torch.arange(len(measure_index)), measure_index],
+                        prev_out,
+                        perf_emb
+                        ], dim=-1).unsqueeze(1)
 
 
 class HanMeasNoteDecoder(HanDecoder):

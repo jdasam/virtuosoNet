@@ -24,8 +24,7 @@ def main():
     print(f"Experiment {name}")
 
     device = utils.get_device(args)
-    criterion = utils.make_criterion_func(config.train_params.loss_type)
-
+    criterion = utils.make_criterion_func(args.loss_type)
 
     if args.world_size > 1:
         if device != "cuda" and args.rank == 0:

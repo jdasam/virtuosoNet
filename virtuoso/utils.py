@@ -10,6 +10,12 @@ from pathlib import Path
 from torch.nn.utils.rnn import pad_sequence
 
 
+class ModelSettingHandler:
+  def __init__(self, args):
+    self.args = args
+  
+
+
 def handle_args(args):
   if "isgn" not in args.model_code:
     args.intermediate_loss = False
@@ -17,12 +23,16 @@ def handle_args(args):
   if args.yml_path is not None:
     config = read_model_setting(args.yml_path)
     net_param = config.nn_params
+    net_param.input_size = get_input_size_from_training_data(args)
   else:
     net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
     args.yml_path = list(Path(args.checkpoint).parent.glob('*.yml'))[0]
     config = read_model_setting(args.yml_path)
   args.graph_keys = net_param.graph_keys
-  args.meas_note = net_param.meas_note
+  if hasattr(net_param, 'meas_note'):
+    args.meas_note = net_param.meas_note
+  else:
+    args.meas_note = False
   return args, net_param, config
 
 def get_device(args):
@@ -55,18 +65,15 @@ def load_weight(model, checkpoint_path):
             .format(checkpoint_path, checkpoint['epoch']))
     return model
 
-# def note_tempo_infos_to_beat(y, beat_numbers, index=0):
-#     beat_tempos = []
-#     num_notes = y.size(1)
-#     prev_beat = -1
-#     for i in range(num_notes):
-#         cur_beat = beat_numbers[i]
-#         if cur_beat > prev_beat:
-#             beat_tempos.append(y[0,i,index])
-#             prev_beat = cur_beat
-#     num_beats = len(beat_tempos)
-#     beat_tempos = torch.stack(beat_tempos).view(1,num_beats,-1)
-#     return beat_tempos
+def get_sample_data_from_args(args):
+  data_dir = Path(args.data_path)
+  data_sample_path = next((data_dir/'train').glob('*.dat'))
+  data_sample = load_dat(data_sample_path)
+  return data_sample
+
+def get_input_size_from_training_data(args):
+  data_sample = get_sample_data_from_args(args)
+  return data_sample['input_data'].shape[-1]
 
 def make_criterion_func(loss_type):
     if loss_type == 'MSE':

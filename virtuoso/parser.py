@@ -133,7 +133,7 @@ def get_parser():
                         type=float,
                         default=15e3
                         ) 
-    parser.add_argument("-loss", "--trainingLoss", type=str,
+    parser.add_argument("-loss", "--loss_type", type=str,
                         default='MSE', help='type of training loss')
     
     # environment options
@@ -221,6 +221,9 @@ def get_name(parser, args):
         "num_workers",
         "pin_memory",
         "make_log",
+        "graph_keys",
+        "data_path",
+        "emotion_data_path"
     ])
     parts = []
     name_args = dict(args.__dict__)
