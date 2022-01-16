@@ -494,8 +494,8 @@ class HanEncoder(nn.Module):
 
         self.note_fc = nn.Sequential(
             nn.Linear(net_params.input_size, net_params.note.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
+            # nn.Dropout(net_params.drop_out),
+            # nn.ReLU(),
         )
         self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
