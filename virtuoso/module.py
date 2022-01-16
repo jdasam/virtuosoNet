@@ -174,18 +174,18 @@ class GatedGraphX(nn.Module):
 
       is_padded_note = input.sum(-1)==0
       for i in range(iteration):        
-        if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
+        # if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
           # splitted edge matrix
-          hidden_split = utils.split_note_input_to_graph_batch(hidden, edge_matrix) # N x S x L x C
-          # Batch dimension order: Performance Batch / Graph Batch / Graph Type
-          edge_matrix_3d = edge_matrix.view(n_batch * n_slice * self.num_type, n_note_per_slice, n_note_per_slice)
-          hidden_split_3d_edge_repeated = hidden_split.unsqueeze(2).repeat(1,1,self.num_type,1,1).view(n_batch * n_slice * self.num_type, edge_matrix.shape[-1],hidden.shape[-1])
-          activation_split = torch.bmm(edge_matrix_3d.transpose(1,2), hidden_split_3d_edge_repeated)
-          # activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2]))
-          activation_split = activation_split.view(n_batch, n_slice, self.num_type, n_note_per_slice, hidden.shape[-1])
-          activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
-        else:
-          activation = torch.matmul(edge_matrix.transpose(1,2), hidden)
+        hidden_split = utils.split_note_input_to_graph_batch(hidden, edge_matrix) # N x S x L x C
+        # Batch dimension order: Performance Batch / Graph Batch / Graph Type
+        edge_matrix_3d = edge_matrix.view(n_batch * n_slice * self.num_type, n_note_per_slice, n_note_per_slice)
+        hidden_split_3d_edge_repeated = hidden_split.unsqueeze(2).repeat(1,1,self.num_type,1,1).view(n_batch * n_slice * self.num_type, edge_matrix.shape[-1],hidden.shape[-1])
+        activation_split = torch.bmm(edge_matrix_3d.transpose(1,2), hidden_split_3d_edge_repeated)
+        # activation_split = torch.bmm(edge_matrix.repeat(input.shape[0], 1, 1).transpose(1,2), hidden_split.repeat(1,self.wz_wr_wh.shape[0],1).view(-1,edge_matrix.shape[1],hidden.shape[2]))
+        activation_split = activation_split.view(n_batch, n_slice, self.num_type, n_note_per_slice, hidden.shape[-1])
+        activation = combine_splitted_graph_output_with_several_edges(activation_split, hidden, self.num_type)
+        # else:
+        #   activation = torch.matmul(edge_matrix.transpose(1,2), hidden)
         activation += self.ba
         activation_3d = activation.view(n_batch * self.num_type, n_notes, hidden.shape[-1])
         activation_wzrh = torch.bmm(activation_3d, self.wz_wr_wh.repeat(n_batch, 1, 1))
