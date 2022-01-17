@@ -692,11 +692,11 @@ class HanMeasNoteDecoder(HanDecoder):
 
         self.style_vector_expandor = nn.Sequential(
             nn.Linear(net_params.encoded_vector_size, net_params.encoder.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU()
+            # nn.Dropout(net_params.drop_out),
+            # nn.ReLU()
         )
         self.measure_out_lstm = nn.LSTM(net_params.measure.size * 2 + net_params.encoder.size + 2 + 8, net_params.measure.size, batch_first=True)
-        self.measure_out_fc =  nn.Linear(net_params.measure.size , 2)
+        self.measure_out_fc = nn.Linear(net_params.measure.size , 2)
 
         self.beat_tempo_forward = nn.LSTM(
                 (net_params.beat.size + net_params.measure.size) * 2 + net_params.output_size + net_params.encoder.size + 2, net_params.beat.size,
