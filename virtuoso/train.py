@@ -177,7 +177,7 @@ def train(args,
   optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
   logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name, args.make_log)
   shutil.copy(args.yml_path, args.checkpoints_dir/exp_name)
-  loss_calculator = LossCalculator(criterion, args, logger)
+  loss_calculator = LossCalculator(criterion, args)
   
   model_parameters = filter(lambda p: p.requires_grad, model.parameters())
   params = sum([np.prod(p.size()) for p in model_parameters])

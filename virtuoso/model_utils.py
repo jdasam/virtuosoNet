@@ -155,7 +155,7 @@ def split_note_input_to_graph_batch(orig_input, batch_edges, overlap=200):
   '''
   num_graph_slice = batch_edges.shape[1]
   if num_graph_slice == 1:
-    return orig_input
+    return orig_input.unsqueeze(1)
   num_notes_per_slice = batch_edges.shape[-1]
   input_split = torch.zeros((orig_input.shape[0], 
                             num_graph_slice, 

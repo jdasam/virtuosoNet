@@ -15,8 +15,8 @@ class IsgnDecoder(nn.Module):
     
     self.style_vector_expandor = nn.Sequential(
         nn.Linear(net_params.encoded_vector_size, net_params.encoder.size),
-        nn.Dropout(net_params.drop_out),
-        nn.ReLU()
+        # nn.Dropout(net_params.drop_out),
+        # nn.ReLU()
     )
     self.initial_result_fc = nn.Sequential(
         nn.Linear(net_params.final.input
@@ -394,12 +394,13 @@ class IsgnBeatMeasDecoderX(IsgnBeatMeasDecoder):
     def __init__(self, net_params):        
         super(IsgnBeatMeasDecoderX, self).__init__(net_params)
         self.final_graph = GatedGraphX(net_params.final.input - net_params.final.margin, net_params.final.margin, net_params.num_edge_types)
-        self.fc = nn.Sequential(
-            nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.final.margin),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-            nn.Linear(net_params.final.margin, net_params.output_size-1),
-        )
+        # self.fc = nn.Sequential(
+        #     nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.final.margin),
+        #     nn.Dropout(net_params.drop_out),
+        #     nn.ReLU(),
+        #     nn.Linear(net_params.final.margin, net_params.output_size-1),
+        # )
+        self.fc = nn.Linear(net_params.final.margin + net_params.time_reg.size * 2, net_params.output_size-1)
 
     def run_note_level_decoder(self, out_with_result, edges, beat_numbers, beat_tempo_vel_broadcasted, total_iterated_output):
         out_with_result = out_with_result[:,:,:-self.final_graph_margin_size]

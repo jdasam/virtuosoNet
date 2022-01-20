@@ -176,6 +176,7 @@ class GatedGraphX(nn.Module):
       for i in range(iteration):        
         # if edge_matrix.shape[0] != self.wz_wr_wh.shape[0]:
           # splitted edge matrix
+        # print(f'module_line179: hidden.shape = {hidden.shape}, edge.shape={edge_matrix.shape}')
         hidden_split = utils.split_note_input_to_graph_batch(hidden, edge_matrix) # N x S x L x C
         # Batch dimension order: Performance Batch / Graph Batch / Graph Type
         edge_matrix_3d = edge_matrix.view(n_batch * n_slice * self.num_type, n_note_per_slice, n_note_per_slice)
@@ -371,13 +372,13 @@ class LinearForZeroPadded(nn.Module):
     super().__init__()
     self.linear = nn.Linear(input_size, output_size)
     self.batch_norm = nn.BatchNorm1d(output_size)
-    self.activation_func = nn.ReLU()
+    # self.activation_func = nn.ReLU()
 
   def forward(self, x):
     is_zero_padded_note = x.sum(-1)==0
     out = self.linear(x)
     out = self.batch_norm(out.transpose(1,2)).transpose(1,2)
-    out = self.activation_func(out)
+    # out = self.activation_func(out)
     out_masked = out.clone()
     out_masked[is_zero_padded_note] = 0
     return out_masked

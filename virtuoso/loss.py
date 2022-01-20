@@ -5,9 +5,8 @@ from . import model_constants as const
 from .pyScoreParser.feature_utils import make_index_continuous
 
 class LossCalculator:
-  def __init__(self, criterion, args, logger):
+  def __init__(self, criterion, args):
     self.criterion = criterion
-    self.logger = logger
 
     self.delta = args.delta_loss
     self.delta_weight = args.delta_weight
