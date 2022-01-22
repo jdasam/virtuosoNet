@@ -4,145 +4,137 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net, run_hierarchy_lstm_with_pack
 from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 
+class PerformanceEncoder(nn.Module):
+  def __init__(self, net_params):
+    super().__init__()
+    self.performance_embedding_size = net_params.performance.size
+    self.encoder_size = net_params.encoder.size
+    self.encoded_vector_size = net_params.encoded_vector_size
+    self.encoder_input_size = net_params.encoder.input
+    self.encoder_layer_num = net_params.encoder.layer
+    self.num_attention_head = net_params.num_attention_head
+
+    self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+
+    self.performance_encoder = nn.LSTM(self.encoder_size * 2, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=True)
+    self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
+    self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+    self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
 
 
-class HanPerfEncoder(nn.Module):
+  def _get_note_hidden_states(self, perform_style_contracted, edges):
+    raise NotImplementedError
+
+  def _get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
+    perform_style_contracted = self.performance_contractor(perform_concat)
+    perform_style_graphed = self._get_note_hidden_states(perform_style_contracted, edges)
+    performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
+                                            measure_numbers, lower_is_note=True)
+    perform_style_encoded = run_hierarchy_lstm_with_pack(performance_measure_nodes, self.performance_encoder)
+    # perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
+    perform_style_vector = self.performance_final_attention(perform_style_encoded)
+    perform_z, perform_mu, perform_var = \
+        encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+    return perform_z, perform_mu, perform_var
+
+  def _expand_perf_feature(self, y):
+    is_padded = (y==0).all(dim=-1)
+    expanded_y = self.performance_embedding_layer(y)
+    expanded_y[is_padded] = 0
+    return expanded_y
+
+  def _masking_notes(self, perform_concat):
+    '''
+    perform_concat (torch.Tensor): N x T x C
+    out (torch.Tensor): N x T//2 x C
+    '''
+    return masking_half(perform_concat)
+
+  def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
+    measure_numbers = note_locations['measure']
+    total_note_cat = score_embedding['total_note_cat']
+
+    expanded_y = self._expand_perf_feature(y)
+    perform_concat = torch.cat((total_note_cat, expanded_y), 2)
+    perform_concat = self._masking_notes(perform_concat)
+    
+    perform_z, perform_mu, perform_var = self._get_perform_style_from_input(perform_concat, edges, measure_numbers)
+    if return_z:
+        return sample_multiple_z(perform_mu, perform_var, num_samples)
+    return perform_z, perform_mu, perform_var
+
+
+class HanPerfEncoder(PerformanceEncoder):
     def __init__(self, net_params) -> None:
-        super(HanPerfEncoder, self).__init__()
-        self.performance_embedding_size = net_params.performance.size
-        self.encoder_size = net_params.encoder.size
-        self.encoded_vector_size = net_params.encoded_vector_size
-        self.encoder_input_size = net_params.encoder.input
-        self.encoder_layer_num = net_params.encoder.layer
-        self.num_attention_head = net_params.num_attention_head
+      super(HanPerfEncoder, self).__init__(net_params)
+      self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
+      self.performance_embedding_layer = nn.Sequential(
+          nn.Linear(net_params.output_size, self.performance_embedding_size),
+          nn.Dropout(net_params.drop_out),
+          nn.ReLU(),
+      )
+      self.performance_contractor = nn.Sequential(
+          nn.Linear(self.encoder_input_size, self.encoder_size),
+          nn.Dropout(net_params.drop_out),
+          # nn.BatchNorm1d(self.encoder_size),
+          nn.ReLU()
+      )
 
-        self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
-        if self.encoder_size % self.num_attention_head == 0:
-            self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
-        else:
-            self.performance_measure_attention = ContextAttention(self.encoder_size * 2, self.encoder_size * 2)
-        self.performance_embedding_layer = nn.Sequential(
-            nn.Linear(net_params.output_size, self.performance_embedding_size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-        )
-        self.performance_contractor = nn.Sequential(
-            nn.Linear(self.encoder_input_size, self.encoder_size),
-            nn.Dropout(net_params.drop_out),
-            # nn.BatchNorm1d(self.encoder_size),
-            nn.ReLU()
-        )
-        self.performance_encoder = nn.LSTM(self.encoder_size * 2, self.encoder_size,  num_layers=self.encoder_layer_num, batch_first=True, bidirectional=True)
-        self.performance_final_attention = ContextAttention(self.encoder_size * 2, self.num_attention_head)
-        self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
-        self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+    def _get_note_hidden_states(self, perform_style_contracted, edges):
+      perform_note_encoded, _ = self.performance_note_encoder(perform_style_contracted)
+      raise perform_note_encoded
 
+class NonMaskingHanPerfEncoder(HanPerfEncoder):
+  def __init__(self, net_params) -> None:
+    super(NonMaskingHanPerfEncoder, self).__init__(net_params)
 
-    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
-        beat_numbers = note_locations['beat']
-        measure_numbers = note_locations['measure']
-        total_note_cat = score_embedding['total_note_cat']
-
-        expanded_y = self.performance_embedding_layer(y)
-        # perform_concat = torch.cat((note_out, beat_out_spanned, measure_out_spanned, expanded_y), 2)
-        perform_concat = torch.cat((total_note_cat, expanded_y), 2)
-        perform_concat = masking_half(perform_concat)
-        perform_contracted = self.performance_contractor(perform_concat)
-        perform_note_encoded, _ = self.performance_note_encoder(perform_contracted)
-
-        perform_measure = make_higher_node(perform_note_encoded, self.performance_measure_attention,
-                                                beat_numbers, measure_numbers, lower_is_note=True)
-        batch_measure_length = perform_measure.shape[1] - (perform_measure.sum(-1)==0).sum(dim=1)
-        perform_measure = pack_padded_sequence(perform_measure, batch_measure_length.cpu(), True, False )
-
-        perform_style_encoded, _ = self.performance_encoder(perform_measure)
-        perform_style_encoded, _ = pad_packed_sequence(perform_style_encoded, True)
-        perform_style_vector = self.performance_final_attention(perform_style_encoded)
-        perform_z, perform_mu, perform_var = \
-            encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
-        if return_z:
-            return sample_multiple_z(perform_mu, perform_var, num_samples)
-        return perform_z, perform_mu, perform_var
+  def _masking_notes(self, perform_concat):
+    '''
+    This Encoder does not mask notes
+    '''
+    return perform_concat 
 
 
-class IsgnPerfEncoder(nn.Module):
-    def __init__(self, net_params):
-        super(IsgnPerfEncoder, self).__init__()
-        self.performance_contractor = nn.Sequential(
-            nn.Linear(net_params.encoder.input, net_params.encoder.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-        )
-        self.performance_embedding_layer = nn.Sequential(
-            nn.Linear(net_params.output_size, net_params.performance.size),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU(),
-        )
-        self.performance_graph_encoder = GatedGraph(net_params.encoder.size, net_params.num_edge_types)
-        self.performance_measure_attention = ContextAttention(net_params.encoder.size, net_params.num_attention_head)
+class IsgnPerfEncoder(PerformanceEncoder):
+  def __init__(self, net_params):
+    super(IsgnPerfEncoder, self).__init__(net_params)
+    self.performance_contractor = nn.Sequential(
+        nn.Linear(net_params.encoder.input, net_params.encoder.size * 2),
+        nn.Dropout(net_params.drop_out),
+        nn.ReLU(),
+    )
+    self.performance_embedding_layer = nn.Sequential(
+        nn.Linear(net_params.output_size, net_params.performance.size),
+        # nn.Dropout(net_params.drop_out),
+        # nn.ReLU(),
+    )
+    self.performance_graph_encoder = GatedGraph(net_params.encoder.size * 2, net_params.num_edge_types)
 
-        self.performance_encoder = nn.LSTM(net_params.encoder.size, net_params.encoder.size, num_layers=net_params.encoder.layer,
-                                           batch_first=True, bidirectional=True)
+  def _get_note_hidden_states(self, perform_style_contracted, edges):
+    return self.performance_graph_encoder(perform_style_contracted, edges)
 
-        self.performance_final_attention = ContextAttention(net_params.encoder.size * 2, net_params.num_attention_head)
-        self.performance_encoder_mean = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
-        self.performance_encoder_var = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
-
-    def get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
-        perform_style_contracted = self.performance_contractor(perform_concat)
-        perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, edges)
-        performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
-                                                measure_numbers, lower_is_note=True)
-        perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
-        perform_style_vector = self.performance_final_attention(perform_style_encoded)
-        perform_z, perform_mu, perform_var = \
-            encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
-        return perform_z, perform_mu, perform_var
-
-    def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
-        measure_numbers = note_locations['measure']
-        note_out = score_embedding['total_note_cat']
-
-        expanded_y = self.performance_embedding_layer(y)
-
-        perform_concat = torch.cat((note_out, expanded_y), 2)
-        perform_z, perform_mu, perform_var = self.get_perform_style_from_input(perform_concat, edges, measure_numbers)
-        if return_z:
-            return sample_multiple_z(perform_mu, perform_var, num_samples)
-        return perform_z, perform_mu, perform_var
-
+  def _masking_notes(self, perform_concat):
+    return perform_concat # TODO: Implement it with sliced graph
 
 class IsgnPerfEncoderX(IsgnPerfEncoder):
-    def __init__(self, net_params):
-        super(IsgnPerfEncoderX, self).__init__(net_params)
-        self.performance_graph_encoder = GatedGraphX(net_params.encoder.size, net_params.encoder.size, net_params.num_edge_types)
-        self.performance_measure_attention = ContextAttention(net_params.encoder.size, net_params.num_attention_head)
+  def __init__(self, net_params):
+      super(IsgnPerfEncoderX, self).__init__(net_params)
+      self.performance_contractor = nn.Sequential(
+        nn.Linear(net_params.encoder.input, net_params.encoder.size),
+        nn.Dropout(net_params.drop_out),
+        nn.ReLU(),
+      )
+      self.performance_graph_encoder = GatedGraphX(net_params.encoder.size, net_params.encoder.size * 2, net_params.num_edge_types)
 
-        self.performance_encoder = nn.LSTM(net_params.encoder.size, net_params.encoder.size, num_layers=net_params.encoder.layer,
-                                           batch_first=True, bidirectional=True)
-
-        self.performance_final_attention = ContextAttention(net_params.encoder.size * 2, net_params.num_attention_head)
-        self.performance_encoder_mean = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
-        self.performance_encoder_var = nn.Linear(net_params.encoder.size * 2, net_params.encoded_vector_size)
-
-    def get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
-        perform_style_contracted = self.performance_contractor(perform_concat)
-        hidden = torch.zeros_like(perform_style_contracted)
-        perform_style_graphed = self.performance_graph_encoder(perform_style_contracted, hidden, edges)
-        performance_measure_nodes = make_higher_node(perform_style_graphed, self.performance_measure_attention, measure_numbers,
-                                                measure_numbers, lower_is_note=True)
-        perform_style_encoded = run_hierarchy_lstm_with_pack(performance_measure_nodes, self.performance_encoder)
-        # perform_style_encoded, _ = self.performance_encoder(performance_measure_nodes)
-        perform_style_vector = self.performance_final_attention(perform_style_encoded)
-        perform_z, perform_mu, perform_var = \
-            encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
-        return perform_z, perform_mu, perform_var
+  def _get_note_hidden_states(self, perf_sty, edges):
+    zero_hidden = torch.zeros(perf_sty.shape[0], perf_sty.shape[1], perf_sty.shape[2]*2).to(perf_sty).device
+    return self.performance_graph_encoder(perf_sty, zero_hidden, edges)
 
 
 class IsgnPerfEncoderXBias(IsgnPerfEncoderX):
-    def __init__(self, net_params):
-        super(IsgnPerfEncoderXBias, self).__init__(net_params)
-        self.performance_graph_encoder = GatedGraphXBias(net_params.encoder.size, net_params.encoder.size, net_params.num_edge_types)
+  def __init__(self, net_params):
+    super(IsgnPerfEncoderXBias, self).__init__(net_params)
+    self.performance_graph_encoder = GatedGraphXBias(net_params.encoder.size, net_params.encoder.size, net_params.num_edge_types)
 
 
 
@@ -158,7 +150,8 @@ class IsgnPerfEncoderMasking(IsgnPerfEncoder):
         expanded_y = self.performance_embedding_layer(y)
         perform_concat = torch.cat((note_out.repeat(y.shape[0], 1, 1), expanded_y), 2)
 
-        perform_concat = masking_half(perform_concat)
+        if self.training():
+          perform_concat = masking_half(perform_concat)
 
         perform_z, perform_mu, perform_var = self.get_perform_style_from_input(perform_concat, edges, measure_numbers)
         if return_z:
