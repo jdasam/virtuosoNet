@@ -7,65 +7,61 @@ from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, 
 
 
 class IsgnEncoder(nn.Module):
-    def __init__(self, net_params):
-        super(IsgnEncoder, self).__init__() 
-        self.note_hidden_size = net_params.note.size
-        self.measure_hidden_size = net_params.measure.size
-        self.num_graph_iteration = net_params.graph_iteration
-        self.num_sequence_iteration = net_params.sequence_iteration
-        self.note_fc = nn.Sequential(
-            nn.Linear(net_params.input_size, self.note_hidden_size),
-            nn.Dropout(net_params.drop_out),
-            nn.Tanh(),
-        )
-        self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, net_params.num_edge_types, secondary_size=self.note_hidden_size)
-        self.graph_between = nn.Sequential(
-            nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
-            nn.Dropout(net_params.drop_out),
-            nn.ReLU()
-        )
-        self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, net_params.num_edge_types, secondary_size=self.note_hidden_size)
-        self.attention = ContextAttention(self.note_hidden_size * 2, net_params.num_attention_head)
-        self.lstm =  nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, net_params.measure.layer, batch_first=True, bidirectional=True)
-    
-    def run_iteration(self, notes_hidden, adjacency_matrix, note_locations):
-        measure_numbers = note_locations['measure']
-        for i in range(self.num_sequence_iteration):
-            notes_hidden = self.graph_1st(notes_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
-            notes_between = self.graph_between(notes_hidden)
-            notes_hidden_second = self.graph_2nd(notes_between, adjacency_matrix, iteration=self.num_graph_iteration)
-            notes_hidden_cat = torch.cat((notes_hidden[:,:, -self.note_hidden_size:],
-                                          notes_hidden_second[:,:, -self.note_hidden_size:]), -1)
+  def __init__(self, net_params):
+    super(IsgnEncoder, self).__init__() 
+    self.note_hidden_size = net_params.note.size
+    self.measure_hidden_size = net_params.measure.size
+    self.num_graph_iteration = net_params.graph_iteration
+    self.num_sequence_iteration = net_params.sequence_iteration
+    self.note_fc = LinearForZeroPadded(net_params.input_size, self.note_hidden_size)
+    self.graph_1st = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, net_params.num_edge_types, secondary_size=self.note_hidden_size)
+    # self.graph_between = nn.Sequential(
+    #     nn.Linear(self.note_hidden_size + self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),
+    #     nn.Dropout(net_params.drop_out),
+    #     nn.ReLU()
+    # )
+    self.graph_2nd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, net_params.num_edge_types, secondary_size=self.note_hidden_size)
+    self.attention = ContextAttention(self.note_hidden_size * 2, net_params.num_attention_head)
+    self.lstm =  nn.LSTM(self.note_hidden_size * 2, self.measure_hidden_size, net_params.measure.layer, batch_first=True, bidirectional=True)
+  
+  def run_iteration(self, notes_hidden, adjacency_matrix, note_locations):
+    measure_numbers = note_locations['measure']
+    for i in range(self.num_sequence_iteration):
+      notes_hidden = self.graph_1st(notes_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
+      # notes_between = self.graph_between(notes_hidden)
+      notes_hidden_second = self.graph_2nd(notes_hidden, adjacency_matrix, iteration=self.num_graph_iteration)
+      notes_hidden_cat = torch.cat((notes_hidden[:,:, -self.note_hidden_size:],
+                                    notes_hidden_second[:,:, -self.note_hidden_size:]), -1)
 
-            measure_nodes = make_higher_node(notes_hidden_cat, self.attention, measure_numbers, measure_numbers,
-                                                  lower_is_note=True)
-            measure_hidden, _ = self.lstm(measure_nodes)
-            measure_hidden_spanned = span_beat_to_note_num(measure_hidden, measure_numbers)
-            notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
+      measure_nodes = make_higher_node(notes_hidden_cat, self.attention, measure_numbers, measure_numbers,
+                                            lower_is_note=True)
+      measure_hidden = run_hierarchy_lstm_with_pack(measure_nodes, self.lstm)
+      measure_hidden_spanned = span_beat_to_note_num(measure_hidden, measure_numbers)
+      notes_hidden = torch.cat((measure_hidden_spanned, notes_hidden[:,:,-self.note_hidden_size:]),-1)
 
-        final_out = torch.cat((notes_hidden, notes_hidden_second[:,:, -self.note_hidden_size:]),-1)
-        return {'total_note_cat': final_out, 
-                'note': torch.cat([notes_hidden[:,:, -self.note_hidden_size:], notes_hidden_second[:,:,-self.note_hidden_size:]], dim=-1),
-                'beat': None,
-                'measure':measure_hidden, 
-                'beat_spanned':None, 
-                'measure_spanned': measure_hidden_spanned}
+    final_out = torch.cat((notes_hidden, notes_hidden_second[:,:, -self.note_hidden_size:]),-1)
+    return {'total_note_cat': final_out, 
+            'note': torch.cat([notes_hidden[:,:, -self.note_hidden_size:], notes_hidden_second[:,:,-self.note_hidden_size:]], dim=-1),
+            'beat': None,
+            'measure':measure_hidden, 
+            'beat_spanned':None, 
+            'measure_spanned': measure_hidden_spanned}
 
 
-    def forward(self, nodes, adjacency_matrix, note_locations):
-        notes_dense_hidden = self.note_fc(nodes)
-        initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.measure_hidden_size * 2)).to(nodes.device)
-        notes_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
+  def forward(self, nodes, adjacency_matrix, note_locations):
+      notes_dense_hidden = self.note_fc(nodes)
+      initial_measure = torch.zeros((notes_dense_hidden.size(0), notes_dense_hidden.size(1), self.measure_hidden_size * 2)).to(nodes.device)
+      notes_hidden = torch.cat((initial_measure, notes_dense_hidden), 2)
 
-        out_dict = self.run_iteration(notes_hidden, adjacency_matrix, note_locations)
-        return out_dict
-        # return final_out, measure_hidden
+      out_dict = self.run_iteration(notes_hidden, adjacency_matrix, note_locations)
+      return out_dict
+      # return final_out, measure_hidden
         
 
 
 class IsgnResEncoder(IsgnEncoder):
     def __init__(self, net_params):
-        super(IsgnResEncoder, self).__init__(IsgnResEncoder)
+        super(IsgnResEncoder, self).__init__(net_params)
         self.graph_3rd = GatedGraph(self.note_hidden_size + self.measure_hidden_size * 2, net_params.num_edge_types)
         self.measure_expander = nn.Sequential(
             nn.Linear(self.measure_hidden_size * 2, self.note_hidden_size + self.measure_hidden_size * 2),

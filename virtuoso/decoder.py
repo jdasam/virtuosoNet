@@ -163,11 +163,11 @@ class IsgnMeasNoteDecoder(IsgnDecoder):
         self.tempo_rnn = nn.LSTM(net_params.final.margin + net_params.output_size, net_params.time_reg.size,
                             num_layers=net_params.time_reg.layer, batch_first=True, bidirectional=True)
         
-    def init_measure_hidden(self, device):
-        return (torch.zeros(2*self.measure_out_lstm.num_layers, 1, self.measure_out_lstm.hidden_size).to(device), 
-                    torch.zeros(2*self.measure_out_lstm.num_layers, 1, self.measure_out_lstm.hidden_size).to(device))
+    def _init_measure_hidden(self, num_batch, device):
+        return (torch.zeros(2*self.measure_out_lstm.num_layers, num_batch, self.measure_out_lstm.hidden_size).to(device), 
+                    torch.zeros(2*self.measure_out_lstm.num_layers, num_batch, self.measure_out_lstm.hidden_size).to(device))
 
-    def concat_tempo_rnn_input(self, out_in_beat, margin_in_beat, res_info):
+    def _concat_tempo_rnn_input(self, out_in_beat, margin_in_beat, res_info):
         return torch.cat((out_in_beat, margin_in_beat), 2)
 
     def handle_perform_z(self, score_embedding, perf_embedding, edges, note_locations):
@@ -182,13 +182,14 @@ class IsgnMeasNoteDecoder(IsgnDecoder):
 
     def get_measure_level_output(self, score_embedding, perform_z_measure_spanned, res_info, note_locations):
         measure_out = score_embedding['measure']
+        num_batch = measure_out.shape[0]
         num_measures = measure_out.shape[1]
         measure_numbers = note_locations['measure']
 
         perform_z_measure_cat = torch.cat((perform_z_measure_spanned, measure_out, res_info), 2)
-        measure_hidden = self.init_measure_hidden(measure_out.device)
-        prev_out = torch.zeros(measure_out.shape[0], 1, 2).to(measure_out.device)
-        measure_tempo_vel = torch.zeros(measure_out.shape[0], num_measures, 2).to(measure_out.device)
+        measure_hidden = self._init_measure_hidden(num_batch, measure_out.device)
+        prev_out = torch.zeros(num_batch, 1, 2).to(measure_out.device)
+        measure_tempo_vel = torch.zeros(num_batch, num_measures, 2).to(measure_out.device)
   
         is_padded_measure = get_is_padded_for_sequence(measure_out)
 

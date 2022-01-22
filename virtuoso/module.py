@@ -112,7 +112,7 @@ class GatedGraphBasic(nn.Module):
 
   def _get_gate_value(self, hidden, activation_wz, activation_wr):
     input_uzr = torch.matmul(hidden, self.uz_ur)
-    input_uz, input_ur = torch.split(input_uzr, self.size, dim=-1)
+    input_uz, input_ur = torch.split(input_uzr, self.uz_ur.shape[1]//2, dim=-1)
     temp_z = torch.sigmoid(activation_wz+input_uz)
     temp_r = torch.sigmoid(activation_wr+input_ur)
 
@@ -155,19 +155,19 @@ class GatedGraph(GatedGraphBasic):
     '''
     assert len(edge_matrix.shape) == 5
 
-    is_padded_note = (hidden==0).sum(-1)
+    is_padded_note = (hidden==0).all(dim=-1)
 
     for i in range(iteration):
       # splitted edge matrix
       activation = self._get_activation(hidden, edge_matrix)
       activation_wzrh = self._get_weighted_activation(activation)
-      activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.size, dim=-1)
+      activation_wz, activation_wr, activation_wh = torch.split(activation_wzrh, self.secondary_size, dim=-1)
       temp_z, temp_r = self._get_gate_value(hidden, activation_wz, activation_wr)
 
       if self.secondary_size == self.size:
         temp_hidden = torch.tanh(
             activation_wh + torch.matmul(temp_r * hidden, self.uh))
-        hidden = (1 - temp_z) * input + temp_z * temp_hidden
+        hidden = (1 - temp_z) * hidden + temp_z * temp_hidden
       else:
         temp_hidden = torch.tanh(
             activation_wh + torch.matmul(temp_r * hidden[:,:,-self.secondary_size:], self.uh) )
@@ -401,6 +401,7 @@ class LinearForZeroPadded(nn.Module):
     out = self.linear(x)
     out = self.batch_norm(out.transpose(1,2)).transpose(1,2)
     # out = self.activation_func(out)
-    out_masked = out.clone()
-    out_masked[is_zero_padded_note] = 0
+    mask = torch.ones_like(out)
+    mask[is_zero_padded_note] = 0
+    out_masked = out * mask
     return out_masked
