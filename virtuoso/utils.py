@@ -26,7 +26,7 @@ def handle_args(args):
     net_param.input_size = get_input_size_from_training_data(args)
   else:
     net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
-    args.yml_path = list(Path(args.checkpoint).parent.glob('*.yml'))[0]
+    args.yml_path = next(Path(args.checkpoint).parent.glob('*.yml'))
     config = read_model_setting(args.yml_path)
   args.graph_keys = net_param.graph_keys
   if hasattr(net_param, 'meas_note'):
@@ -328,4 +328,4 @@ def get_is_padded_for_sequence(sequence):
   out (torch.BoolTensor): N x T
   '''
   assert sequence.dim() == 3
-  return sequence.sum(2) == 0
+  return (sequence == 0).all(dim=-1)
