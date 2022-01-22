@@ -254,7 +254,7 @@ def run_hierarchy_lstm_with_pack(sequence, lstm):
   sequence (torch.Tensor): zero-padded sequece of N x T x C
   lstm (torch.LSTM): LSTM layer
   '''
-  batch_note_length = sequence.shape[1] - (sequence.sum(-1)==0).sum(dim=1)
+  batch_note_length = sequence.shape[1] - (sequence==0).all(dim=-1).sum(-1)
   packed_sequence = pack_padded_sequence(sequence, batch_note_length.cpu(), True, False )
   hidden_out, _ = lstm(packed_sequence)
   hidden_out, _ = pad_packed_sequence(hidden_out, True)
