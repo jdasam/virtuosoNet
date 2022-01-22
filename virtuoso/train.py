@@ -110,25 +110,28 @@ def validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_
           save_model_output_as_midi(outputs[i:i+1], save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations)
     
 
-def get_batch_result(model, batch, loss_calculator, device, meas_note=True, is_valid=False):
-  if meas_note:
-    batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
-    outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-    if is_valid:
-      total_out_list['iter_out'] = total_out_list['iter_out'][-1:]
-    total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'beat':beat_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
-  else:
-    batch_x, batch_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
-    outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
-    if is_valid:
-      total_out_list = total_out_list[-1:] 
-    total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
+def get_batch_result(model, batch, loss_calculator, device, is_valid=False):
+  '''
+  '''
+  # if meas_note:
+  batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
+  outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+  if is_valid and 'iter_out' in total_out_list:
+    ### in validation, only calculate for last output
+    total_out_list['iter_out'] = total_out_list['iter_out'][-1:] 
+  total_loss, loss_dict = loss_calculator(outputs, {'note':batch_y, 'beat':beat_y, 'measure':meas_y}, total_out_list, note_locations, align_matched, pedal_status)
+  # else:
+  #   batch_x, batch_y, note_locations, align_matched, pedal_status, edges = utils.batch_to_device(batch, device)
+  #   outputs, perform_mu, perform_var, total_out_list = model(batch_x, batch_y, edges, note_locations)
+  #   if is_valid:
+  #     total_out_list = total_out_list[-1:] 
+  #   total_loss, loss_dict = loss_calculator(outputs, batch_y, total_out_list, note_locations, align_matched, pedal_status)
 
   return total_loss, loss_dict, perform_mu, perform_var
 
 def train_step(model, batch, optimizer, scheduler, loss_calculator, logger, device, args, iteration):
   start =time.perf_counter()
-  total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, batch, loss_calculator, device, args.meas_note)
+  total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, batch, loss_calculator, device)
   kld_weight = sigmoid((iteration - args.kld_sig) / (args.kld_sig/10)) * args.kld_max
   perform_kld = -0.5 * \
       th.mean(th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp(), dim=-1))
@@ -146,12 +149,12 @@ def train_step(model, batch, optimizer, scheduler, loss_calculator, logger, devi
     loss_dict = pack_train_log(loss_dict, total_loss.item(), optimizer.param_groups[0]['lr'], duration)
     wandb.log(loss_dict, step=iteration)
 
-def get_validation_loss(model, valid_loader, loss_calculator, device, is_meas_note):
+def get_validation_loss(model, valid_loader, loss_calculator, device):
   valid_loss = []
   valid_loss_dict = []
   with th.no_grad():
     for _, valid_batch in enumerate(valid_loader):
-      total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, valid_batch, loss_calculator, device, meas_note=is_meas_note, is_valid=True)
+      total_loss, loss_dict, perform_mu, perform_var = get_batch_result(model, valid_batch, loss_calculator, device, is_valid=True)
       perform_kld = -0.5 * \
           th.mean(th.sum(1 + perform_var - perform_mu.pow(2) - perform_var.exp(), dim=-1))
       loss_dict['kld'] = perform_kld
@@ -208,6 +211,7 @@ def train(args,
       train_step(model, batch, optimizer, scheduler, loss_calculator, logger, device, args, iteration)
       iteration += 1
       if args.multi_perf_compensation and iteration % args.iters_per_multi_perf == 0:
+        '''
         batch = next(iter(multi_perf_loader))
         batch_x, batch_y, note_locations, edges  = batch
         batch_x = batch_x.to(device)
@@ -226,10 +230,11 @@ def train(args,
             multi_perf_iter = 0
         if args.make_log:
             logger.log_multi_perf(loss.item(),loss_dict, grad_norm, iteration)
+        '''
 
       if iteration % args.iters_per_checkpoint == 0:
         model.eval()
-        valid_loss, valid_loss_dict = get_validation_loss(model, valid_loader, loss_calculator, device, args.meas_note)
+        valid_loss, valid_loss_dict = get_validation_loss(model, valid_loader, loss_calculator, device)
 
         if args.make_log:
           logger.log_validation(valid_loss, valid_loss_dict, model, iteration)

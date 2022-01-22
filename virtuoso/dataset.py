@@ -85,12 +85,12 @@ class ScorePerformDataset:
                 graphs = split_graph_to_batch(graphs, self.len_graph_slice, self.graph_margin)
         else:
             graphs = None
-        if self.meas_note:
-            meas_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
-            beat_y = torch.Tensor(data['beat_level_data'][batch_start:batch_end])
-            return [batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, articulation_loss_weight, graphs]
-        else:
-            return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
+
+        meas_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
+        beat_y = torch.Tensor(data['beat_level_data'][batch_start:batch_end])
+        return [batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, articulation_loss_weight, graphs]
+        # else:
+        #     return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
     def get_data_path(self):
         return [x for x in self.path.rglob("*.dat") if x.name != 'stat.dat']
@@ -237,50 +237,50 @@ def split_graph_to_batch(graphs, len_slice, len_margin):
   return graph_split
 
 class FeatureCollate:
-    def __call__(self, batch):
-        batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
-        batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
-        if len(batch[0]) == 6:
-          note_locations = {'beat': pad_sequence([sample[2]['beat'] for sample in batch], True).long(),
-                            'measure': pad_sequence([sample[2]['measure'] for sample in batch], True).long(),
-                            'section': pad_sequence([sample[2]['section'] for sample in batch], True).long(),
-                            'voice': pad_sequence([sample[2]['voice'] for sample in batch], True).long()
-                            }
-          align_matched = pad_sequence([sample[3] for sample in batch], batch_first=True)
-          pedal_status = pad_sequence([sample[4] for sample in batch], batch_first=True)
-          if batch[0][5] is not None:
-            edges = pad_sequence([sample[5] for sample in batch], batch_first=True) # TODO:
-          else:
-            edges = None
-          return (batch_x,
-                  batch_y,
-                  note_locations, 
-                  align_matched.unsqueeze(-1), 
-                  pedal_status.unsqueeze(-1), 
-                  edges
-                ) 
-        else:
-          batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
-          batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
-          beat_y = pad_sequence([sample[2] for sample in batch], batch_first=True)
-          meas_y = pad_sequence([sample[3] for sample in batch], batch_first=True)
-          note_locations = {'beat': pad_sequence([sample[4]['beat'] for sample in batch], True).long(),
-                            'measure': pad_sequence([sample[4]['measure'] for sample in batch], True).long(),
-                            'section': pad_sequence([sample[4]['section'] for sample in batch], True).long(),
-                            'voice': pad_sequence([sample[4]['voice'] for sample in batch], True).long()
-                            }
-          align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
-          pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
-          if batch[0][7] is not None:
-            edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:
-          else:
-            edges = None
-          return (batch_x,
-                  batch_y,
-                  beat_y, 
-                  meas_y,
-                  note_locations, 
-                  align_matched.unsqueeze(-1), 
-                  pedal_status.unsqueeze(-1), 
-                  edges
-                ) 
+  def __call__(self, batch):
+    # batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
+    # batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
+    # if len(batch[0]) == 6:
+    #   note_locations = {'beat': pad_sequence([sample[2]['beat'] for sample in batch], True).long(),
+    #                     'measure': pad_sequence([sample[2]['measure'] for sample in batch], True).long(),
+    #                     'section': pad_sequence([sample[2]['section'] for sample in batch], True).long(),
+    #                     'voice': pad_sequence([sample[2]['voice'] for sample in batch], True).long()
+    #                     }
+    #   align_matched = pad_sequence([sample[3] for sample in batch], batch_first=True)
+    #   pedal_status = pad_sequence([sample[4] for sample in batch], batch_first=True)
+    #   if batch[0][5] is not None:
+    #     edges = pad_sequence([sample[5] for sample in batch], batch_first=True) # TODO:
+    #   else:
+    #     edges = None
+    #   return (batch_x,
+    #           batch_y,
+    #           note_locations, 
+    #           align_matched.unsqueeze(-1), 
+    #           pedal_status.unsqueeze(-1), 
+    #           edges
+    #         ) 
+    # else:
+      batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
+      batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
+      beat_y = pad_sequence([sample[2] for sample in batch], batch_first=True)
+      meas_y = pad_sequence([sample[3] for sample in batch], batch_first=True)
+      note_locations = {'beat': pad_sequence([sample[4]['beat'] for sample in batch], True).long(),
+                        'measure': pad_sequence([sample[4]['measure'] for sample in batch], True).long(),
+                        'section': pad_sequence([sample[4]['section'] for sample in batch], True).long(),
+                        'voice': pad_sequence([sample[4]['voice'] for sample in batch], True).long()
+                        }
+      align_matched = pad_sequence([sample[5] for sample in batch], batch_first=True)
+      pedal_status = pad_sequence([sample[6] for sample in batch], batch_first=True)
+      if batch[0][7] is not None:
+        edges = pad_sequence([sample[7] for sample in batch], batch_first=True) # TODO:
+      else:
+        edges = None
+      return (batch_x,
+              batch_y,
+              beat_y, 
+              meas_y,
+              note_locations, 
+              align_matched.unsqueeze(-1), 
+              pedal_status.unsqueeze(-1), 
+              edges
+            ) 
