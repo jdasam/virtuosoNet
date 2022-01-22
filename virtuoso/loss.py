@@ -2,7 +2,6 @@ import torch
 from .utils import note_tempo_infos_to_beat, note_feature_to_beat_mean, note_location_numbers_to_padding_bool
 from .model_utils import span_beat_to_note_num
 from . import model_constants as const
-from .pyScoreParser.feature_utils import make_index_continuous
 
 class LossCalculator:
   def __init__(self, criterion, args):
@@ -43,7 +42,7 @@ class LossCalculator:
                         align_matched)
 
     if self.vel_balance:
-        vel_balance_loss = cal_velocity_balance_loss(out[:, :, self.vel_idx:self.dev_idx], 
+        vel_balance_loss = self._cal_velocity_balance_loss(out[:, :, self.vel_idx:self.dev_idx], 
                                         target[:, :, self.vel_idx:self.dev_idx], 
                                         note_locations, align_matched, self.criterion)
     else:
@@ -67,9 +66,6 @@ class LossCalculator:
     delta_loss = self.criterion(prediction_delta, target_delta, valid_del_beat_state)
     return delta_loss
   
-  def add_delta_loss_with_weight(self, loss, delta_loss):
-    return (loss + delta_loss * self.delta_weight)  # / (1 + self.delta_weight)
-
   def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
     use_mean = False
     if self.tempo_loss_in_note:
@@ -86,6 +82,9 @@ class LossCalculator:
     return tempo_loss, delta_loss
 
   def cal_measure_loss(self, meas_out, target, note_locations, loss_dict, hier_type='measure'):
+    '''
+    target (dict): {'note': note_y, 'beat':beat_y, 'measure': meas_y}
+    '''
     measure_target = target[hier_type]
     measure_numbers = note_locations[hier_type]
 
@@ -117,26 +116,18 @@ class LossCalculator:
     '''
     Loss for model that only predicts measure-level or beat-level output
     '''
+    
     if self.hier_meas:
-        hierarchy_numbers = note_locations['measure']
+      hier_type = 'measure'
     elif self.hier_beat:
-      hierarchy_numbers = note_locations['beat']
-    tempo_in_hierarchy = note_tempo_infos_to_beat(target, hierarchy_numbers, 0)
-    dynamics_in_hierarchy = note_tempo_infos_to_beat(target, hierarchy_numbers, 1)
-    tempo_loss = self.criterion(output[:, :, 0:1], tempo_in_hierarchy)
-    vel_loss = self.criterion(output[:, :, 1:2], dynamics_in_hierarchy)
-    if self.delta and output.shape[1] > 1:
-      vel_out_delta = output[:, 1:, 1:2] - output[:, :-1, 1:2]
-      vel_true_delta = dynamics_in_hierarchy[:,1:, :] - dynamics_in_hierarchy[:, :-1, :]
-      vel_loss += self.criterion(vel_out_delta, vel_true_delta) * self.delta_weight
-      vel_loss /= 1 + self.delta_weight
-    total_loss = tempo_loss + vel_loss
-    loss_dict = {'tempo': tempo_loss.item(), 'vel': vel_loss.item(), 'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
+      hier_type = 'beat'
+    loss_dict = {'dev': torch.zeros(1).item(), 'articul': torch.zeros(1).item(), 'pedal': torch.zeros(1).item()}
+    meas_tempo_loss, meas_vel_loss, tempo_delta_loss, vel_delta_loss = self.cal_measure_loss(output, target, note_locations, loss_dict, hier_type=hier_type)
+    total_loss = meas_tempo_loss + meas_vel_loss + tempo_delta_loss + vel_delta_loss
     return total_loss, loss_dict
 
-  def get_meas_note_loss(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
-    note_target = target['note']
-    if self.intermediate_loss:
+  def _get_note_level_loss(self, output, note_target, total_out_list, note_locations, align_matched, pedal_status):
+    if self.intermediate_loss and 'iter_out' in total_out_list:
       iterative_out_list = total_out_list['iter_out']
       total_loss = torch.zeros(1).to(output.device)
       for out in iterative_out_list:
@@ -145,17 +136,45 @@ class LossCalculator:
       total_loss /= len(iterative_out_list)
     else:
       total_loss, loss_dict = self.cal_loss_by_term(output, note_target, note_locations, align_matched, pedal_status)
+    return total_loss, loss_dict
+  
+  def get_meas_note_loss(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
+    total_loss, loss_dict = self._get_note_level_loss(output, target['note'], total_out_list, note_locations, align_matched, pedal_status)
     meas_tempo_loss, meas_vel_loss, tempo_delta_loss, vel_delta_loss = self.cal_measure_loss(total_out_list['meas_out'], target, note_locations, loss_dict)
     if 'beat_out' in total_out_list:
       _, beat_vel_loss, _, beat_vel_delta_loss = self.cal_measure_loss(total_out_list['beat_out'], target, note_locations, loss_dict, hier_type='beat')
     else:
       beat_vel_loss = torch.zeros_like(meas_vel_loss)
       beat_vel_delta_loss = torch.zeros_like(meas_vel_loss)
-    
     total_loss += (meas_tempo_loss + meas_vel_loss + tempo_delta_loss + vel_delta_loss + beat_vel_loss + beat_vel_delta_loss  ) / 2 * self.meas_loss_weight
     return total_loss, loss_dict
+  
+  def _cal_velocity_balance_loss(self, pred_vel, target_vel, note_locations, align_matched, criterion):
+    # filter matched notes only 
+    valid_notes_indices = (align_matched==1)[..., 0]
+    beat_numbers = torch.nn.utils.rnn.pad_sequence([ note_locations['beat'][i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
+    valid_pred = torch.nn.utils.rnn.pad_sequence([pred_vel[i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
+    valid_target = torch.nn.utils.rnn.pad_sequence([target_vel[i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
+
+    # Make valid_beat_numbers to continuous
+    continuous_beat_numbers = torch.stack([torch.unique_consecutive(beat_numbers[i], return_inverse=True)[1] for i in range(len(pred_vel))])
+    is_padded = (valid_pred[...,0]==0) * (valid_target[...,0]==0)
+    continuous_beat_numbers[is_padded]= 0 
+
+    beat_pred = note_feature_to_beat_mean(valid_pred, continuous_beat_numbers)
+    beat_target = note_feature_to_beat_mean(valid_target, continuous_beat_numbers)
+    beat_pred_in_note = span_beat_to_note_num(beat_pred, continuous_beat_numbers)
+    beat_target_in_note = span_beat_to_note_num(beat_target, continuous_beat_numbers)
+
+    loss = criterion(valid_pred - beat_pred_in_note, valid_target - beat_target_in_note, ~is_padded.unsqueeze(-1)) 
+    return loss 
 
   def __call__(self, output, target, total_out_list, note_locations, align_matched, pedal_status):
+    '''
+    outputs (torch.Tensor): Fine-level output of model (usually note-level if it is not hier_model)
+    target (dict): {'note': note_y, 'beat':beat_y, 'measure': meas_y}
+    total_out_list (dict): {'measure': measure_out, 'beat': beat_out, 'iter_out': [iter_0, iter_1, ...]}
+    '''
     if self.is_hier:
       total_loss, loss_dict = self.get_is_hier_loss(output, target, note_locations)
     elif self.meas_note:
@@ -168,14 +187,7 @@ class LossCalculator:
     #     else:
     #         return torch.zeros(1), torch.zeros(1), torch.zeros(1),  torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
     else:
-      if self.intermediate_loss:
-        total_loss = torch.zeros(1).to(output.device)
-        for out in total_out_list:
-          total_l, loss_dict = self.cal_loss_by_term(out, target, note_locations, align_matched, pedal_status)
-          total_loss += total_l
-        total_loss /= len(total_out_list)
-      else:
-        total_loss, loss_dict = self.cal_loss_by_term(output, target, note_locations, align_matched, pedal_status)
+      total_loss, loss_dict = self._get_note_level_loss(output, target['note'], total_out_list, note_locations, align_matched, pedal_status)
     return total_loss, loss_dict
 
 
@@ -199,25 +211,3 @@ def cal_multiple_perf_style_loss(perf_mu, perf_var, margin=2):
         'dist': mean_distance
     }
     return total_loss, loss_dict
-
-
-
-def cal_velocity_balance_loss(pred_vel, target_vel, note_locations, align_matched, criterion):
-  # filter matched notes only 
-  valid_notes_indices = (align_matched==1)[..., 0]
-  beat_numbers = torch.nn.utils.rnn.pad_sequence([ note_locations['beat'][i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
-  valid_pred = torch.nn.utils.rnn.pad_sequence([pred_vel[i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
-  valid_target = torch.nn.utils.rnn.pad_sequence([target_vel[i, valid_notes_indices[i]] for i in range(len(pred_vel))], True)
-
-  # Make valid_beat_numbers to continuous
-  continuous_beat_numbers = torch.stack([torch.unique_consecutive(beat_numbers[i], return_inverse=True)[1] for i in range(len(pred_vel))])
-  is_padded = (valid_pred[...,0]==0) * (valid_target[...,0]==0)
-  continuous_beat_numbers[is_padded]= 0 
-
-  beat_pred = note_feature_to_beat_mean(valid_pred, continuous_beat_numbers)
-  beat_target = note_feature_to_beat_mean(valid_target, continuous_beat_numbers)
-  beat_pred_in_note = span_beat_to_note_num(beat_pred, continuous_beat_numbers)
-  beat_target_in_note = span_beat_to_note_num(beat_target, continuous_beat_numbers)
-  
-  loss = criterion(valid_pred - beat_pred_in_note, valid_target - beat_target_in_note, ~is_padded.unsqueeze(-1)) 
-  return loss 
