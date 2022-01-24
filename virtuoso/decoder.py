@@ -725,6 +725,15 @@ class HanMeasNoteDecoder(HanDecoder):
       perf_emb[:, 0]
       ], dim=-1).unsqueeze(1)
     
+  def _concat_beat_rnn_input(self, batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
+    return torch.cat([
+      beat_emb[batch_ids, beat_index[batch_ids]],
+      measure_emb[batch_ids, measure_index[batch_ids]],
+      prev_tempo[batch_ids],
+      beat_results[batch_ids, beat_index[batch_ids]],
+      perf_emb[batch_ids, 0]
+      ], dim=-1).unsqueeze(1)
+
   def run_measure_level(self, score_embedding, perform_z, res_info, note_locations):
     # _, _, measure_out, _, _ = score_embedding
     measure_out = score_embedding['measure']
@@ -738,15 +747,6 @@ class HanMeasNoteDecoder(HanDecoder):
     measure_tempo_vel, measure_tempo_vel_broadcasted = self.measure_decoder(measure_cat, measure_numbers, is_padded_measure)
     return measure_tempo_vel, measure_tempo_vel_broadcasted
 
-
-  def _concat_beat_rnn_input(self, batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_tempo, beat_results, note_index, beat_index, measure_index):
-    return torch.cat([
-      beat_emb[batch_ids, beat_index[batch_ids]],
-      measure_emb[batch_ids, measure_index[batch_ids]],
-      prev_tempo[batch_ids],
-      beat_results[batch_ids, beat_index[batch_ids]],
-      perf_emb[batch_ids, 0]
-      ], dim=-1).unsqueeze(1)
 
 
   def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):

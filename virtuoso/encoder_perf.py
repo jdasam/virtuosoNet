@@ -38,6 +38,11 @@ class PerformanceEncoder(nn.Module):
     return perform_z, perform_mu, perform_var
 
   def _expand_perf_feature(self, y):
+    '''
+    Simply expand performance features to larger dimension
+
+    y (torch.Tensor): performance features (N x T x C)
+    '''
     is_padded = (y==0).all(dim=-1)
     expanded_y = self.performance_embedding_layer(y)
     expanded_y[is_padded] = 0
