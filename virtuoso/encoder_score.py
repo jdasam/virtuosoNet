@@ -487,12 +487,7 @@ class GcnEncoder(nn.Module):
 class HanEncoder(nn.Module):
     def __init__(self, net_params):
         super(HanEncoder, self).__init__()
-
-        self.note_fc = nn.Sequential(
-            nn.Linear(net_params.input_size, net_params.note.size),
-            # nn.Dropout(net_params.drop_out),
-            # nn.ReLU(),
-        )
+        self.note_fc = LinearForZeroPadded(net_params.input_size, self.note_hidden_size)
         self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
         self.voice_net = nn.LSTM(net_params.note.size, net_params.voice.size, net_params.voice.layer,
