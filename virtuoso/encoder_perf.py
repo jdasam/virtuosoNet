@@ -44,8 +44,13 @@ class PerformanceEncoder(nn.Module):
     y (torch.Tensor): performance features (N x T x C)
     '''
     is_padded = (y==0).all(dim=-1)
+
     expanded_y = self.performance_embedding_layer(y)
-    expanded_y[is_padded] = 0
+
+    mask = torch.ones_like(expanded_y)
+    mask[is_padded] = 0
+    expanded_y *= mask
+    # expanded_y[is_padded] = 0
     return expanded_y
 
   def _masking_notes(self, perform_concat):
