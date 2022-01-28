@@ -1,7 +1,7 @@
 nn_params:
-  score_encoder_name: IsgnOldEncoder
+  score_encoder_name: IsgnEncoder
   performance_encoder_name: IsgnPerfEncoder
-  residual_info_selector_name: TempoVecSelector
+  residual_info_selector_name: TempoVecMeasSelector
   performance_decoder_name: IsgnMeasNoteDecoder
   beat:
     input: 0
@@ -39,6 +39,7 @@ nn_params:
     layer: 2
     margin: 0
     size: 64
+  meas_note: true
   note:
     input: 0
     layer: 2
