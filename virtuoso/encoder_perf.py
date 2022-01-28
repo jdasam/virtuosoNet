@@ -27,6 +27,7 @@ class PerformanceEncoder(nn.Module):
 
   def _get_perform_style_from_input(self, perform_concat, edges, measure_numbers):
     perform_style_contracted = self.performance_contractor(perform_concat)
+    perform_style_contracted[(perform_concat==0).all(dim=-1)] = 0
     perform_style_note_hidden = self._get_note_hidden_states(perform_style_contracted, edges)
     performance_measure_nodes = make_higher_node(perform_style_note_hidden, self.performance_measure_attention, measure_numbers,
                                             measure_numbers, lower_is_note=True)
@@ -91,7 +92,8 @@ class HanPerfEncoder(PerformanceEncoder):
       )
 
     def _get_note_hidden_states(self, perform_style_contracted, edges):
-      perform_note_encoded, _ = self.performance_note_encoder(perform_style_contracted)
+      perform_note_encoded = run_hierarchy_lstm_with_pack(perform_style_contracted, self.performance_note_encoder)
+      # perform_note_encoded, _ = self.performance_note_encoder(perform_style_contracted)
       return perform_note_encoded
 
 class NonMaskingHanPerfEncoder(HanPerfEncoder):
