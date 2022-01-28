@@ -397,7 +397,7 @@ class LinearForZeroPadded(nn.Module):
     # self.activation_func = nn.ReLU()
 
   def forward(self, x):
-    is_zero_padded_note = x.sum(-1)==0
+    is_zero_padded_note = (x==0).all(dim=-1)
     out = self.linear(x)
     out = self.batch_norm(out.transpose(1,2)).transpose(1,2)
     # out = self.activation_func(out)
