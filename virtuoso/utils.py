@@ -17,9 +17,6 @@ class ModelSettingHandler:
 
 
 def handle_args(args):
-  if "isgn" not in args.model_code:
-    args.intermediate_loss = False
-
   if args.yml_path is not None:
     config = read_model_setting(args.yml_path)
     net_param = config.nn_params
@@ -28,6 +25,8 @@ def handle_args(args):
     net_param = torch.load(str(args.checkpoint), map_location='cpu')['network_params']
     args.yml_path = next(Path(args.checkpoint).parent.glob('*.yml'))
     config = read_model_setting(args.yml_path)
+  if 'isgn' not in net_param.performance_decoder_name.lower():
+    args.intermediate_loss = False
   args.graph_keys = net_param.graph_keys
   if hasattr(net_param, 'meas_note'):
     args.meas_note = net_param.meas_note

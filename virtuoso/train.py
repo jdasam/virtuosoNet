@@ -203,7 +203,7 @@ def train(args,
 
   # total_perform_z, abs_confusion, abs_accuracy, norm_confusion, norm_accuracy = validate_style_with_emotion_data(model, emotion_loader, device, out_dir, iteration, args.make_log)
   # validate_with_midi_generation(model, total_perform_z, valid_piece_list, out_dir, iteration, device, args.valid_xml_dir)
-
+  # th.autograd.set_detect_anomaly(True)
   for epoch in range(start_epoch, num_epochs):
     print('current training step is ', iteration)
     train_loader.dataset.update_slice_info()

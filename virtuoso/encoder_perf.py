@@ -83,14 +83,14 @@ class HanPerfEncoder(PerformanceEncoder):
       self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
       self.performance_embedding_layer = nn.Sequential(
           nn.Linear(net_params.output_size, self.performance_embedding_size),
-          nn.Dropout(net_params.drop_out),
-          nn.ReLU(),
+          # nn.Dropout(net_params.drop_out),
+          # nn.ReLU(),
       )
       self.performance_contractor = nn.Sequential(
           nn.Linear(self.encoder_input_size, self.encoder_size),
-          nn.Dropout(net_params.drop_out),
-          # nn.BatchNorm1d(self.encoder_size),
-          nn.ReLU()
+          # nn.Dropout(net_params.drop_out),
+          # # nn.BatchNorm1d(self.encoder_size),
+          # nn.ReLU()
       )
 
     def _get_note_hidden_states(self, perform_style_contracted, edges):
@@ -114,8 +114,8 @@ class IsgnPerfEncoder(PerformanceEncoder):
     super(IsgnPerfEncoder, self).__init__(net_params)
     self.performance_contractor = nn.Sequential(
         nn.Linear(net_params.encoder.input, net_params.encoder.size * 2),
-        nn.Dropout(net_params.drop_out),
-        nn.ReLU(),
+        # nn.Dropout(net_params.drop_out),
+        # nn.ReLU(),
     )
     self.performance_embedding_layer = nn.Sequential(
         nn.Linear(net_params.output_size, net_params.performance.size),
