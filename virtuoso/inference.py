@@ -11,7 +11,7 @@ from sklearn.cluster import KMeans
 from .constants import *
 from .pyScoreParser.data_class import ScoreData
 from .pyScoreParser.feature_extraction import ScoreExtractor
-from .pyScoreParser.data_for_training import convert_feature_to_VirtuosoNet_format
+from .pyScoreParser.data_for_training import FeatureConverter, convert_feature_to_VirtuosoNet_format
 from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
 from .pyScoreParser.xml_utils import xml_notes_to_midi
 from .pyScoreParser.performanceWorm import plot_performance_worm
@@ -173,8 +173,10 @@ def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, st
         input_features['qpm_primo'] = log(qpm_primo, 10)
     if 'note_location' not in input_features:
         input_features['note_location'] = feature_extractor.get_note_location(score)
-    input, _, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, input_keys=input_keys, output_keys=[], meas_keys=[], beat_keys=[])
-    input = torch.Tensor(input).unsqueeze(0).to(device)
+    feature_converter = FeatureConverter(stats, input_keys=input_keys, output_keys=[], beat_keys=[], meas_keys=[])
+    features = feature_converter(input_features)
+    # input, _, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, input_keys=input_keys, output_keys=[], meas_keys=[], beat_keys=[])
+    input = torch.Tensor(features['input']).unsqueeze(0).to(device)
     if graph_keys and len(graph_keys) > 0:
         edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, graph_keys)
         edges = split_graph_to_batch(edges, len_graph_slice ,graph_slice_margin).unsqueeze(0).to(device)

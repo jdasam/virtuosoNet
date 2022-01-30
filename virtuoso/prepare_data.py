@@ -56,23 +56,23 @@ def clean_emotion_set(emotion_data_dir):
   
   '''
   dir_path = Path(emotion_data_dir)
-  data_list = list(dir_path.rglob('*.mid.dat'))
+  data_list = list(dir_path.rglob('*.mid.pkl'))
   for pth in data_list:
     if 'E1' in pth.stem:
       for i in range(2,6):
-        other_emotion_path = pth.parent / (pth.stem.replace('E1', f'E{i}') +'.dat')
+        other_emotion_path = pth.parent / (pth.stem.replace('E1', f'E{i}') +'.pkl')
         if not other_emotion_path.exists():
           try:
             pth.unlink()
           except:
             continue
-  data_list = list(dir_path.rglob('*.mid.dat'))
+  data_list = list(dir_path.rglob('*.mid.pkl'))
   data_list.sort()
   for pth in data_list:
     if 'E1' in pth.stem:
       continue
     for i in range(2,6):
-      other_emotion_path = pth.parent / (pth.stem.replace(f'E{i}', 'E1') +'.dat')
+      other_emotion_path = pth.parent / (pth.stem.replace(f'E{i}', 'E1') +'.pkl')
       if not other_emotion_path.exists():
         try:
           pth.unlink()
@@ -96,5 +96,9 @@ if __name__ == "__main__":
   pair_set = dft.PairDataset(dataset, args.exclude_long_graces)
   pair_set.save_features_for_virtuosoNet(args.output_dir_path, input_key_list=vnet_input_keys)
   emotion_pair_set = dft.PairDataset(emotion_dataset, args.exclude_long_graces)
-  emotion_pair_set.feature_stats = load_dat(Path(args.output_dir_path)/'stat.dat')['stats']
+  emotion_pair_set.feature_stats = load_dat(Path(args.output_dir_path)/'stat.pkl')['stats']
   emotion_pair_set.save_features_for_virtuosoNet(args.emotion_output_dir_path, update_stats=False, input_key_list=vnet_input_keys)
+  
+  clean_emotion_set(args.emotion_output_dir_path)
+  len_emotion_dat = len(list(Path(args.emotion_output_dir_path).rglob('*.mid.pkl')))
+  assert len_emotion_dat % 5 == 0

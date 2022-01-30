@@ -18,7 +18,7 @@ class ScorePerformDataset:
             self.path = path
         else:
             self.path = path / type
-        self.stats = load_dat(path/"stat.dat")
+        self.stats = load_dat(path/"stat.pkl")
 
         self.data_paths = self.get_data_path()
         self.data = self.load_data()
@@ -44,7 +44,7 @@ class ScorePerformDataset:
     def update_slice_info(self):
         self.slice_info = []
         for i, data in enumerate(self.data):
-            data_size = len(data['input_data'])
+            data_size = len(data['input'])
             measure_numbers = data['note_location']['measure']
             if self.is_hier and self.hier_meas:
                 slice_indices = make_slice_with_same_measure_number(data_size, measure_numbers, measure_steps=self.len_slice)
@@ -61,15 +61,15 @@ class ScorePerformDataset:
     def data_to_formatted_tensor(self, data, sl_idx):
         batch_start, batch_end = sl_idx
         aug_key = random.randrange(-5, 7)
-        batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
+        batch_x = torch.Tensor(key_augmentation(data['input'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
         if self.in_hier:
             if self.hier_meas:
-                batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
+                batch_x = torch.cat((batch_x, torch.Tensor(data['meas'][batch_start:batch_end])), dim=-1)
         if self.is_hier:
             if self.hier_meas:
-                batch_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
+                batch_y = torch.Tensor(data['meas'][batch_start:batch_end])
         else:
-            batch_y = torch.Tensor(data['output_data'][batch_start:batch_end])
+            batch_y = torch.Tensor(data['output'][batch_start:batch_end])
         note_locations = {
             'beat': torch.Tensor(data['note_location']['beat'][batch_start:batch_end]).type(torch.int32),
             'measure': torch.Tensor(data['note_location']['measure'][batch_start:batch_end]).type(torch.int32),
@@ -86,14 +86,14 @@ class ScorePerformDataset:
         else:
             graphs = None
 
-        meas_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
-        beat_y = torch.Tensor(data['beat_level_data'][batch_start:batch_end])
+        meas_y = torch.Tensor(data['meas'][batch_start:batch_end])
+        beat_y = torch.Tensor(data['beat'][batch_start:batch_end])
         return [batch_x, batch_y, beat_y, meas_y, note_locations, align_matched, articulation_loss_weight, graphs]
         # else:
         #     return [batch_x, batch_y, note_locations, align_matched, articulation_loss_weight, graphs]
 
     def get_data_path(self):
-        return [x for x in self.path.rglob("*.dat") if x.name != 'stat.dat']
+        return [x for x in self.path.rglob("*.pkl") if x.name != 'stat.pkl']
     
     def load_data(self):
         return [load_dat(x) for x in self.data_paths]
@@ -108,7 +108,7 @@ class EmotionDataset(ScorePerformDataset):
         self.cross_valid_split = self.make_cross_validation_split()
 
     def get_data_path(self):
-        entire_list = list(self.path.rglob("*.dat"))
+        entire_list = list(self.path.rglob("*.pkl"))
         entire_list.sort()
         entire_list = [x for x in entire_list if 'mm_1-' in x.stem]
         return entire_list
@@ -116,7 +116,7 @@ class EmotionDataset(ScorePerformDataset):
     def update_slice_info(self):
         self.slice_info = []
         for i, data in enumerate(self.data):
-            data_size = len(data['input_data'])
+            data_size = len(data['input'])
             self.slice_info.append((i, (0,data_size)))
     
     def make_cross_validation_split(self):
@@ -144,7 +144,7 @@ class MultiplePerformSet(ScorePerformDataset):
         super(MultiplePerformSet, self).__init__(path, type, len_slice, len_graph_slice, graph_keys, hier_type)
 
     def get_data_path(self):
-        data_lists = list(self.path.glob("*.dat"))
+        data_lists = list(self.path.glob("*.pkl"))
         return filter_performs_by_num_perf_by_piece(data_lists, min_perf=self.min_perf)
 
     def load_data(self):
@@ -154,7 +154,7 @@ class MultiplePerformSet(ScorePerformDataset):
         self.slice_info = []
         for i, piece in enumerate(self.data):
             data = piece[0]
-            data_size = len(data['input_data'])
+            data_size = len(data['input'])
             measure_numbers = data['note_location']['measure']
             if self.is_hier and self.hier_meas:
                 slice_indices = make_slice_with_same_measure_number(data_size, measure_numbers, measure_steps=self.len_slice)
@@ -172,15 +172,15 @@ class MultiplePerformSet(ScorePerformDataset):
         total_batch_x = []
         total_batch_y = []
         for data in selected_piece:
-            batch_x = torch.Tensor(key_augmentation(data['input_data'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
+            batch_x = torch.Tensor(key_augmentation(data['input'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
             if self.in_hier:
                 if self.hier_meas:
-                    batch_x = torch.cat((batch_x, torch.Tensor(data['meas_level_data'][batch_start:batch_end])), dim=-1)
+                    batch_x = torch.cat((batch_x, torch.Tensor(data['meas'][batch_start:batch_end])), dim=-1)
             if self.is_hier:
                 if self.hier_meas:
-                    batch_y = torch.Tensor(data['meas_level_data'][batch_start:batch_end])
+                    batch_y = torch.Tensor(data['meas'][batch_start:batch_end])
             else:
-                batch_y = torch.Tensor(data['output_data'][batch_start:batch_end])
+                batch_y = torch.Tensor(data['output'][batch_start:batch_end])
             total_batch_x.append(batch_x)
             total_batch_y.append(batch_y)
         data = selected_piece[0]

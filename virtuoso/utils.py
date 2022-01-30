@@ -66,7 +66,7 @@ def load_weight(model, checkpoint_path):
 
 def get_sample_data_from_args(args):
   data_dir = Path(args.data_path)
-  data_sample_path = next((data_dir/'train').glob('*.dat'))
+  data_sample_path = next((data_dir/'train').glob('*.pkl'))
   data_sample = load_dat(data_sample_path)
   return data_sample
 
