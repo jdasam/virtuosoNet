@@ -49,7 +49,7 @@ def load_parameters(file_name):
         net_params = u.load()
         return net_params
 
-
+''' DEPRECATED
 def initialize_model_parameters_by_code(model_code):
     net_param = NetParams()
     net_param.input_size = cons.SCORE_INPUT
@@ -150,3 +150,4 @@ def initialize_model_parameters_by_code(model_code):
 
     return net_param
 
+'''

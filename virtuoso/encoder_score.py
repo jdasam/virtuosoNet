@@ -575,7 +575,17 @@ class HanEncoder(nn.Module):
         norm_beat_weights = (beat_weights-beat_weights_mean)/beat_weights_std
         return {'note':norm_weights.permute(1,0).cpu().numpy(), 'beat':norm_beat_weights.permute(1,0).cpu().numpy()}
 
-    
+
+class LSTMEncoder(nn.Module):
+  def __init__(self, net_params):
+    super().__init__()
+    self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+
+  def forward(self, x, edges, note_locations):
+    x, _ = self.lstm(x)
+    x, _ = pad_packed_sequence(x, True)
+    return {'note': x, 'total_note_cat': x}
+
 
 class HanGraphEncoder(HanEncoder):
     def __init__(self, net_params):

@@ -70,8 +70,46 @@ class AutoregressiveDecoder(nn.Module):
     if is_padded_element is not None:
       measure_tempo_vel[is_padded_element] = 0
     measure_tempo_vel_broadcasted = span_beat_to_note_num(measure_tempo_vel, hier_numbers)
-
     return measure_tempo_vel, measure_tempo_vel_broadcasted
+
+
+class BaselineDecoder(nn.Module):
+  def __init__(self, net_param):
+    super().__init__()
+
+    self.output_size = net_param.output_size
+
+    self.rnn = nn.LSTM(net_param.final.input, net_param.final.size, num_layers=net_param.final.layer, batch_first=True, bidirectional=False, dropout=net_param.drop_out)
+    self.fc = nn.Linear(net_param.final.size, net_param.output_size)
+    self.performance_expandor = nn.Linear(net_param.encoded_vector_size, net_param.encoder.size)
+  
+  def _init_hidden(self, num_batch):
+    device = next(self.rnn.parameters()).device
+    return (torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device), 
+            torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device))
+
+  def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
+    '''
+    hier_numbers: note_locations of desired output
+    '''
+    note_embedding = score_embedding['note']
+    num_notes = note_embedding.shape[1]
+    num_batch = note_embedding.shape[0]
+
+    perf_embedding_expanded = self.performance_expandor(perf_embedding).unsqueeze(1).repeat(1,num_notes,1)
+
+    concat_input = torch.cat([note_embedding, perf_embedding_expanded], dim=-1)
+    hidden_states = self._init_hidden(num_batch)
+    prev_out = torch.zeros(num_batch, 1, self.output_size).to(concat_input.device)
+    total_output = torch.zeros(num_batch, num_notes, self.output_size).to(concat_input.device)
+
+    for i in range(num_notes):
+      cur_input = torch.cat([concat_input[:,i:i+1,:], prev_out], dim=-1)
+      cur_tempo_vel, hidden_states = self.rnn(cur_input, hidden_states)
+      total_output[:,i:i+1,:] = self.fc(cur_tempo_vel)
+      prev_out = total_output[:,i:i+1,:]
+    
+    return total_output, []
 
 class IsgnDecoder(nn.Module):
   '''
