@@ -11,7 +11,7 @@ from sklearn.cluster import KMeans
 from .constants import *
 from .pyScoreParser.data_class import ScoreData
 from .pyScoreParser.feature_extraction import ScoreExtractor
-from .pyScoreParser.data_for_training import FeatureConverter, convert_feature_to_VirtuosoNet_format
+from .pyScoreParser.data_for_training import FeatureConverter
 from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
 from .pyScoreParser.xml_utils import xml_notes_to_midi
 from .pyScoreParser.performanceWorm import plot_performance_worm

@@ -258,7 +258,7 @@ class FeatureConverter:
     if hasattr(self, 'dim'):
       dimension = self.dim[key_type]
     else:
-      dimension = self._cal_dimension(datas, self.keys[key_type])
+      dimension, _ = self._cal_dimension(datas, self.keys[key_type])
     array = np.zeros((feature_data['num_notes'], dimension))
     current_idx = 0
     for value in datas:

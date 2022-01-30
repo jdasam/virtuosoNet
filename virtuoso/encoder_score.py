@@ -583,7 +583,8 @@ class LSTMEncoder(nn.Module):
 
   def forward(self, x, edges, note_locations):
     x, _ = self.lstm(x)
-    x, _ = pad_packed_sequence(x, True)
+    if isinstance(x, torch.nn.utils.rnn.PackedSequence):
+      x, _ = pad_packed_sequence(x, True)
     return {'note': x, 'total_note_cat': x}
 
 
