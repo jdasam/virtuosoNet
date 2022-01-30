@@ -4,7 +4,7 @@ import math
 
 # from .pyScoreParser import xml_matching
 from pathlib import Path
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_sequence
 from collections import Counter, OrderedDict
 from .utils import load_dat
 from .data_process import make_slicing_indexes_by_measure, make_slice_with_same_measure_number, key_augmentation
@@ -14,11 +14,13 @@ class ScorePerformDataset:
   def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[]):
     # type = one of ['train', 'valid', 'test', 'entire']
     path = Path(path)
+    self.type = type
     if type == 'entire':
-        self.path = path
+      self.path = path
     else:
-        self.path = path / type
+      self.path = path / type
     self.stats = load_dat(path/"stat.pkl")
+    self.key_augmentor = KeyAugmentor(self.stats)
 
     self.data_paths = self.get_data_path()
     self.data = self.load_data()
@@ -60,8 +62,11 @@ class ScorePerformDataset:
 
   def data_to_formatted_tensor(self, data, sl_idx):
     batch_start, batch_end = sl_idx
-    aug_key = random.randrange(-5, 7)
-    batch_x = torch.Tensor(key_augmentation(data['input'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
+    batch_x = torch.Tensor(data['input'][batch_start:batch_end])
+    if self.type == 'train':
+      aug_key = random.randrange(-5, 7)
+      batch_x = self.key_augmentor(batch_x, aug_key)
+      # batch_x = torch.Tensor(key_augmentation(data['input'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
     if self.in_hier:
       if self.hier_meas:
         batch_x = torch.cat((batch_x, torch.Tensor(data['meas'][batch_start:batch_end])), dim=-1)
@@ -100,6 +105,60 @@ class ScorePerformDataset:
 
   def __len__(self):
     return len(self.slice_info)
+
+
+class KeyAugmentor:
+  def __init__(self, stat_dict):
+    self.stat = stat_dict
+  
+  def _augment_continuous_MIDI_pitch(self, input_tensor, key_shift):
+    '''
+    input_tensor (torch.Tensor)
+    '''
+    output = torch.clone(input_tensor)
+    pitch_std = self.stat['stats']["midi_pitch"]["stds"]
+    midi_pitch_idx = self.stat['key_to_dim']['input']["midi_pitch"][0]
+    output[:, midi_pitch_idx] = input_tensor[:, midi_pitch_idx] + key_shift/pitch_std
+    return output
+
+  def _augment_pitch_vec(self, input_tensor, key_shift):
+    '''
+    input_tensor (torch.Tensor)
+    pitch_vec: 12-dim one-hot vector of pitch class + octave
+    '''
+
+    output = torch.clone(input_tensor)
+
+    vec_start_id, vec_end_id  = self.stat['key_to_dim']['input']['pitch']
+    original_pitch = input_tensor[:, vec_start_id:vec_end_id]
+    shifted_pitch = torch.zeros_like(original_pitch)
+    if key_shift > 0:
+      shifted_pitch[:, 1+key_shift:] = original_pitch[:, 1:-key_shift]
+      shifted_pitch[:, 1:1+key_shift] = original_pitch[:, -key_shift:]
+      shifted_pitch[torch.sum(original_pitch[:,-key_shift:], dim=1)==1, 0] += 0.25
+    else:
+      shifted_pitch[:, 1:key_shift] = original_pitch[:,1-key_shift:]
+      shifted_pitch[:, key_shift:] = original_pitch[:,1:1-key_shift]
+      shifted_pitch[torch.sum(original_pitch[:,1:1-key_shift], dim=1)==1, 0] += 0.25
+    
+    output[:, vec_start_id:vec_end_id] = shifted_pitch
+    return output
+
+  def _augment_pitch_categorical_value(self, input_tensor, key_shift):
+    output = torch.clone(input_tensor)
+    output[:, self.stat['key_to_dim']['input']['midi_pitch_unnorm'][0]] += key_shift
+    return output
+
+  def __call__(self, input_tensor, key_shift):
+    if key_shift == 0:
+      return input_tensor
+    output = self._augment_continuous_MIDI_pitch(input_tensor, key_shift)
+    output = self._augment_pitch_categorical_value(output, key_shift)
+    output = self._augment_pitch_vec(output, key_shift)
+    return output
+
+
+
 
 class EmotionDataset(ScorePerformDataset):
   def __init__(self, path, type, len_slice, len_graph_slice, graph_keys, hier_type=[]):
@@ -260,7 +319,7 @@ class FeatureCollate:
     #           edges
     #         ) 
     # else:
-      batch_x = pad_sequence([sample[0] for sample in batch], batch_first=True)
+      batch_x = pack_sequence([sample[0] for sample in batch], enforce_sorted=False)
       batch_y = pad_sequence([sample[1] for sample in batch], batch_first=True)
       beat_y = pad_sequence([sample[2] for sample in batch], batch_first=True)
       meas_y = pad_sequence([sample[3] for sample in batch], batch_first=True)
