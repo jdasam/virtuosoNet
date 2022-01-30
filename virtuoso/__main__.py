@@ -19,7 +19,7 @@ def main():
     torch.manual_seed(args.th_seed)
     # random.seed(0)
 
-    args, net_param, config = utils.handle_args(args)
+    args, net_param, data_stats = utils.handle_args(args)
     name = get_name(parser, args)  + "_" + datetime.now().strftime('%y%m%d-%H%M%S')
     print(f"Experiment {name}")
 
@@ -36,7 +36,7 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
-    model = make_model(net_param)
+    model = make_model(net_param, data_stats)
     model = model.to(device)
 
     # if not (args.session_mode =="train" and args.resume_training):

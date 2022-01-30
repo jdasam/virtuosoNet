@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
+from virtuoso import note_embedder
+
 from . import model_constants as cons
 from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from . import model_utils as utils
@@ -12,6 +14,7 @@ from . import encoder_score as encs
 from . import encoder_perf as encp
 from . import decoder as dec
 from . import residual_selector as res
+from . import note_embedder as nemb
 
 # VOICE_IDX = 11
 # PITCH_IDX = 13
@@ -21,11 +24,12 @@ LEN_DYNAMICS_VEC = 4
 TEMPO_PRIMO_IDX = -2
 NUM_VOICE_FEED_PARAM = 2
 
-def make_model(net_param):
+def make_model(net_param, data_stats):
   model = VirtuosoNet()
+  model.note_embedder = getattr(nemb, net_param.note_embedder_name)(net_param, data_stats)
   model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
   model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
-  model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)()
+  model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)(data_stats)
   model.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
   model.network_params = net_param
   return model
@@ -54,7 +58,8 @@ class VirtuosoNet(nn.Module):
       return performance_embedding
 
     def forward(self, x, y, edges, note_locations, initial_z=None):
-        score_embedding = self.score_encoder(x, edges, note_locations)
+        x_embedded = self.note_embedder(x)
+        score_embedding = self.score_encoder(x_embedded, edges, note_locations)
         if initial_z is None:
             performance_embedding, perform_mu, perform_var = self.performance_encoder(score_embedding, y, edges, note_locations, return_z=False)
         else: 

@@ -27,12 +27,20 @@ def handle_args(args):
     config = read_model_setting(args.yml_path)
   if 'isgn' not in net_param.performance_decoder_name.lower():
     args.intermediate_loss = False
+  if 'baseline' in net_param.performance_decoder_name.lower():
+    args.tempo_loss_in_note = True
   args.graph_keys = net_param.graph_keys
   if hasattr(net_param, 'meas_note'):
     args.meas_note = net_param.meas_note
   else:
     args.meas_note = False
-  return args, net_param, config
+
+  if args.session_mode == 'train':
+    data_stats = load_dat(Path(args.data_path)/"stat.pkl")
+  else:
+    data_stats = torch.load(str(args.checkpoint), map_location='cpu')['stats']
+
+  return args, net_param, data_stats
 
 def get_device(args):
   if args.device is None:
@@ -72,7 +80,7 @@ def get_sample_data_from_args(args):
 
 def get_input_size_from_training_data(args):
   data_sample = get_sample_data_from_args(args)
-  return data_sample['input_data'].shape[-1]
+  return data_sample['input'].shape[-1]
 
 def make_criterion_func(loss_type):
     if loss_type == 'MSE':
