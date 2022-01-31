@@ -587,6 +587,18 @@ class LSTMEncoder(nn.Module):
       x, _ = pad_packed_sequence(x, True)
     return {'note': x, 'total_note_cat': x}
 
+class LSTMHighwayEncoder(LSTMEncoder):
+  def __init__(self, net_params):
+    super().__init__(net_params)
+
+  def forward(self, x, edges, note_locations):
+    x_out, _ = self.lstm(x)
+    if isinstance(x_out, torch.nn.utils.rnn.PackedSequence):
+      x_out, _ = pad_packed_sequence(x_out, True)
+      x, _ = pad_packed_sequence(x, True)
+    out = torch.cat([x_out, x], dim=-1)
+    return {'note': out, 'total_note_cat': out}
+
 
 class HanGraphEncoder(HanEncoder):
     def __init__(self, net_params):
