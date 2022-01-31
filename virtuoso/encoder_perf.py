@@ -4,6 +4,62 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from .model_utils import make_higher_node, reparameterize, masking_half, encode_with_net, run_hierarchy_lstm_with_pack
 from .module import GatedGraph, SimpleAttention, ContextAttention, GatedGraphX, GatedGraphXBias, GraphConvStack
 
+
+
+class BaselineEncoder(nn.Module):
+  def __init__(self, net_params):
+    super().__init__()
+    self.performance_embedding_size = net_params.performance.size
+    self.encoder_size = net_params.encoder.size
+    self.encoded_vector_size = net_params.encoded_vector_size
+    self.encoder_input_size = net_params.encoder.input
+    self.encoder_layer_num = net_params.encoder.layer
+    self.performance_note_encoder = nn.LSTM(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
+    
+    self.performance_embedding_layer = nn.Linear(net_params.output_size, self.performance_embedding_size)
+    self.performance_contractor =  nn.Linear(self.encoder_input_size, self.encoder_size)
+
+    self.performance_encoder_mean = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+    self.performance_encoder_var = nn.Linear(self.encoder_size * 2, self.encoded_vector_size)
+
+  def _expand_perf_feature(self, y):
+    '''
+    Simply expand performance features to larger dimension
+    y (torch.Tensor): performance features (N x T x C)
+    '''
+    is_padded = (y==0).all(dim=-1)
+
+    expanded_y = self.performance_embedding_layer(y)
+
+    mask = torch.ones_like(expanded_y)
+    mask[is_padded] = 0
+    expanded_y *= mask
+    # expanded_y[is_padded] = 0
+    return expanded_y
+
+  def _get_perform_style_from_input(self, perform_concat):
+    perform_style_contracted = self.performance_contractor(perform_concat)
+    mask = torch.ones_like(perform_style_contracted)
+    mask[(perform_concat==0).all(dim=-1)] = 0
+    perform_style_contracted *= mask
+
+    perform_style_encoded = run_hierarchy_lstm_with_pack(perform_style_contracted, self.performance_note_encoder)
+    perform_style_vector = perform_style_encoded.mean(dim=1)
+    perform_z, perform_mu, perform_var = \
+        encode_with_net(perform_style_vector, self.performance_encoder_mean, self.performance_encoder_var)
+    return perform_z, perform_mu, perform_var
+  
+  def forward(self, score_embedding, y, edges, note_locations, return_z=False, num_samples=10):
+    total_note_cat = score_embedding['total_note_cat']
+
+    expanded_y = self._expand_perf_feature(y)
+    perform_concat = torch.cat((total_note_cat, expanded_y), 2)
+    
+    perform_z, perform_mu, perform_var = self._get_perform_style_from_input(perform_concat)
+    if return_z:
+        return sample_multiple_z(perform_mu, perform_var, num_samples)
+    return perform_z, perform_mu, perform_var    
+
 class PerformanceEncoder(nn.Module):
   def __init__(self, net_params):
     super().__init__()

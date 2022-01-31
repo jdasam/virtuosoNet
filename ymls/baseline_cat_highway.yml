@@ -1,5 +1,5 @@
 nn_params:
-  note_embedder_name: MixEmbedder
+  note_embedder_name: CatEmbedder
   score_encoder_name: LSTMHighwayEncoder
   performance_encoder_name: BaselineEncoder
   residual_info_selector_name: TempoVecSelector

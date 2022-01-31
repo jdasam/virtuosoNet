@@ -69,7 +69,7 @@ class LossCalculator:
   def cal_tempo_loss_in_beat(self, pred_x, target, beat_indices):
     use_mean = False
     if self.tempo_loss_in_note:
-        use_mean = True
+      use_mean = True
     pred_beat_tempo = note_feature_to_beat_mean(pred_x[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
     true_beat_tempo = note_feature_to_beat_mean(target[:,:,self.tempo_idx:self.tempo_idx+const.NUM_TEMPO_PARAM], beat_indices, use_mean)
     valid_beat_state = note_location_numbers_to_padding_bool(beat_indices).to(pred_x.device)

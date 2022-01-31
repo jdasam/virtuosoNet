@@ -1,7 +1,7 @@
 nn_params:
-  note_embedder_name: NoteEmbedder
+  note_embedder_name: MixEmbedder
   score_encoder_name: LSTMEncoder
-  performance_encoder_name: HanPerfEncoder
+  performance_encoder_name: BaselineEncoder
   residual_info_selector_name: TempoVecSelector
   performance_decoder_name: BaselineDecoder
   encoded_vector_size: 16
