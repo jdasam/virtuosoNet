@@ -6,12 +6,12 @@ nn_params:
   performance_decoder_name: BaselineDecoder
   encoded_vector_size: 16
   encoder:
-    input: 1664
+    input: 896
     layer: 2
     margin: 0
     size: 64
   final:
-    input: 1611
+    input: 843
     layer: 2
     margin: 0
     size: 64
