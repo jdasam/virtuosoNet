@@ -88,10 +88,14 @@ class CategoryEmbedder(NoteEmbedder):
     self.duration_ids = self._update_idx_for_key(self.duration_keys)
     self.etc_ids = self._update_idx_for_key(self.etc_keys)
 
-    self.pitch_embedder = nn.Embedding(88, net_param.note.size//2)
+    self.pitch_embedder = nn.Embedding(88, net_param.note.size//8 * 3)
+    self.duration_fc = nn.Linear(len(self.duration_ids), net_param.note.size//8 * 3)
+    self.etc_fc = nn.Linear(len(self.etc_ids), net_param.note.size//8 * 2)
 
   def _embed_note(self, x):
-    pitch = torch.LongTensor(x[..., ])
-
-
-    return
+    pitch = x[..., self.pitch_ids[0]].long() - 21
+    pitch_emb = self.pitch_embedder(pitch)
+    dur_emb = self.duration_fc(x[..., self.duration_ids])
+    etc_emb = self.etc_fc(x[..., self.etc_ids])
+    cat = torch.cat([pitch_emb, dur_emb, etc_emb], dim=-1)
+    return cat

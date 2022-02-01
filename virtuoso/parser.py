@@ -36,8 +36,8 @@ def get_parser():
     parser.add_argument("--meas_note", default=False, type=lambda x: (str(x).lower() == 'true'))   
     
     # training parameters
-    parser.add_argument("--num_key_augmentation", type=int, default=1)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--th_seed", default=626,
+                        type=int, help="torch random seed")
 
     # dist parallel options
     parser.add_argument("--rank", default=0, type=int)
@@ -75,7 +75,7 @@ def get_parser():
                     )
     parser.add_argument("--iters_per_checkpoint",
                     type=int,
-                    default=200
+                    default=300
                     )
     parser.add_argument("--iters_per_multi_perf",
                     type=int,
@@ -95,7 +95,7 @@ def get_parser():
                         )
     parser.add_argument("--len_valid_slice",
                         type=int,
-                        default=3000
+                        default=1200
                         )
     parser.add_argument("--weight_decay",
                         type=float,
@@ -135,7 +135,11 @@ def get_parser():
                         ) 
     parser.add_argument("-loss", "--loss_type", type=str,
                         default='MSE', help='type of training loss')
-    
+    parser.add_argument("-delta", "--delta_loss", default=False,
+                        type=lambda x: (str(x).lower() == 'true'), help="apply delta value as loss during training")
+    parser.add_argument("--vel_balance_loss", default=False,
+                        type=lambda x: (str(x).lower() == 'true'), help="apply velocity balance as loss during training")
+
     # environment options
     parser.add_argument("-dev", "--device", type=str,
                         default='cpu', help="cuda device number")
@@ -159,18 +163,14 @@ def get_parser():
         str(x).lower() == 'true'), help='make pedal value zero under threshold')
     parser.add_argument("-reTrain", "--resume_training", default=False, type=lambda x: (
         str(x).lower() == 'true'), help='resume training after loading model')
-    parser.add_argument("-perf", "--perfName", default='Anger_sub1',
-                        type=str, help='resume training after loading model')
-    parser.add_argument("-delta", "--delta_loss", default=False,
-                        type=lambda x: (str(x).lower() == 'true'), help="apply delta value as loss during training")
-    parser.add_argument("--vel_balance_loss", default=False,
-                        type=lambda x: (str(x).lower() == 'true'), help="apply velocity balance as loss during training")
+    # parser.add_argument("-perf", "--perfName", default='Anger_sub1',
+    #                     type=str)
     parser.add_argument("-hCode", "--hierCode", type=str,
                         default='han_measure', help="code name for loading hierarchy model")
     parser.add_argument("-intermd", "--intermediate_loss", default=True,
                         type=lambda x: (str(x).lower() == 'true'), help="intermediate loss in ISGN")
     parser.add_argument("--tempo_loss_in_note", default=False,
-                        type=lambda x: (str(x).lower() == 'true'), help="calculate tempo loss in note-level instead of beat-level")
+                        action='store_true', help="calculate tempo loss in note-level instead of beat-level")
 
     # inference options
     parser.add_argument("-dskl", "--disklavier", default=True,
@@ -189,8 +189,6 @@ def get_parser():
                         action='store_true', help="save cluster of note embedding")
     parser.add_argument( "--mod_midi_path", default=None, type=str, help="path of modified midi path")
     # random seed
-    parser.add_argument("--th_seed", default=626,
-                        type=int, help="torch random seed")
 
     return parser
 
@@ -223,7 +221,9 @@ def get_name(parser, args):
         "make_log",
         "graph_keys",
         "data_path",
-        "emotion_data_path"
+        "emotion_data_path",
+        "net_param",
+        "iters_per_checkpoint"
     ])
     parts = []
     name_args = dict(args.__dict__)
