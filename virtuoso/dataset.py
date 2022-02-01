@@ -41,6 +41,7 @@ class ScorePerformDataset:
       else:
         setattr(self, key, False)
 
+    self.midi_pitch_idx = self.stats['key_to_dim']['input']['midi_pitch_unnorm'][0]
     self.update_slice_info()
 
   def update_slice_info(self):
@@ -64,7 +65,9 @@ class ScorePerformDataset:
     batch_start, batch_end = sl_idx
     batch_x = torch.Tensor(data['input'][batch_start:batch_end])
     if self.type == 'train':
-      aug_key = random.randrange(-5, 7)
+      max_up = min(108 - torch.max(batch_x[:, self.midi_pitch_idx]), 7)
+      max_down = min(torch.min(batch_x[:, self.midi_pitch_idx]) - 21, 5)
+      aug_key = random.randrange(-max_down, max_up)
       batch_x = self.key_augmentor(batch_x, aug_key)
       # batch_x = torch.Tensor(key_augmentation(data['input'][batch_start:batch_end], aug_key, self.stats['stats']["midi_pitch"]["stds"]))
     if self.in_hier:
