@@ -487,8 +487,6 @@ class GcnEncoder(nn.Module):
 class HanEncoder(nn.Module):
     def __init__(self, net_params):
         super(HanEncoder, self).__init__()
-        self.note_fc = LinearForZeroPadded(net_params.input_size, net_params.note.size)
-        # self.note_fc = nn.Linear(net_params.input_size, net_params.note.size)
         self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
         self.voice_net = nn.LSTM(net_params.note.size, net_params.voice.size, net_params.voice.layer,
@@ -499,12 +497,15 @@ class HanEncoder(nn.Module):
         self.measure_attention = ContextAttention(net_params.beat.size*2, net_params.num_attention_head)
         self.measure_rnn = nn.LSTM(net_params.beat.size * 2, net_params.measure.size, net_params.measure.layer, batch_first=True, bidirectional=True)
 
-    
+    def _cat_highway(self, lstm_out, embed_out):
+      return lstm_out
+
     def forward(self, x, edges, note_locations):
         voice_numbers = note_locations['voice']
-        x = self.note_fc(x)
+        # x = self.note_fc(x)
 
-        x = nn.utils.rnn.pack_padded_sequence(x, x.shape[1] - (voice_numbers==0).sum(dim=1), True, False )
+        if not isinstance(x, nn.utils.rnn.PackedSequence):
+          x = nn.utils.rnn.pack_padded_sequence(x, x.shape[1] - (voice_numbers==0).sum(dim=1), True, False )
 
         max_voice = torch.max(voice_numbers)
         voice_out = self.run_voice_net(x, voice_numbers, max_voice)
@@ -513,6 +514,7 @@ class HanEncoder(nn.Module):
         hidden_out = torch.cat((hidden_out,voice_out), 2)
 
         beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned = self.run_beat_and_measure(hidden_out, note_locations)
+        hidden_out = self._cat_highway(hidden_out, x)
         # return hidden_out, beat_hidden_out, measure_hidden_out, beat_out_spanned, measure_out_spanned
         return {'note': hidden_out, 'beat': beat_hidden_out, 'measure': measure_hidden_out, 'beat_spanned':beat_out_spanned, 'measure_spanned':measure_out_spanned,
                 'total_note_cat': torch.cat([hidden_out, beat_out_spanned, measure_out_spanned], dim=-1) }
@@ -575,6 +577,18 @@ class HanEncoder(nn.Module):
         norm_beat_weights = (beat_weights-beat_weights_mean)/beat_weights_std
         return {'note':norm_weights.permute(1,0).cpu().numpy(), 'beat':norm_beat_weights.permute(1,0).cpu().numpy()}
 
+
+class HanHighwayEncoder(HanEncoder):
+    def __init__(self, net_params):
+      super().__init__(net_params)
+    
+    def _cat_highway(self, lstm_out, emb_out):
+      if isinstance(emb_out, nn.utils.rnn.PackedSequence):
+        padded, _ = pad_packed_sequence(emb_out, True)
+        out = torch.cat([lstm_out, padded], dim=-1)
+      else:
+        out = torch.cat([lstm_out, emb_out], dim=-1)
+      return out
 
 class LSTMEncoder(nn.Module):
   def __init__(self, net_params):

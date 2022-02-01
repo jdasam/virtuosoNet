@@ -1,6 +1,6 @@
 nn_params:
   note_embedder_name: MixEmbedder
-  score_encoder_name: HanEncoder
+  score_encoder_name: HanHighwayEncoder
   performance_encoder_name: HanPerfEncoder
   residual_info_selector_name: TempoVecMeasSelector
   performance_decoder_name: HanMeasNoteDecoder
@@ -11,12 +11,12 @@ nn_params:
     size: 128
   encoded_vector_size: 16
   encoder:
-    input: 1152
+    input: 1280
     layer: 2
     margin: 0
     size: 64
   final:
-    input: 1099
+    input: 1227
     layer: 1
     margin: 0
     size: 64

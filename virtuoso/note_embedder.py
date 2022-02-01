@@ -10,7 +10,7 @@ class NoteEmbedder(nn.Module):
     self.key_to_dim = stats['key_to_dim']['input']
 
     self.ignored_indices = []
-    if net_param.use_continuos_feature_only:
+    if hasattr(net_param, 'use_continuos_feature_only') and net_param.use_continuos_feature_only:
       for key in self.key_to_dim:
         if 'unnorm' in key:
           idx_range = self.key_to_dim[key]

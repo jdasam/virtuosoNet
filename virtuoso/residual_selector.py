@@ -50,6 +50,8 @@ class TempoVecMeasSelector(nn.Module):
 
 
   def forward(self, x, note_locations):
+    if isinstance(x, torch.nn.utils.rnn.PackedSequence):
+      x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, True)
     measure_numbers = note_locations['measure']
     max_num_measures = torch.max(measure_numbers - measure_numbers[:,0:1]) + 1
     qpm_primo = x[:, :, self.qpm_primo_idx]

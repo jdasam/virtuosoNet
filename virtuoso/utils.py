@@ -40,7 +40,6 @@ def handle_args(args):
   else:
     data_stats = torch.load(str(args.checkpoint), map_location='cpu')['stats']
   
-  args.net_param = net_param
   return args, net_param, data_stats
 
 def get_device(args):
