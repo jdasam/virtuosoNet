@@ -615,7 +615,7 @@ class LSTMHighwayEncoder(LSTMEncoder):
 
 class GRUEncoder(LSTMEncoder):
   def __init__(self, net_params):
-    super().__init__()
+    super().__init__(net_params)
     self.rnn = nn.GRU(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
 
