@@ -590,6 +590,16 @@ class HanHighwayEncoder(HanEncoder):
         out = torch.cat([lstm_out, emb_out], dim=-1)
       return out
 
+class HanGRUEncoder(HanEncoder):
+  def __init__(self, net_params):
+    super().__init__(net_params)
+    self.lstm = nn.GRU(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+    self.voice_net = nn.GRU(net_params.note.size, net_params.voice.size, net_params.voice.layer,
+                                batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+    self.beat_rnn = nn.GRU((net_params.note.size + net_params.voice.size) * 2, net_params.beat.size, net_params.beat.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+    self.measure_rnn = nn.GRU(net_params.beat.size * 2, net_params.measure.size, net_params.measure.layer, batch_first=True, bidirectional=True)
+
+
 class LSTMEncoder(nn.Module):
   def __init__(self, net_params):
     super().__init__()

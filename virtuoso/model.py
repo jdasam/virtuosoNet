@@ -9,6 +9,8 @@ from .model_utils import make_higher_node, reparameterize, span_beat_to_note_num
 from . import model_utils as utils
 from .module import GatedGraph
 from .model_constants import QPM_INDEX, QPM_PRIMO_IDX, TEMPO_IDX, PITCH_IDX
+from .pyScoreParser.xml_utils import xml_notes_to_midi
+from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
 
 from . import encoder_score as encs
 from . import encoder_perf as encp
@@ -24,20 +26,16 @@ LEN_DYNAMICS_VEC = 4
 TEMPO_PRIMO_IDX = -2
 NUM_VOICE_FEED_PARAM = 2
 
-def make_model(net_param, data_stats):
-  model = VirtuosoNet()
-  model.note_embedder = getattr(nemb, net_param.note_embedder_name)(net_param, data_stats)
-  model.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
-  model.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
-  model.residual_info_selector = getattr(res, net_param.residual_info_selector_name)(data_stats)
-  model.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
-  model.network_params = net_param
-  return model
-
-
 class VirtuosoNet(nn.Module):
-    def __init__(self):
+    def __init__(self, net_param, data_stats):
         super(VirtuosoNet, self).__init__()
+        self.note_embedder = getattr(nemb, net_param.note_embedder_name)(net_param, data_stats)
+        self.score_encoder = getattr(encs, net_param.score_encoder_name)(net_param)
+        self.performance_encoder = getattr(encp, net_param.performance_encoder_name)(net_param)
+        self.residual_info_selector = getattr(res, net_param.residual_info_selector_name)(data_stats)
+        self.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
+        self.network_params = net_param
+        self.stats = data_stats
 
     def encode_style(self, x, y, edges, note_locations, num_samples=10):
         x_embedded = self.note_embedder(x)
@@ -77,6 +75,55 @@ class VirtuosoNet(nn.Module):
         residual_info = self.residual_info_selector(x, note_locations)
         output, alter_out = self.performance_decoder(score_embedding, performance_embedding, residual_info, edges, note_locations)
         return output, perform_mu, perform_var, alter_out
+    
+    def generate_perform_midi(self, x, edges, note_locations, initial_z='zero'):
+      output, _, _, _ = self.forward(x, None, edges, note_locations )
+
+
+
+
+
+class ModelToMIDIConverter:
+  def __init__(self, stats):
+    self.stats = stats
+
+  def _scale_model_prediction_to_original(self, prediction):
+    '''
+    prediction (torch.Tensor): output of model forward, N x T x C
+
+    out: Output features in original scale 
+    '''
+    prediction_unnorm = torch.clone(prediction.cpu())
+    for key in self.stats['output_keys']:
+      idx = list(range(*self.stats['key_to_dim']['output'][key]))
+      prediction_unnorm[...,idx]  *= self.stats['stats'][key]['stds']
+      prediction_unnorm[...,idx]  += self.stats['stats'][key]['mean']
+    return prediction_unnorm
+
+  def _model_prediction_to_feature(self, prediction_unnorm):
+    '''
+    prediction_unnorm (torch.Tensor): T x C 
+    '''
+    assert prediction_unnorm.dim() == 2
+    output_features = {}
+    for key in self.stats['output_keys']:
+      idx = list(range(*self.stats['key_to_dim']['output'][key]))
+      output_features[key] = prediction_unnorm[:,idx]
+    return output_features
+  
+  def __call__(self, model_output, score):
+    '''
+    model_output (torch.Tensor): N x T x C
+    score (pyScoreParser.ScoreData)
+    '''
+    unnorm_output = self._scale_model_prediction_to_original(model_output)
+    output_features = self._model_prediction_to_feature(unnorm_output)
+    xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
+    output_midi, midi_pedals = xml_notes_to_midi(xml_notes, False, ignore_overlapped=True)
+    save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
+                                  bool_pedal=bool_pedal, disklavier=disklavier, tempo_clock=clock_notes)
+
+    return
 
 
 class TrillRNN(nn.Module):

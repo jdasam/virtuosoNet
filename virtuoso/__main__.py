@@ -9,7 +9,7 @@ import torch
 from .parser import get_parser, get_name
 from . import utils
 from .train import train
-from .model import make_model
+from .model import VirtuosoNet
 from .inference import inference, inference_with_emotion
 
 def main():
@@ -36,7 +36,7 @@ def main():
                                        rank=args.rank,
                                        world_size=args.world_size)
 
-    model = make_model(net_param, data_stats)
+    model = VirtuosoNet(net_param, data_stats)
     model = model.to(device)
 
     # if not (args.session_mode =="train" and args.resume_training):

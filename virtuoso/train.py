@@ -195,7 +195,7 @@ def train(args,
 
   if args.resume_training:
       model, optimizer, start_epoch, iteration, best_valid_loss = load_model(model, optimizer, device, args)
-  model.stats = train_loader.dataset.stats
+  # model.stats = train_loader.dataset.stats
   scheduler = th.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_decay_step, gamma=args.lr_decay_rate)
 
   # load data

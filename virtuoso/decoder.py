@@ -39,15 +39,23 @@ class PerfStyleToMeasureUnroller(nn.Module):
     return measure_perform_style_spanned
 
 class AutoregressiveDecoder(nn.Module):
-  def __init__(self, input_size, hidden_size, output_size, num_layers=1):
+  def __init__(self, input_size, hidden_size, output_size, num_layers=1, type='lstm'):
     super().__init__()
-    self.rnn = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True, bidirectional=False)
+    self.type = type
+    if self.type.lower() == 'lstm':
+      rnn = nn.LSTM
+    else:
+      rnn = nn.GRU
+    self.rnn = rnn(input_size, hidden_size, num_layers=num_layers, batch_first=True, bidirectional=False)
     self.fc = nn.Linear(hidden_size, output_size)
   
   def _init_hidden(self, num_batch):
     device = next(self.rnn.parameters()).device
-    return (torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device), 
-            torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device))
+    if self.type.lower() == 'lstm':
+      return (torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device), 
+              torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device))
+    else:
+      return torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device)
 
   def forward(self, concat_input, hier_numbers, is_padded_element=None, hidden_states=None):
     '''
@@ -640,7 +648,10 @@ class HanDecoder(nn.Module):
         beat_tempo_cat = self._concat_beat_rnn_input(selected_batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_out[:, QPM_INDEX:QPM_INDEX+1], beat_results, i, current_beat, current_measure)
         selected_batch_tempo_hidden = (tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids])
         beat_forward, temp_tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, selected_batch_tempo_hidden)
-        tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids] = temp_tempo_hidden
+        if isinstance(tempo_hidden, tuple): # LSTM
+          tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids] = temp_tempo_hidden
+        else: # GRU
+          tempo_hidden[:, selected_batch_ids] = temp_tempo_hidden
         tmp_tempos = self.beat_tempo_fc(beat_forward)
         prev_out[selected_batch_ids, QPM_INDEX:QPM_INDEX+1] = tmp_tempos[:,0]
       out_combined = self._concat_final_rnn_input(note_emb, beat_emb, measure_emb, perf_emb, res_info, prev_out, i, current_beat, current_measure)
@@ -655,7 +666,6 @@ class HanDecoder(nn.Module):
   def forward(self, score_embedding, perf_embedding, res_info, edges, note_locations):
     perf_emb = self.handle_style_vector(perf_embedding, score_embedding, note_locations)
     return self.run_beat_and_note_regressive_decoding(score_embedding, perf_emb, res_info, note_locations), []
-
 
 
 class HanMeasureZDecoder(HanDecoder):
@@ -804,6 +814,20 @@ class HanMeasNoteDecoder(HanDecoder):
       # new_score_embedding = (score_embedding[0], score_embedding[1], torch.cat([score_embedding[2], measure_tempo_vel], dim=-1), score_embedding[3], score_embedding[4])  
       score_embedding['measure'] = torch.cat([score_embedding['measure'], measure_tempo_vel], dim=-1)
       return self.run_beat_and_note_regressive_decoding(score_embedding, perform_z, _, note_locations), {'meas_out':measure_tempo_vel, 'iter_out':[]}
+
+class HanGRUMeasNoteDecoder(HanMeasNoteDecoder):
+  def __init__(self, net_params):
+    super().__init__(net_params)
+
+    self.measure_decoder = AutoregressiveDecoder(net_params.measure.size * 2 + net_params.encoder.size + 2 + 8, net_params.measure.size, 2, type='gru')
+    self.beat_tempo_forward = nn.GRU(
+            (net_params.beat.size + net_params.measure.size) * 2 + net_params.output_size + net_params.encoder.size + 2, net_params.beat.size,
+            num_layers=1, batch_first=True, bidirectional=False)
+    self.output_lstm = nn.GRU(self.final_input, self.final_hidden_size, num_layers=1, batch_first=True, bidirectional=False)
+  
+  def init_hidden(self, num_layer, num_direction, batch_size, hidden_size, device):
+    h0 = torch.zeros(num_layer * num_direction, batch_size, hidden_size).to(device)
+    return h0
 
 class HanHierDecoder(nn.Module):
     def __init__(self, net_params) -> None:
