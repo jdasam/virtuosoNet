@@ -60,7 +60,7 @@ class BaselineEncoder(nn.Module):
         return sample_multiple_z(perform_mu, perform_var, num_samples)
     return perform_z, perform_mu, perform_var    
 
-class GRUBaselineEncoder(BaselineEncoder):
+class BaselineGRUEncoder(BaselineEncoder):
   def __init__(self, net_params):
     super().__init__(net_params)
     self.performance_note_encoder = nn.GRU(self.encoder_size, self.encoder_size, bidirectional=True, batch_first=True)
