@@ -116,6 +116,10 @@ class GRUDecoder(BaselineDecoder):
       super().__init__(net_param)
       self.rnn = nn.GRU(net_param.final.input, net_param.final.size, num_layers=net_param.final.layer, batch_first=True, bidirectional=False, dropout=net_param.drop_out)
 
+  def _init_hidden(self, num_batch):
+    device = next(self.rnn.parameters()).device
+    return torch.zeros(self.rnn.num_layers, num_batch, self.rnn.hidden_size).to(device)
+
 
 class IsgnDecoder(nn.Module):
   '''
