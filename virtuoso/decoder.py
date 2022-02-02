@@ -111,6 +111,12 @@ class BaselineDecoder(nn.Module):
     
     return total_output, []
 
+class GRUDecoder(BaselineDecoder):
+  def __init__(self, net_param):
+      super().__init__(net_param)
+      self.rnn = nn.GRU(net_param.final.input, net_param.final.size, num_layers=net_param.final.layer, batch_first=True, bidirectional=False, dropout=net_param.drop_out)
+
+
 class IsgnDecoder(nn.Module):
   '''
   Basic ISGN Decoder Class

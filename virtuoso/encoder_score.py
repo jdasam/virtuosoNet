@@ -593,10 +593,10 @@ class HanHighwayEncoder(HanEncoder):
 class LSTMEncoder(nn.Module):
   def __init__(self, net_params):
     super().__init__()
-    self.lstm = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+    self.rnn = nn.LSTM(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
 
   def forward(self, x, edges, note_locations):
-    x, _ = self.lstm(x)
+    x, _ = self.rnn(x)
     if isinstance(x, torch.nn.utils.rnn.PackedSequence):
       x, _ = pad_packed_sequence(x, True)
     return {'note': x, 'total_note_cat': x}
@@ -606,12 +606,18 @@ class LSTMHighwayEncoder(LSTMEncoder):
     super().__init__(net_params)
 
   def forward(self, x, edges, note_locations):
-    x_out, _ = self.lstm(x)
+    x_out, _ = self.rnn(x)
     if isinstance(x_out, torch.nn.utils.rnn.PackedSequence):
       x_out, _ = pad_packed_sequence(x_out, True)
       x, _ = pad_packed_sequence(x, True)
     out = torch.cat([x_out, x], dim=-1)
     return {'note': out, 'total_note_cat': out}
+
+class GRUEncoder(LSTMEncoder):
+  def __init__(self, net_params):
+    super().__init__()
+    self.rnn = nn.GRU(net_params.note.size, net_params.note.size, net_params.note.layer, batch_first=True, bidirectional=True, dropout=net_params.drop_out)
+
 
 
 class HanGraphEncoder(HanEncoder):
