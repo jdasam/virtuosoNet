@@ -36,6 +36,7 @@ class VirtuosoNet(nn.Module):
         self.performance_decoder = getattr(dec, net_param.performance_decoder_name)(net_param)
         self.network_params = net_param
         self.stats = data_stats
+        self.stats['graph_keys'] = net_param.graph_keys
 
     def encode_style(self, x, y, edges, note_locations, num_samples=10):
         x_embedded = self.note_embedder(x)
