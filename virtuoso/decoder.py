@@ -646,7 +646,10 @@ class HanDecoder(nn.Module):
         selected_batch_ids = torch.where(beat_changed)[0]
         beat_results[selected_batch_ids, current_beat[selected_batch_ids]] = result_node
         beat_tempo_cat = self._concat_beat_rnn_input(selected_batch_ids, beat_emb, measure_emb, perf_emb, res_info, prev_out[:, QPM_INDEX:QPM_INDEX+1], beat_results, i, current_beat, current_measure)
-        selected_batch_tempo_hidden = (tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids])
+        if isinstance(tempo_hidden, tuple): # LSTM
+          selected_batch_tempo_hidden = (tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids])
+        else:
+          selected_batch_tempo_hidden = tempo_hidden[:, selected_batch_ids]
         beat_forward, temp_tempo_hidden = self.beat_tempo_forward(beat_tempo_cat, selected_batch_tempo_hidden)
         if isinstance(tempo_hidden, tuple): # LSTM
           tempo_hidden[0][:, selected_batch_ids], tempo_hidden[1][:, selected_batch_ids] = temp_tempo_hidden
