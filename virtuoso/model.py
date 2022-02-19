@@ -38,6 +38,8 @@ class VirtuosoNet(nn.Module):
         self.stats = data_stats
         self.stats['graph_keys'] = net_param.graph_keys
 
+        # self.midi_converter = ModelToMIDIConverter(self.stats)
+
     def encode_style(self, x, y, edges, note_locations, num_samples=10):
         x_embedded = self.note_embedder(x)
         score_embedding = self.score_encoder(x_embedded, edges, note_locations)
@@ -77,11 +79,15 @@ class VirtuosoNet(nn.Module):
         output, alter_out = self.performance_decoder(score_embedding, performance_embedding, residual_info, edges, note_locations)
         return output, perform_mu, perform_var, alter_out
     
-    def generate_perform_midi(self, x, edges, note_locations, initial_z='zero'):
-      output, _, _, _ = self.forward(x, None, edges, note_locations )
+    
+    # def _read_input_from_xml(self, xml_path, composer, qpm_primo):
+    #   input_keys = self.stats['input_keys']
+    #   graph_keys = self.stats['graph_keys']
+    #   score, input_tensor, edges, note_locations = get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys)
 
-
-
+    # def generate_perform_midi_from_xml(self, x, edges, note_locations, initial_z='zero'):
+    #   output, _, _, _ = self.forward(x, None, edges, note_locations, initial_z=initial_z)
+    #   self.midi_converter(output)
 
 
 class ModelToMIDIConverter:

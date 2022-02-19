@@ -30,7 +30,7 @@ class SustainPedal:
         self.end = end
 
     def __repr__(self):
-        return ('Sustain_Pedal (start={:f}, end={:f}, value={:d},  number={:d}'
+        return ('Sustain_Pedal (start={:f}, end={:f}, value={:d},  number={:d})'
                 .format(self.start, self.end, self.value, self.number))
 
     def is_valid(self):

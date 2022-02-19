@@ -14,7 +14,7 @@ def apply_tempo_perform_features(score, features, start_time=0, predicted=False,
     #            It is for handling missing features from perform feature extraction
 
     beats = score.xml_obj.get_beat_positions()
-    xml_notes = score.xml_notes
+    xml_notes = copy.deepcopy(score.xml_notes)
     num_beats = len(beats)
     num_notes = score.num_notes
     tempos = []
@@ -36,36 +36,37 @@ def apply_tempo_perform_features(score, features, start_time=0, predicted=False,
         if start_position == previous_position:
             continue
 
-        if predicted:
-            qpm_saved = 10 ** feat['beat_tempo']
-            num_added = 1
-            next_beat = beats[i+1]
-            start_index = feat['index']
-            for j in range(1,20):
-                if start_index-j < 0:
-                    break
-                previous_note = xml_notes[start_index-j]
-                previous_pos = previous_note.note_duration.xml_position
-                if previous_pos == start_position:
-                    qpm_saved += 10 ** features['beat_tempo'][start_index-j]
-                    num_added += 1
-                else:
-                    break
+        # if predicted:
+        #     qpm_saved = 10 ** feat['beat_tempo']
+        #     num_added = 1
+        #     next_beat = beats[i+1]
+        #     start_index = feat['index']
+        #     for j in range(1,20):
+        #         if start_index-j < 0:
+        #             break
+        #         previous_note = xml_notes[start_index-j]
+        #         previous_pos = previous_note.note_duration.xml_position
+        #         if previous_pos == start_position:
+        #             qpm_saved += 10 ** features['beat_tempo'][start_index-j]
+        #             num_added += 1
+        #         else:
+        #             break
 
-            for j in range(1,40):
-                if start_index + j >= num_notes:
-                    break
-                next_note = xml_notes[start_index+j]
-                next_position = next_note.note_duration.xml_position
-                if next_position < next_beat:
-                    qpm_saved += 10 ** features['beat_tempo'][start_index+j]
-                    num_added += 1
-                else:
-                    break
+        #     for j in range(1,40):
+        #         if start_index + j >= num_notes:
+        #             break
+        #         next_note = xml_notes[start_index+j]
+        #         next_position = next_note.note_duration.xml_position
+        #         if next_position < next_beat:
+        #             qpm_saved += 10 ** features['beat_tempo'][start_index+j]
+        #             num_added += 1
+        #         else:
+        #             break
 
-            qpm = qpm_saved / num_added
-        else:
-            qpm = 10 ** feat['beat_tempo']
+        #     qpm = qpm_saved / num_added
+        # else:
+            # qpm = 10 ** feat['beat_tempo']
+        qpm = 10 ** feat['beat_tempo']
         # qpm = 10 ** feat.qpm
         divisions = feat['divisions']
 
