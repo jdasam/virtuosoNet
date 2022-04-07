@@ -12,7 +12,6 @@ import pickle
 import wandb
 
 
-
 from torch.utils.data import DataLoader
 from .parser import get_parser
 from .utils import categorize_value_to_vector
@@ -109,9 +108,11 @@ def train(args,
           exp_name,
           ):
 
-    wandb.init(project="VirtuosoNet", entity="dasaem")
-    wandb.config = args
-    wandb.watch(model)
+
+    if args.make_log:
+      wandb.init(project="VirtuosoNet", entity="dasaem")
+      wandb.config = args
+      wandb.watch(model)
     train_loader, valid_loader, emotion_loader, multi_perf_loader = prepare_dataloader(args)
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     logger, out_dir = prepare_directories_and_logger(args.checkpoints_dir, args.logs, exp_name, args.make_log)

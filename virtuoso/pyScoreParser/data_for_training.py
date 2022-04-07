@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                     'qpm_primo',
-                    # "section_tempo",
+                    "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_tempo', 'velocity', 'onset_deviation', 'articulation', 'pedal_refresh_time',
                             'pedal_cut_time', 'pedal_at_start', 'pedal_at_end', 'soft_pedal',
@@ -20,7 +20,7 @@ NORM_FEAT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length',
 VNET_COPY_DATA_KEYS = ('note_location', 'align_matched', 'articulation_loss_weight')
 VNET_INPUT_KEYS = ('midi_pitch', 'duration', 'beat_importance', 'measure_length', 
                 'qpm_primo',
-                # "section_tempo",
+                "section_tempo",
                           'following_rest', 'distance_from_abs_dynamic', 'distance_from_recent_tempo',
                           'beat_position', 'xml_position', 'grace_order', 'preceded_by_grace_note',
                           'followed_by_fermata_rest', 'pitch', 'tempo', 'dynamic', 'time_sig_vec',

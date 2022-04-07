@@ -112,6 +112,8 @@ def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stat
     if mod_midi_path is not None:
         score_pairs = [{'xml':xml, 'midi':midi} for xml, midi in zip (xml_notes,output_midi)]
         output_midi = load_and_apply_modified_perf_midi(mod_midi_path, score_pairs, xml_notes, output_features, score.beat_positions)
+        # xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
+        output_midi, midi_pedals = xml_notes_to_midi(xml_notes, multi_instruments, ignore_overlapped=(mod_midi_path is None))
         output_midi.sort(key=lambda x:x.start)
     if attention_weights is not None:
         plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=save_csv, attention_weights=attention_weights['beat'].tolist())
@@ -225,10 +227,10 @@ def load_and_apply_modified_perf_midi(midi_path, score_pairs, xml_notes, output_
             continue
         pair['xml'].note_duration.time_position = pair['midi'].start
         pair['xml'].note_duration.seconds = pair['midi'].end - pair['midi'].start
-        pair['xml'].velocity = pair['midi'].velocity
+        # pair['xml'].velocity = pair['midi'].velocity
         score_pairs[i]['midi'].start = pair['midi'].start
         score_pairs[i]['midi'].end = pair['midi'].end
-        score_pairs[i]['midi'].velocity = pair['midi'].velocity
+        # score_pairs[i]['midi'].velocity = pair['midi'].velocity
     valid_position_pairs, _ = make_available_xml_midi_positions(perform_pairs)
     tempos = feature_utils.cal_tempo_by_positions(beat_positions, valid_position_pairs)
     output_features['beat_tempo'] =  [log(get_item_by_xml_position(tempos, note).qpm, 10) for note in xml_notes]
