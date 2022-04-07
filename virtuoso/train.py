@@ -11,7 +11,7 @@ import torch as th
 import pickle
 import wandb
 
-wandb.init(project="VirtuosoNet", entity="dasaem")
+
 
 from torch.utils.data import DataLoader
 from .parser import get_parser
@@ -108,6 +108,8 @@ def train(args,
           criterion,
           exp_name,
           ):
+
+    wandb.init(project="VirtuosoNet", entity="dasaem")
     wandb.config = args
     wandb.watch(model)
     train_loader, valid_loader, emotion_loader, multi_perf_loader = prepare_dataloader(args)

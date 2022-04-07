@@ -3,7 +3,7 @@ from pathlib import Path
 
 def get_parser():
     parser = argparse.ArgumentParser("virtuosonet")
-    parser.add_argument("-sess", "--session_mode", type=str,
+    parser.add_argument("-mode", "--session_mode", type=str,
                         default="train", help="train or inference")
     parser.add_argument("-yml", "--yml_path", type=str,
                         #default="isgn_param.yml",
@@ -15,7 +15,7 @@ def get_parser():
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
-                        default=Path('/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml'))
+                        default=Path('test_pieces/bps_5_1/musicxml_cleaned.musicxml'))
     parser.add_argument("--output_path", type=Path,
                         default=Path('test_result/'))
     # model model options
