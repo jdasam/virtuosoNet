@@ -13,3 +13,7 @@ test_result/*.mid
 test_result/*.png
 test_result/*.csv
 .vscode/
+wandb/
+pretrained_weights/
+*.ipynb_checkpoints
+test_pieces/_ConcertCustomization
