@@ -60,6 +60,11 @@ class VirtuosoNet(nn.Module):
       performance_embedding = reparameterize(zero_mean, one_std).to(next(self.parameters()).device)
       return performance_embedding
 
+    def get_score_embedding(self, x, edges, note_locations):
+      x_embedded = self.note_embedder(x)
+      score_embedding = self.score_encoder(x_embedded, edges, note_locations)
+      return score_embedding
+
     def forward(self, x, y, edges, note_locations, initial_z=None):
         x_embedded = self.note_embedder(x)
         score_embedding = self.score_encoder(x_embedded, edges, note_locations)

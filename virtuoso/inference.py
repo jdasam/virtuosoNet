@@ -163,9 +163,13 @@ def note_info_to_tuple(note):
     return info_list
 
 def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda', len_graph_slice=400, graph_slice_margin=100,):
-    score = ScoreData(xml_path, None, composer, read_xml_only=True)
+    # Load Score
+    score = ScoreData(xml_path, None, composer, read_xml_only=True) # Load
+    
+    # Define feature extractor by feature names and extract feature from the score
     feature_extractor = ScoreExtractor(input_keys)
     input_features = feature_extractor.extract_score_features(score)
+    
     if qpm_primo is not None:
         if 'section_tempo' in input_features:
             initial_qpm_primo = input_features['section_tempo'][0]
