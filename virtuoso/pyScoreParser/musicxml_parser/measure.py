@@ -1,3 +1,5 @@
+import warnings
+
 from fractions import Fraction
 
 from . import constants
@@ -130,7 +132,8 @@ class Measure(object):
           self.time_signature = TimeSignature(self.state, child)
           self.state.time_signature = self.time_signature
         else:
-          raise MultipleTimeSignatureException('Multiple time signatures')
+          warnings.warn(f"Multiple time signature: {child}")
+          # raise MultipleTimeSignatureException('Multiple time signatures')
       elif child.tag == 'transpose':
         transpose = int(child.find('chromatic').text)
         self.state.transpose = transpose
