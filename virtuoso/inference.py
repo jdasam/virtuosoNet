@@ -43,7 +43,7 @@ def inference(args, model, device):
             attention_weights = None
         # outputs, perform_mu, perform_var, total_out_list = model(input, None, edges, note_locations, initial_z='rand')
     Path(args.output_path).mkdir(exist_ok=True)
-    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}.mid"
+    save_path = args.output_path / f"{args.xml_path.parent.stem}_{args.xml_path.stem}_by_{args.model_code}_{args.composer}.mid"
     save_model_output_as_midi(outputs, save_path, score, model.stats['output_keys'], model.stats['stats'], note_locations, 
                               args.velocity_multiplier, args.multi_instruments, args.tempo_clock,  args.boolPedal, args.disklavier, 
                               clock_interval_in_16th=args.clock_interval_in_16th, save_csv=args.save_csv, save_cluster=args.save_cluster,
@@ -91,6 +91,7 @@ def generate_midi_from_xml(model, xml_path, composer, save_path, device, initial
 def save_model_output_as_midi(model_outputs, save_path, score, output_keys, stats, note_locations, 
                                 velocity_multiplier=1, multi_instruments=False, tempo_clock=False, bool_pedal=False, disklavier=False, clock_interval_in_16th=4, 
                                 save_csv=False, save_cluster=False, mod_midi_path=None, attention_weights=None):
+    # model_outputs = regulate_tempo_by_measure_number(model_outputs, score.xml_notes, 0, 0, True)
     outputs = scale_model_prediction_to_original(model_outputs, output_keys, stats)
     output_features = model_prediction_to_feature(outputs, output_keys)
     if velocity_multiplier != 1:
@@ -244,13 +245,16 @@ def load_and_apply_modified_perf_midi(midi_path, score_pairs, xml_notes, output_
 
     return [x['midi'] for x in score_pairs if x!=[]]
 
-def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_measure):
+def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_measure, entire=False):
     note_measure_numbers = [x.measure_number for x in xml_notes]
-    start_note_index = note_measure_numbers.index(start_measure)
-    end_note_index = note_measure_numbers.index(end_measure)
-
-    mean_tempo = torch.mean(outputs[:, start_note_index:end_note_index, 0] )
-    outputs[:, start_note_index:end_note_index, 0] = mean_tempo
+    if entire:
+      mean_tempo = torch.mean(outputs[:, :, 0] )
+      outputs[:, :, 0] = mean_tempo
+    else:
+      start_note_index = note_measure_numbers.index(start_measure)
+      end_note_index = note_measure_numbers.index(end_measure)
+      mean_tempo = torch.mean(outputs[:, start_note_index:end_note_index, 0] )
+      outputs[:, start_note_index:end_note_index, 0] = mean_tempo
     # outputs[:, start_note_index:end_note_index, 0] = mean_tempo + (outputs[:, start_note_index:end_note_index, 0] - mean_tempo) / 3
 
     return outputs
