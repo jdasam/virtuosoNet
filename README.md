@@ -9,10 +9,9 @@ This documentation is currently a work in progress.
 contact: jdasam@kaist.ac.kr
 
 * You need PyTorch (torch 0.4.1) and pretty_midi (https://github.com/craffel/pretty-midi)
+* Init submodule
+> git submodule update --init --recursive
 
-
-## Data:
-Data is provided as a .dat file in this [link](https://mega.nz/#F!N6RC3aJK!zWto4arANF9V7snhoyZh5w). It is pre-extracted note-level features of score and performance. Please contact me for the further information about the dataset.
 
 
 ## How to generate performance MIDI from musicXML
