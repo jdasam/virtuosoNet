@@ -35,7 +35,7 @@ model code is: isgn (proposed in ICML2019), han_ar_single(proposed in ISMIR 2019
 You can select initial tempo of the piece in quater note per minute. If you do not enter tempo, the tempo used in MusicXML file will be used.
 
 3. run python script
-> python3 model_run.py -mode=test -code=isgn -path=./test_pieces/bwv_858/ -comp=Bach -tempo=60)
+> python3 model_run.py -mode=test -code=isgn -path=./test_pieces/bwv_858_prelude/ -comp=Bach -tempo=60)
 
 4. You can use -mode=testAll to generate performance for the pre-defined test set, which is defined in model_constants.py
 It will encode emotion cue from pre-recorded performances in emotionNet folder, and generate the performance with encoded z for each emotion for each piece in the list. 'OR' represent original, or natural emotion of the piece.

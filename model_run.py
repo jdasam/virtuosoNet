@@ -17,6 +17,7 @@ import nnModel
 import model_parameters as param
 import model_constants as cons
 import sys
+from pathlib import Path
 sys.modules['xml_matching'] = xml_matching
 
 parser = argparse.ArgumentParser()
@@ -29,7 +30,7 @@ parser.add_argument("-trill", "--trainTrill", default=False, type=lambda x: (str
 parser.add_argument("-slur", "--slurEdge", default=False, type=lambda x: (str(x).lower() == 'true'), help="slur edge in graph")
 parser.add_argument("-voice", "--voiceEdge", default=True, type=lambda x: (str(x).lower() == 'true'), help="network in voice level")
 parser.add_argument("-vel", "--velocity", type=str, default='50,65', help="mean velocity of piano and forte")
-parser.add_argument("-dev", "--device", type=int, default=1, help="cuda device number")
+parser.add_argument("-dev", "--device", type=int, default=0, help="cuda device number")
 parser.add_argument("-code", "--modelCode", type=str, default='isgn', help="code name for saving the model")
 parser.add_argument("-tCode", "--trillCode", type=str, default='trill_default', help="code name for loading trill model")
 parser.add_argument("-comp", "--composer", type=str, default='Beethoven', help="composer name of the input piece")
@@ -400,7 +401,9 @@ def load_file_and_generate_performance(path_name, composer=args.composer, z=args
                                                            predicted=True)
     output_midi, midi_pedals = xml_matching.xml_notes_to_midi(output_xml, multi_instruments)
     piece_name = path_name.split('/')
-    save_name = 'test_result/' + piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)
+    save_dir = Path('test_result')
+    save_dir.mkdir(exist_ok=True)
+    save_name = str(save_dir / (piece_name[-2] + '_by_' + args.modelCode + '_z' + str(z)))
 
     perf_worm.plot_performance_worm(output_features, save_name + '.png')
     xml_matching.save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_name + '.mid', part_names=part_names,
@@ -483,7 +486,7 @@ def encode_all_emotionNet_data(path_list, style_keywords):
                 emotion_mean_z.append(z_list[i][j])
             mean_perform_z = torch.mean(torch.stack(emotion_mean_z), 0, True)
             z_by_models.append(mean_perform_z)
-        if i is not 0:
+        if i != 0:
             emotion_qpm = []
             for qpm_change in qpm_list_by_subject:
                 emotion_qpm.append(qpm_change[i])
