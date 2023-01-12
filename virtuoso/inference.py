@@ -9,9 +9,9 @@ import pretty_midi
 from sklearn.cluster import KMeans
 
 from .constants import *
-from .pyScoreParser.data_class import ScoreData
+from .pyScoreParser.data_class import ScoreData, PieceData, DEFAULT_SCORE_FEATURES, DEFAULT_PERFORM_FEATURES
 from .pyScoreParser.feature_extraction import ScoreExtractor
-from .pyScoreParser.data_for_training import FeatureConverter
+from .pyScoreParser.data_for_training import FeatureConverter, ScorePerformPairData, VNET_COPY_DATA_KEYS
 from .pyScoreParser.feature_to_performance import apply_tempo_perform_features
 from .pyScoreParser.xml_utils import xml_notes_to_midi
 from .pyScoreParser.performanceWorm import plot_performance_worm
@@ -22,12 +22,13 @@ from .pyScoreParser.midi_utils import midi_utils
 from .pyScoreParser import feature_utils
 from .pyScoreParser.utils import get_item_by_xml_position
 from pathlib import Path
-from .utils import load_weight
+from .utils import load_weight, read_model_setting, get_input_size_from_training_data
 from . import graph
 from . import style_analysis as sty
 from .emotion import get_style_from_emotion_data
 from .dataset import EmotionDataset, FeatureCollate, split_graph_to_batch
 from torch.utils.data import DataLoader
+from .model import VirtuosoNet
 
 
 def inference(args, model, device):
@@ -259,6 +260,235 @@ def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_meas
 
     return outputs
 
+
+
+class ModelToMidiDecoder:
+  def __init__(self):
+    self.output_dir = Path('')
+    self.velocity_multiplier = 1
+    self.multi_instruments = False
+    self.tempo_clock = False
+    self.bool_pedal = True
+    self.for_disklavier = False
+    self.clock_interval_in_16th = 4
+    self.save_csv = False
+    self.save_cluster = False
+  
+  def __call__(self, score, note_locations, output_features, save_path, mod_midi_path=None, attention_weights=None):
+    if isinstance(save_path, str):
+      save_path = Path(save_path)
+
+    if self.velocity_multiplier != 1:
+        mean_vel = np.mean(output_features['velocity'])
+        output_features['velocity'] = (output_features['velocity'] - mean_vel) * self.velocity_multiplier + mean_vel
+
+    xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
+    # if save_cluster:
+    #     cluster = cluster_note_embeddings(model_outputs)
+    #     for note, cluster_id in zip(xml_notes, cluster):
+    #         note.cluster = cluster_id
+    if attention_weights is not None:
+        for i, note in enumerate(xml_notes):
+            note.attention_weights = attention_weights['note'][i]
+    if not save_path.parent.exists():
+        save_path.parent.mkdir()
+
+    output_midi, midi_pedals = xml_notes_to_midi(xml_notes, self.multi_instruments, ignore_overlapped=(mod_midi_path is None))
+    if mod_midi_path is not None:
+        score_pairs = [{'xml':xml, 'midi':midi} for xml, midi in zip (xml_notes,output_midi)]
+        output_midi = load_and_apply_modified_perf_midi(mod_midi_path, score_pairs, xml_notes, output_features, score.beat_positions)
+        xml_notes, tempos = apply_tempo_perform_features(score, output_features, start_time=0.5, predicted=True, return_tempo=True)
+        output_midi, midi_pedals = xml_notes_to_midi(xml_notes, self.multi_instruments, ignore_overlapped=(mod_midi_path is None))
+        output_midi.sort(key=lambda x:x.start)
+    if attention_weights is not None:
+        plot_performance_worm(output_features, note_locations['beat'], save_path.with_suffix('.png'), save_csv=self.save_csv, attention_weights=attention_weights['beat'].tolist())
+    else:
+        plot_performance_worm(output_features, note_locations['beat'][0], save_path.with_suffix('.png'), save_csv=self.save_csv)
+    if self.tempo_clock:
+        nth_position = score.xml_obj.get_interval_positions(interval_in_16th=self.clock_interval_in_16th)
+        def cal_time_position_with_tempo(xml_position, tempos, divisions):
+            corresp_tempo = get_item_by_xml_position(tempos, dict(xml_position=xml_position))
+            previous_sec = corresp_tempo.time_position
+            passed_duration = xml_position - corresp_tempo.xml_position
+            passed_second = passed_duration / divisions / corresp_tempo.qpm * 60
+            return previous_sec + passed_second
+
+        nth_times = []
+        for position in nth_position:
+            last_note = get_item_by_xml_position(xml_notes, dict(xml_position=position))
+            divisions = last_note.state_fixed.divisions
+            nth_times.append(cal_time_position_with_tempo(position, tempos, divisions))
+        with open(f'{save_path}_beat.csv', 'w') as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerow([f'{el:.3f}' for el in nth_times])
+        # add midi clock channel
+        clock_notes = [pretty_midi.Note(velocity=64, pitch=64, start=el, end=el+0.01) for el in nth_times]
+    else:
+        clock_notes = None
+    if self.save_csv:
+        if self.multi_instruments:
+            midi_notes = [note_info_to_tuple(note) for inst in output_midi for note in inst] 
+        else:
+            midi_notes = [note_info_to_tuple(note) for note in output_midi] 
+        with open(f'{save_path}_midi_notes.csv', 'w') as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerow(["xml_idx", "start", "end", "pitch", "velocity", "channel", "att_0","att_1","att_2","att_3","att_4","att_5","att_6","att_7" ])
+            [writer.writerow(el) for el in midi_notes]
+            
+
+    save_midi_notes_as_piano_midi(output_midi, midi_pedals, save_path,
+                                  bool_pedal=self.bool_pedal, disklavier=self.for_disklavier, tempo_clock=clock_notes)
+
+
+class InferenceModel:
+  def __init__(self, checkpoint_path, device, output_path):
+    self.len_graph_slice = 400
+    self.graph_slice_margin = 100
+    self.output_path = Path(output_path)
+
+    # Load Model 
+    # config = read_model_setting(yml_path)
+    # net_param = config.nn_params
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    data_stats = checkpoint['stats']
+    net_param = checkpoint['network_params']
+
+    model = VirtuosoNet(net_param, data_stats)
+    
+    model.load_state_dict(checkpoint['state_dict'])
+    model.stats = checkpoint['stats']
+    model.model_code = checkpoint['model_code']
+    print("=> loaded checkpoint '{}' (epoch {})".format(checkpoint_path, checkpoint['epoch']))
+
+    self.model = model.to(device)
+    self.model.eval()
+    self.device = device
+
+    # Define Decoder
+    self.midi_decoder = ModelToMidiDecoder()
+
+  def get_input_from_xml(self, xml_path, composer, qpm_primo):
+    # def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda', len_graph_slice=400, graph_slice_margin=100,):
+    # Load Score
+    score = ScoreData(xml_path, None, composer, read_xml_only=True) # Load
+    
+    # Define feature extractor by feature names and extract feature from the score
+    feature_extractor = ScoreExtractor(self.model.stats['input_keys'])
+    input_features = feature_extractor.extract_score_features(score)
+    
+    if qpm_primo is not None:
+        if 'section_tempo' in input_features:
+            initial_qpm_primo = input_features['section_tempo'][0]
+            input_features['section_tempo'] = [   x + log(qpm_primo, 10) - initial_qpm_primo for x in input_features['section_tempo']]
+        input_features['qpm_primo'] = log(qpm_primo, 10)
+    if 'note_location' not in input_features:
+        input_features['note_location'] = feature_extractor.get_note_location(score)
+    feature_converter = FeatureConverter(self.model.stats, input_keys=self.model.stats['input_keys'], output_keys=[], beat_keys=[], meas_keys=[])
+    features = feature_converter(input_features)
+    # input, _, _, _ = convert_feature_to_VirtuosoNet_format(input_features, stats, input_keys=input_keys, output_keys=[], meas_keys=[], beat_keys=[])
+    input = torch.Tensor(features['input']).unsqueeze(0).to(self.device)
+    edges = self._get_edges(score)
+    note_locations = self._get_note_location(input_features)
+    return score, input, edges, note_locations
+
+  def _get_edges(self, score):
+    if self.model.stats['graph_keys'] and len(self.model.stats['graph_keys']) > 0:
+      edges = graph.edges_to_matrix(score.notes_graph, score.num_notes, self.model.stats['graph_keys'])
+      edges = split_graph_to_batch(edges, self.len_graph_slice, self.graph_slice_margin).unsqueeze(0).to(self.device)
+    else:
+      edges = None
+    return edges
+
+  def _get_note_location(self, input_features):
+    return {
+            'beat': torch.LongTensor(input_features['note_location']['beat']).unsqueeze(0),
+            'measure': torch.LongTensor(input_features['note_location']['measure']).unsqueeze(0),
+            'section': torch.LongTensor(input_features['note_location']['section']).unsqueeze(0),
+            'voice': torch.LongTensor(input_features['note_location']['voice']).unsqueeze(0),
+    }
+
+  def infer_xml(self, xml_path, composer_name, qpm_primo):
+    if isinstance(xml_path, str):
+      xml_path = Path(xml_path)
+    score, input, edges, note_locations = self.get_input_from_xml(xml_path, composer_name, qpm_primo)
+    with torch.no_grad():
+        outputs, perform_mu, perform_var, total_out_list = self.model(input, None, edges, note_locations, initial_z='zero')
+
+    outputs = self.scale_model_prediction_to_original(outputs)
+    output_features = self.model_prediction_to_feature(outputs)
+
+    self.output_path.mkdir(exist_ok=True)
+    save_path = self.output_path / f"{xml_path.parent.stem}_{xml_path.stem}_by_{self.model.model_code}_{composer_name}.mid"
+    self.midi_decoder(score, note_locations, output_features, save_path)
+
+  def get_score_perf_pair_data(self, xml_path, perf_midi_path, composer_name):
+    midi_path = Path(xml_path).parent / 'midi_cleaned.mid'
+    piece_data = PieceData(str(xml_path), [perf_midi_path], midi_path, composer_name, save=True, align=True)
+    piece_data.extract_score_features(DEFAULT_SCORE_FEATURES)
+    piece_data.extract_perform_features(DEFAULT_PERFORM_FEATURES)
+    pair_data = ScorePerformPairData(piece_data, piece_data.performances[0])
+    converter = FeatureConverter(self.model.stats['stats'], pair_data.features, self.model.stats['input_keys'], self.model.stats['output_keys'], beat_keys=[], meas_keys=[])
+    formatted_data = converter(pair_data.features)
+    for key in VNET_COPY_DATA_KEYS:
+      formatted_data[key] = pair_data.features[key]
+    formatted_data['graph'] = pair_data.graph_edges
+    formatted_data['score_path'] = pair_data.piece_path
+    formatted_data['perform_path'] = pair_data.perform_path
+
+    x = torch.tensor(formatted_data['input'], dtype=torch.float).unsqueeze(0)
+    y = torch.tensor(formatted_data['output'], dtype=torch.float).unsqueeze(0)
+    edges = self._get_edges(piece_data.score)
+    note_location = self._get_note_location(formatted_data)
+
+    return piece_data.score, x, y, edges, note_location
+
+  def reconstruct_performance(self, xml_path, perf_midi_path, composer_name, save_path):
+    score, x, y, edges, note_location = self.get_score_perf_pair_data(xml_path, perf_midi_path, composer_name)
+
+    with torch.inference_mode():
+      outputs, _, _, _ = self.model(x, y, edges, note_location)
+    outputs = self.scale_model_prediction_to_original(outputs)
+    output_features = self.model_prediction_to_feature(outputs)
+
+    self.midi_decoder(score, note_location, output_features, save_path)
+
+  def encode_performance(self, xml_path, perf_midi_path, composer_name):
+    score, x, y, edges, note_location = self.get_score_perf_pair_data(xml_path, perf_midi_path, composer_name)
+    with torch.inference_mode():
+       outputs, perform_mu, perform_var, total_out_list = self.model(x, y, edges, note_location)
+
+  def interpolate_performance(self, xml_path, perf_midi_path_list, composer_name, save_path):
+    assert len(perf_midi_path_list) == 2 # only support 2 performances
+    score, x, y1, edges, note_location = self.get_score_perf_pair_data(xml_path, perf_midi_path_list[0], composer_name)
+    score, x, y2, edges, note_location = self.get_score_perf_pair_data(xml_path, perf_midi_path_list[1], composer_name)
+
+    y = (y1+y2)/2
+    outputs = self.scale_model_prediction_to_original(y)
+    output_features = self.model_prediction_to_feature(outputs)
+    self.midi_decoder(score, note_location, output_features, save_path)
+
+  def reconstruct_perf_by_feature(self, xml_path, perf_midi_path, composer_name, save_path):
+    score, x, y, edges, note_location = self.get_score_perf_pair_data(xml_path, perf_midi_path, composer_name)
+    outputs = self.scale_model_prediction_to_original(y)
+    output_features = self.model_prediction_to_feature(outputs)
+    self.midi_decoder(score, note_location, output_features, save_path)
+
+  def scale_model_prediction_to_original(self, prediction):
+    prediction = np.squeeze(prediction.cpu().numpy())
+    idx = 0
+    for key in self.model.stats['output_keys']:
+        prediction[:,idx]  *= self.model.stats['stats'][key]['stds']
+        prediction[:,idx]  += self.model.stats['stats'][key]['mean']
+        idx += 1 
+    return prediction
+
+  def model_prediction_to_feature(self, model_prediction_in_original_scale):
+    output_features = {}
+    idx = 0
+    for key in self.model.stats['output_keys']:
+        output_features[key] = model_prediction_in_original_scale[:,idx]
+        idx += 1
+    return output_features
 
 
 # if __name__ == '__main__':
