@@ -159,14 +159,13 @@ def clean_overlapped_pedals(pedals):
         for j in range(i + 1, num_pedals - i):
             next_pedal = pedals[j]
             if pedal.xml_position < next_pedal.xml_position:
-                i = j - 1
                 break
             elif pedal.xml_position == next_pedal.xml_position and abs(pedal.time - next_pedal.time) < OVERLAP_THR:
                 same_onset_pedal.append(next_pedal)
 
         selected_pedal = make_representative_pedal(same_onset_pedal)
         cleaned_pedals.append(selected_pedal)
-        i += 1
+        i += len(same_onset_pedal)
     return cleaned_pedals
 
 
