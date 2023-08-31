@@ -8,7 +8,7 @@ from .feature_utils import Tempo
 from . import pedal_cleaning
 
 
-def apply_tempo_perform_features(score, features, start_time=0, predicted=False, return_tempo=False):
+def apply_tempo_perform_features(score, features, start_time=0, predicted=False, return_tempo=False, sort_notes=True):
     # score: ScoreData, features: perform features in dictionary of list
     # predicted: Whether the feature is generated from model or extracted from performance. 
     #            It is for handling missing features from perform feature extraction
@@ -92,7 +92,11 @@ def apply_tempo_perform_features(score, features, start_time=0, predicted=False,
     xml_notes = apply_duration_for_grace_note(xml_notes)
 
     xml_notes = xml_notes + ornaments
-    xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
+    if sort_notes:
+      xml_notes.sort(key=lambda x: (x.note_duration.xml_position, x.note_duration.time_position, -x.pitch[1]) )
+    else:
+      # xml_notes.sort(key=lambda x: (x.note_duration.xml_position, -x.pitch[1]))
+      pass
     
     if return_tempo:
         return xml_notes, tempos
@@ -121,7 +125,10 @@ def apply_feature_to_notes(xml_notes, feature_by_note, tempos):
 
         end_note = copy.copy(note)
         end_note.note_duration = copy.copy(note.note_duration)
-        end_note.note_duration.xml_position = note.note_duration.xml_position + note.note_duration.duration
+        compensated_duration = note.note_duration.duration
+        if not feat["articulation"] == None:
+            compensated_duration *= 10 ** (feat['articulation'])
+        end_note.note_duration.xml_position = note.note_duration.xml_position + compensated_duration + xml_deviation
 
         end_position = cal_time_position_with_tempo(end_note, 0, tempos)
 
@@ -145,8 +152,8 @@ def apply_trills(xml_notes, feature_by_note, key_signatures, trill_accidentals):
     return xml_notes, ornaments
 
 def apply_feat_to_a_note(note, feat, prev_vel):
-    if not feat["articulation"] == None:
-        note.note_duration.seconds *= 10 ** (feat['articulation'])
+    # if not feat["articulation"] == None:
+    #     note.note_duration.seconds *= 10 ** (feat['articulation'])
         # note.note_duration.seconds *= feat.articulation
     if not feat["velocity"] == None:
         note.velocity = feat["velocity"]
