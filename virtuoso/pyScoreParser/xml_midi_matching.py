@@ -235,13 +235,14 @@ def make_available_note_feature_list(notes, features, predicted):
         available_notes = []
         num_features = len(features['beat_tempo'])
         for i in range(num_features):
-            feature = features[i]
-            if not feature.qpm == None:
+            qpm = features['beat_tempo'][i]
+
+            if qpm is not None:
                 xml_note = notes[i]
                 xml_pos = xml_note.note_duration.xml_position
-                time_pos = feature.midi_start
+                time_pos = xml_note.note_duration.time_position
                 divisions = xml_note.state_fixed.divisions
-                qpm = feature.qpm
+                qpm = features['beat_tempo'][i]
                 pos_pair = {'xml_position': xml_pos, 
                             'pitch':xml_note.pitch[1], 
                             'beat_tempo':qpm, 

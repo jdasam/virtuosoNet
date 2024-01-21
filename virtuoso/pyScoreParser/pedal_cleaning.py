@@ -93,7 +93,7 @@ def set_pedal_time(xml_note, feat, pedal_type, eps=0.03):
 
 
 def check_refresh_valid(feat):
-    if feat.refresh < THRESHOLD < feat.at_start:
+    if  feat.refresh < THRESHOLD < feat.at_start and feat.at_end > feat.refresh:
         return True
     else:
         return False
