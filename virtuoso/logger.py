@@ -1,11 +1,12 @@
 from re import M
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from .loss import get_mean_of_loss_dict
 import wandb
 
-class Logger(SummaryWriter):
-  def __init__(self, logdir):
-    super(Logger, self).__init__(logdir)
+# class Logger(SummaryWriter):
+class Logger:
+  # def __init__(self, logdir):
+  #   super(Logger, self).__init__(logdir)
 
   def log_training(self, reduced_loss, loss_dict, grad_norm, learning_rate, duration, iteration):
     self.add_scalar("training/total_loss", reduced_loss, iteration)
