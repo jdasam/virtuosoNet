@@ -263,12 +263,13 @@ def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_meas
 
 
 class ModelToMidiDecoder:
-  def __init__(self):
+  def __init__(self, multi_instruments=False, bool_pedal=True):
     self.output_dir = Path('')
     self.velocity_multiplier = 1
-    self.multi_instruments = False
+  
+    self.multi_instruments = multi_instruments
     self.tempo_clock = False
-    self.bool_pedal = True
+    self.bool_pedal = bool_pedal
     self.for_disklavier = False
     self.clock_interval_in_16th = 4
     self.save_csv = False
@@ -341,7 +342,7 @@ class ModelToMidiDecoder:
 
 
 class InferenceModel:
-  def __init__(self, checkpoint_path, device, output_path):
+  def __init__(self, checkpoint_path, device, output_path, **kwargs):
     self.len_graph_slice = 400
     self.graph_slice_margin = 100
     self.output_path = Path(output_path)
@@ -365,7 +366,7 @@ class InferenceModel:
     self.device = device
 
     # Define Decoder
-    self.midi_decoder = ModelToMidiDecoder()
+    self.midi_decoder = ModelToMidiDecoder(kwargs['multi_instruments'], kwargs['boolPedal'])
 
   def get_input_from_xml(self, xml_path, composer, qpm_primo):
     # def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda', len_graph_slice=400, graph_slice_margin=100,):
