@@ -15,11 +15,11 @@ def get_parser():
     parser.add_argument("--resume", type=str,
                         default="_best.pth.tar", help="best model path")
     parser.add_argument("--xml_path", type=Path,
-                        default=Path('/home/svcapp/userdata/dev/virtuosoNet/test_pieces/bps_5_1/musicxml_cleaned.musicxml'))
+                        default=Path('test_pieces/bps_17_1/musicxml_cleaned.musicxml'))
     parser.add_argument("--output_path", type=Path,
                         default=Path('test_result/'))
     parser.add_argument("--valid_xml_dir", type=Path,
-                        default=Path('/home/teo/userdata/datasets/chopin_cleaned/'))
+                        default=Path('datasets/chopin_cleaned/'))
     # model model options
     parser.add_argument("-trill", "--is_trill", default=False,
                         type=lambda x: (str(x).lower() == 'true'), help="train trill")
@@ -45,13 +45,13 @@ def get_parser():
     parser.add_argument("--master")
 
     # save options
-    parser.add_argument("--checkpoints_dir", 
+    parser.add_argument("--checkpoints_dir",
                         type=Path,
-                        default=Path('/home/teo/userdata/virtuosonet_checkpoints/'),
+                        default=Path('checkpoints/'),
                         help='folder to store checkpoints')
-    parser.add_argument("--checkpoint", 
+    parser.add_argument("--checkpoint",
                     type=Path,
-                    default=Path('/home/svcapp/userdata/dev/virtuosoNet/isgn_best.pt'),
+                    default=Path('pretrained_weights/checkpoint_best.pt'),
                     help='path to load checkpoint')    
     parser.add_argument("--evals",
                         type=Path,
