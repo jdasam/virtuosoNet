@@ -17,4 +17,7 @@ wandb/
 *.ipynb_checkpoints
 pretrained_weights/
 test_pieces/_ConcertCustomization
+icml_rebuttal/
+test_pieces/jongdo/*
 .vscode
+notebooks/
