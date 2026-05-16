@@ -124,7 +124,10 @@ def apply_feature_to_notes(xml_notes, feature_by_note, tempos):
 
         end_note = copy.copy(note)
         end_note.note_duration = copy.copy(note.note_duration)
-        end_note.note_duration.xml_position = note.note_duration.xml_position + note.note_duration.duration
+        compensated_duration = note.note_duration.duration
+        if not feat["articulation"] == None:
+            compensated_duration *= 10 ** (feat['articulation'])
+        end_note.note_duration.xml_position = note.note_duration.xml_position + compensated_duration + xml_deviation
 
         end_position = cal_time_position_with_tempo(end_note, 0, tempos)
 
@@ -148,8 +151,8 @@ def apply_trills(xml_notes, feature_by_note, key_signatures, trill_accidentals):
     return xml_notes, ornaments
 
 def apply_feat_to_a_note(note, feat, prev_vel):
-    if not feat["articulation"] == None:
-        note.note_duration.seconds *= 10 ** (feat['articulation'])
+    # if not feat["articulation"] == None:
+    #     note.note_duration.seconds *= 10 ** (feat['articulation'])
         # note.note_duration.seconds *= feat.articulation
     if not feat["velocity"] == None:
         note.velocity = feat["velocity"]

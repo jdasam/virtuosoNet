@@ -495,9 +495,23 @@ def save_midi_notes_as_piano_midi(midi_notes, midi_pedals, output_name, bool_ped
         # pedal_time_margin = 0.2
         for note in midi_notes:
             piano.notes.append(note)
-
-        piano_midi.instruments.append(piano)
         last_note_end = midi_notes[-1].end
+        midi_notes = sorted(midi_notes, key=lambda x: (x.start, x.pitch, -(x.end-x.start)))
+        # check same-pitch duplicated notes and remove shorter one
+        delete_idx_list = []
+        for i in range(len(piano.notes)-1):
+            j = 1
+            if piano.notes[i].start != piano.notes[i+j].start:
+                j = 1
+                continue
+            while piano.notes[i].pitch == piano.notes[i+j].pitch:
+                delete_idx_list.append(i+j)
+                j += 1
+                if i+j >= len(piano.notes):
+                    break
+        for idx in sorted(delete_idx_list, reverse=True):
+            del piano.notes[idx]
+        piano_midi.instruments.append(piano)
 
         # piano_midi = midi_utils.save_note_pedal_to_CC(piano_midi)
         if bool_pedal:

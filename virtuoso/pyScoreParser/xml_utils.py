@@ -532,7 +532,7 @@ def xml_notes_to_midi(xml_notes, multi_instruments=False, ignore_overlapped=True
             end = start + 0.005
         elif note.note_duration.seconds > 10:
             end = start + 10
-        velocity = int(min(max(note.velocity,0),127))
+        velocity = round(min(max(note.velocity,0),127))
         midi_note = pretty_midi.Note(velocity=velocity, pitch=pitch, start=start, end=end)
         midi_note.channel = note.voice // 10
         midi_note.xml_idx = i

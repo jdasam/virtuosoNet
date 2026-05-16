@@ -433,7 +433,7 @@ class MusicXMLDocument(object):
     return measure_positions
 
 
-  def get_notes(self, melody_only=False, grace_note=True):
+  def get_notes(self, melody_only=False, grace_note=True, allow_overlap_between_part=True):
     notes = []
     rests = []
     num_parts = len(self.parts)
@@ -444,6 +444,12 @@ class MusicXMLDocument(object):
       rests.extend(rests_part)
     notes.sort(key=lambda x: (x.note_duration.xml_position,
               x.note_duration.grace_order, -x.pitch[1]))
+    if not allow_overlap_between_part:
+      for i in range(len(notes)-1):
+        if notes[i].note_duration.xml_position == notes[i+1].note_duration.xml_position:
+          if notes[i].pitch[1] == notes[i+1].pitch[1]:
+            notes[i+1].note_duration.is_overlapped = True
+    # check overlapping notes by part 
     return notes, rests
 
   def get_monophonic_notes_by_voice(self, voice_idx, part_idx=0):

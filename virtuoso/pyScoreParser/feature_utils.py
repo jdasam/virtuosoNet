@@ -310,6 +310,8 @@ def pedal_sigmoid(pedal_value, k=8):
         >>> pedal = feature_utils.pedal_sigmoid(pair['midi'].pedal_at_start)
     """
     sigmoid_pedal = 127 / (1 + math.exp(-(pedal_value-64)/k))
+    # inverse function is
+    # pedal_value = 64 - k * math.log(127/sigmoid_pedal - 1)
     return int(sigmoid_pedal)
 
 

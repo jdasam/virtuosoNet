@@ -263,17 +263,20 @@ def regulate_tempo_by_measure_number(outputs, xml_notes, start_measure, end_meas
 
 
 class ModelToMidiDecoder:
-  def __init__(self, multi_instruments=False, bool_pedal=True):
+  def __init__(self, **kwargs):
     self.output_dir = Path('')
     self.velocity_multiplier = 1
-  
-    self.multi_instruments = multi_instruments
+    self.multi_instruments = False
     self.tempo_clock = False
-    self.bool_pedal = bool_pedal
+    self.bool_pedal = True
     self.for_disklavier = False
     self.clock_interval_in_16th = 4
     self.save_csv = False
     self.save_cluster = False
+
+    for key, value in kwargs.items():
+      setattr(self, key, value)
+
   
   def __call__(self, score, note_locations, output_features, save_path, mod_midi_path=None, attention_weights=None):
     if isinstance(save_path, str):
@@ -342,7 +345,7 @@ class ModelToMidiDecoder:
 
 
 class InferenceModel:
-  def __init__(self, checkpoint_path, device, output_path, **kwargs):
+  def __init__(self, checkpoint_path, device, output_path, midi_decode_options: dict = None):
     self.len_graph_slice = 400
     self.graph_slice_margin = 100
     self.output_path = Path(output_path)
@@ -366,7 +369,7 @@ class InferenceModel:
     self.device = device
 
     # Define Decoder
-    self.midi_decoder = ModelToMidiDecoder(kwargs['multi_instruments'], kwargs['boolPedal'])
+    self.midi_decoder = ModelToMidiDecoder(**midi_decode_options)
 
   def get_input_from_xml(self, xml_path, composer, qpm_primo):
     # def get_input_from_xml(xml_path, composer, qpm_primo, input_keys, graph_keys, stats, device='cuda', len_graph_slice=400, graph_slice_margin=100,):
@@ -422,9 +425,10 @@ class InferenceModel:
     save_path = self.output_path / f"{xml_path.parent.stem}_{xml_path.stem}_by_{self.model.model_code}_{composer_name}.mid"
     self.midi_decoder(score, note_locations, output_features, save_path)
 
-  def get_score_perf_pair_data(self, xml_path, perf_midi_path, composer_name):
-    midi_path = Path(xml_path).parent / 'midi_cleaned.mid'
-    piece_data = PieceData(str(xml_path), [perf_midi_path], midi_path, composer_name, save=True, align=True)
+  def get_score_perf_pair_data(self, xml_path, perf_midi_path, composer_name, save_data=False):
+    # midi_path = Path(xml_path).parent / 'midi_cleaned.mid'
+    midi_path = Path(xml_path).parent / f'{xml_path.stem}.mid'
+    piece_data = PieceData(str(xml_path), [perf_midi_path], midi_path, composer_name, save=save_data, align=True)
     piece_data.extract_score_features(DEFAULT_SCORE_FEATURES)
     piece_data.extract_perform_features(DEFAULT_PERFORM_FEATURES)
     pair_data = ScorePerformPairData(piece_data, piece_data.performances[0])
@@ -489,6 +493,14 @@ class InferenceModel:
     for key in self.model.stats['output_keys']:
         output_features[key] = model_prediction_in_original_scale[:,idx]
         idx += 1
+
+    # apply inverse sigmoid to pedal features
+    for key in ['pedal_at_start', 'pedal_at_end', 'soft_pedal', 'pedal_refresh', 'pedal_cut']:
+        if key not in output_features:
+            continue
+        # pedal_value = 64 - k * math.log(127/sigmoid_pedal - 1)
+        # k is 8 in default
+        output_features[key] = 64 - 8 * np.log(127/(output_features[key]+0.04) - 1)
     return output_features
 
 
