@@ -329,20 +329,24 @@ If the output sounds too dry (no pedal), your MIDI player may not support pedal 
 
 ## Citation
 
-If you use VirtuosoNet in your research, please cite:
+If you use the **pretrained weights** to generate performances, please cite the ISMIR 2019 paper (VirtuosoNet):
+
+```bibtex
+@inproceedings{jeong2019virtuosonet,
+  title={VirtuosoNet: A Hierarchical RNN-based System for Modeling Expressive Piano Performance},
+  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Lee, Kyungu and Nam, Juhan},
+  booktitle={Proceedings of the 20th International Society for Music Information Retrieval Conference (ISMIR)},
+  year={2019}
+}
+```
+
+If you use the **graph-based score encoding**, please also cite the ICML 2019 paper:
 
 ```bibtex
 @inproceedings{jeong2019graph,
   title={Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance},
   author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Nam, Juhan},
   booktitle={Proceedings of the 36th International Conference on Machine Learning (ICML)},
-  year={2019}
-}
-
-@inproceedings{jeong2019virtuosonet,
-  title={VirtuosoNet: A Hierarchical RNN-based System for Modeling Expressive Piano Performance},
-  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Lee, Kyungu and Nam, Juhan},
-  booktitle={Proceedings of the 20th International Society for Music Information Retrieval Conference (ISMIR)},
   year={2019}
 }
 ```
