@@ -1,66 +1,133 @@
 # VirtuosoNet
 
-Our research project is developing a system for generating expressive piano perfomrance, or simply 'AI Pianist'. The system reads a given music score in MusicX
-ML and generates a human-like performance MIDI file.
+An AI pianist system that reads a MusicXML score and generates a human-like expressive performance MIDI.
 
-This repository contains PyTorch code and pre-trained model for [__Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance__ (ICML 2019)](http://proceedings.mlr.press/v97/jeong19a.html), and [__VirtuosoNet: A Hierarchical RNN-based system for modeling expressive piano performance__ (ISMIR 2019)](http://archives.ismir.net/ismir2019/paper/000112.pdf).
+Based on:
+- [**Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance**](http://proceedings.mlr.press/v97/jeong19a.html) (ICML 2019)
+- [**VirtuosoNet: A Hierarchical RNN-based System for Modeling Expressive Piano Performance**](http://archives.ismir.net/ismir2019/paper/000112.pdf) (ISMIR 2019)
 
-This documentation is currently a work in progress.
-contact: jdasam@kaist.ac.kr
+> **🏆 RenCon 2025 — 1st place**  
+> The pretrained weights in this repo are the algorithm submitted to [RenCon 2025](https://arxiv.org/abs/2605.02059), which ranked 1st in the final evaluation.
 
-* You need PyTorch (torch 0.4.1) and pretty_midi (https://github.com/craffel/pretty-midi)
+---
 
+## Quick Start
 
-## Data:
-Data is provided as a .dat file in this [link](https://mega.nz/#F!N6RC3aJK!zWto4arANF9V7snhoyZh5w). It is pre-extracted note-level features of score and performance. Please contact me for the further information about the dataset.
+Download the pretrained model and run inference on a sample piece in one command:
 
+```bash
+python download_and_test.py
+```
 
-## How to generate performance MIDI from musicXML
+This downloads the checkpoint from HuggingFace and runs inference on `test_pieces/bps_17_1/musicxml_cleaned.musicxml` (Beethoven Piano Sonata No.17).
 
-0. Put your musicXML in a folder. 
-The filename shouldbe 'musicxml_cleaned.musicxml' or 'xml.xml' or 'musicxml.musicxml'
-We recommend ./test_pieces/
+---
 
-1. Select the composer of piece.
-There are 16 composers in our data set: 'Bach', 'Balakirev', 'Beethoven', 'Brahms', 'Chopin', 'Debussy', 'Glinka', 'Haydn', 'Liszt', 'Mozart', 'Prokofiev', 'Rachmaninoff', 'Ravel', 'Schubert', 'Schumann', 'Scriabin'
-You can select one of them using -comp=<composer name>. The input composer does not have to be the same with the actual composer of the input piece. 
-We recommend to use composer among the following list because they have more data than others: Bach, Beethoven, Chopin, Haydn, Liszt, Mozart, Ravel, Schubert
-(example -comp=Mozart) (start with capital letter)
+## Installation
 
-2. select model
-model code is: isgn (proposed in ICML2019), han_ar_single(proposed in ISMIR 2019), han_ar_note(proposed in ISMIR 2019)
-(example: -code=isgn)
+**With uv (recommended):**
 
-* (Option) select initial tempo
-You can select initial tempo of the piece in quater note per minute. If you do not enter tempo, the tempo used in MusicXML file will be used.
+```bash
+uv sync
+```
 
-3. run python script
-> python3 model_run.py -mode=test -code=isgn -path=./test_pieces/bwv_858/ -comp=Bach -tempo=60)
+**With pip:**
 
-4. You can use -mode=testAll to generate performance for the pre-defined test set, which is defined in model_constants.py
-It will encode emotion cue from pre-recorded performances in emotionNet folder, and generate the performance with encoded z for each emotion for each piece in the list. 'OR' represent original, or natural emotion of the piece.
-> python3 model_run.py -mode=testAll -code=isgn
+```bash
+pip install -e .
+```
 
-You can also generate performance for the pre-defined test set only 
+Requires Python 3.10 and CUDA 11.8 (for GPU). See `pyproject.toml` for full dependencies.
 
+---
 
-5. check the output file
-The file is saved in ./test_result/ folder. z0 means latent vector z was sampled from normal distribution.
+## Usage
 
+```bash
+python -m virtuoso \
+  --session_mode=inference \
+  --checkpoint=pretrained_weights/han_measnote_gru/checkpoint_best.pt \
+  --yml_path=pretrained_weights/han_measnote_gru/han_measnote_gru.yml \
+  --xml_path=<path/to/your/score.musicxml> \
+  --composer=<ComposerName>
+```
 
+### Key Options
 
-* Caution on pedal
-We add sustain pedal and soft pedal in MIDI file as a CC event of channel 64 and 67. Depending on your MIDI player, the pedal can be applied in different way. For example, Logic Pro X activate pedal if the value is lager than zero, while the actual Disklavier's pedal threshold is about 64. In this case, our performance will sound too 'wet', or too much pedal. In this case, we propose to use option -bp=true (--boolPedal), which makes value of pedal event zero under certain threshold.
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--xml_path` | Path to input MusicXML file | `test_pieces/bps_17_1/musicxml_cleaned.musicxml` |
+| `--composer` | Composer name (see list below) | required |
+| `--checkpoint` | Path to model checkpoint `.pt` file | `pretrained_weights/checkpoint_best.pt` |
+| `--yml_path` | Path to model config `.yml` file | — |
+| `--output_path` | Directory for output MIDI | `test_result/` |
+| `--qpm_primo` | Override initial tempo (BPM) | from score |
+| `--boolPedal` | Apply pedal threshold (True/False) | `False` |
 
-If the MIDI player cannot handle pedal, the articulation of our notes will sound extremly short, since the performance we used for training set did not consider much to the articulation of notes with pedal.
+Output MIDI is saved to `test_result/` by default.
 
+---
 
+## Pretrained Model
 
-## How to train the model
-You can change model parameters in model_parameters.py
-> python3 model_run.py -mode=train -code=isgn_test -data=training_data)
+The model available on [HuggingFace (`dasaem/virtuosonet`)](https://huggingface.co/dasaem/virtuosonet) is the **HAN+GRU** architecture submitted to RenCon 2025, where it achieved **1st place** in the final evaluation.
 
+Download manually:
 
+```python
+from huggingface_hub import hf_hub_download
+hf_hub_download(repo_id="dasaem/virtuosonet", filename="checkpoint_best.pt", local_dir="pretrained_weights/han_measnote_gru")
+hf_hub_download(repo_id="dasaem/virtuosonet", filename="han_measnote_gru.yml", local_dir="pretrained_weights/han_measnote_gru")
+```
 
+---
 
+## Supported Composers
 
+The model was trained on performances by the following 16 composers. Pass the composer name with `--composer`:
+
+`Bach`, `Balakirev`, `Beethoven`, `Brahms`, `Chopin`, `Debussy`, `Glinka`, `Haydn`, `Liszt`, `Mozart`, `Prokofiev`, `Rachmaninoff`, `Ravel`, `Schubert`, `Schumann`, `Scriabin`
+
+> Tip: The composer does not have to match the actual composer of the piece. Among the above, `Bach`, `Beethoven`, `Chopin`, `Haydn`, `Liszt`, `Mozart`, `Ravel`, and `Schubert` have the most training data and tend to give the best results.
+
+---
+
+## A Note on Pedal
+
+Sustain pedal is encoded as MIDI CC 64. Different MIDI players interpret this differently:
+
+- **Logic Pro X**: activates pedal if value > 0
+- **Disklavier**: threshold is ~64
+
+If the output sounds too wet (too much pedal), use `--boolPedal=True` to apply a threshold.
+If the output sounds too dry (no pedal), your MIDI player may not support pedal CC events.
+
+---
+
+## Citation
+
+If you use the **pretrained weights** to generate performances, please cite the ISMIR 2019 paper (VirtuosoNet):
+
+```bibtex
+@inproceedings{jeong2019virtuosonet,
+  title={VirtuosoNet: A Hierarchical RNN-based System for Modeling Expressive Piano Performance},
+  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Lee, Kyungu and Nam, Juhan},
+  booktitle={Proceedings of the 20th International Society for Music Information Retrieval Conference (ISMIR)},
+  year={2019}
+}
+```
+
+If you use the **graph-based score encoding**, please also cite the ICML 2019 paper:
+
+```bibtex
+@inproceedings{jeong2019graph,
+  title={Graph Neural Network for Music Score Data and Modeling Expressive Piano Performance},
+  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Nam, Juhan},
+  booktitle={Proceedings of the 36th International Conference on Machine Learning (ICML)},
+  year={2019}
+}
+```
+
+---
+
+Contact: dasaem.jeong@gmail.com

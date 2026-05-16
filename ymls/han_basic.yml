@@ -1,0 +1,48 @@
+nn_params:
+  score_encoder_name: HanEncoder
+  performance_encoder_name: HanPerfEncoder
+  residual_info_selector_name: TempoVecSelector
+  performance_decoder_name: HanDecoderSingleZ
+  beat:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  encoded_vector_size: 16
+  encoder:
+    input: 1152
+    layer: 2
+    margin: 0
+    size: 64
+  final:
+    input: 1099
+    layer: 1
+    margin: 0
+    size: 64
+  performance:
+    size: 128
+  hierarchy_level: null
+  is_baseline: false
+  is_graph: false
+  is_simplified: false
+  is_teacher_force: false
+  is_test_version: false
+  measure:
+    input: 0
+    layer: 1
+    margin: 0
+    size: 128
+  note:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  graph_keys: []
+  num_attention_head: 8
+  output_size: 11
+  voice:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  drop_out: 0.2

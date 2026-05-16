@@ -1,0 +1,31 @@
+nn_params:
+  note_embedder_name: MixEmbedder
+  score_encoder_name: LSTMEncoder
+  performance_encoder_name: BaselineEncoder
+  residual_info_selector_name: TempoVecSelector
+  performance_decoder_name: BaselineDecoder
+  encoded_vector_size: 16
+  encoder:
+    input: 1152
+    layer: 2
+    margin: 0
+    size: 64
+  final:
+    input: 1099
+    layer: 2
+    margin: 0
+    size: 64
+  performance:
+    size: 128
+  hierarchy_level: null
+  is_graph: false
+  note:
+    input: 0
+    layer: 4
+    margin: 0
+    size: 512
+  num_attention_head: 8
+  graph_keys: []
+  output_size: 11
+  drop_out: 0.2
+  use_continuos_feature_only: True

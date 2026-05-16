@@ -1,0 +1,63 @@
+nn_params:
+  beat:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  encoded_vector_size: 16
+  encoder:
+    input: 1152
+    layer: 2
+    margin: 0
+    size: 64
+  final:
+    input: 1102
+    layer: 1
+    margin: 0
+    size: 64
+  performance:
+    size: 128
+  hierarchy_level: null
+  input_size: 80
+  is_baseline: false
+  is_graph: false
+  is_simplified: false
+  is_teacher_force: false
+  is_test_version: false
+  measure:
+    input: 0
+    layer: 1
+    margin: 0
+    size: 128
+  note:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  num_attention_head: 8
+  output_size: 11
+  voice:
+    input: 0
+    layer: 2
+    margin: 0
+    size: 128
+  drop_out: 0.2 
+train_params:
+  bool_pedal: false
+  composer: Beethoven
+  data_name: pedal_refresh
+  delta_loss: false
+  device: 0
+  disklavier: true
+  intermediate_loss: false
+  latent: 0
+  resume_training: false
+  sess_mode: train
+  train_trill: false
+  loss_type: MSE
+infer_params:
+  model_code: han_ar
+  infer_f_path: ./test_pieces/bps_5_1/
+  trill_code: trill_default
+  hier_code: han_measure
+  startTempo: 0
