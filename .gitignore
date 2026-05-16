@@ -21,3 +21,9 @@ icml_rebuttal/
 test_pieces/jongdo/*
 .vscode
 notebooks/
+test_pieces/*
+!test_pieces/bps_17_1/
+!test_pieces/bps_17_1/**
+Schumann/
+rencon/*.mid
+rencon/*.png
