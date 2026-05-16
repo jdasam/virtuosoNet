@@ -14,7 +14,7 @@ test_result/*.png
 test_result/*.csv
 .vscode/
 wandb/
-*.ipynb_checkpoints
+**/.ipynb_checkpoints/
 pretrained_weights/
 test_pieces/_ConcertCustomization
 icml_rebuttal/
@@ -27,3 +27,4 @@ test_pieces/*
 Schumann/
 rencon/*.mid
 rencon/*.png
+docs/superpowers/
