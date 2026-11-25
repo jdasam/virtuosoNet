@@ -111,7 +111,7 @@ If you use the **pretrained weights** to generate performances, please cite the 
 ```bibtex
 @inproceedings{jeong2019virtuosonet,
   title={VirtuosoNet: A Hierarchical RNN-based System for Modeling Expressive Piano Performance},
-  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Lee, Kyungu and Nam, Juhan},
+  author={Jeong, Dasaem and Kwon, Taegyun and Kim, Yoojin and Lee, Kyogu and Nam, Juhan},
   booktitle={Proceedings of the 20th International Society for Music Information Retrieval Conference (ISMIR)},
   year={2019}
 }
